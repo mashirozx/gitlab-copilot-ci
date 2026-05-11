@@ -1,0 +1,157 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: ✅ Lint
+        run: bun run lint
+
+  build:
+    name: Build for ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-26
+            target: bun-darwin-arm64
+            platform: darwin-arm64
+            build-output: darwin-arm64
+            extension: ""
+          - runner: macos-26
+            target: bun-darwin-x64
+            platform: darwin-x64
+            build-output: darwin-x64
+            extension: ""
+          - runner: ubuntu-latest
+            target: bun-linux-x64
+            platform: linux-x64
+            build-output: linux-x64
+            extension: ""
+          - runner: ubuntu-latest
+            target: bun-linux-arm64
+            platform: linux-arm64
+            build-output: linux-arm64
+            extension: ""
+          - runner: windows-latest
+            target: bun-windows-x64
+            platform: win-x64
+            build-output: win-x64
+            extension: ".exe"
+          # win-arm64 built with error:
+          # Failed to extract executable for 'bun-windows-aarch64-v1.3.14'. The download may be incomplete.
+          # - runner: windows-latest
+          #   target: bun-windows-arm64
+          #   platform: win-arm64
+          #   build-output: win-arm64
+          #   extension: ".exe"
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: 🔨 Build
+        run: bun run ./scripts/build-with-version.ts ${{ matrix.target }}
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-copilot-ci-${{ matrix.platform }}
+          path: dist/gitlab-copilot-ci-${{ matrix.build-output }}${{ matrix.extension }}
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 📋 Get version from package.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: 🔍 Check if tag already exists
+        id: check-tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Create tag
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: 📦 Prepare release artifacts
+        run: |
+          mkdir -p release-binaries
+          find release-artifacts -type f -name "gitlab-copilot-ci-*" | while read file; do
+            filename=$(basename "$file")
+            cp "$file" "release-binaries/$filename"
+          done
+          ls -la release-binaries/
+
+      - name: 🎉 Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: release-binaries/*
+          generate_release_notes: true
