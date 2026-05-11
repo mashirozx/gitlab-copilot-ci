@@ -1,0 +1,70 @@
+stages:
+  - test
+  - release
+  - build
+
+.use-image:
+  tags:
+    - m2
+  image:
+    name: node:26-alpine3.22
+    pull_policy: if-not-present
+
+.prepare:
+  extends:
+    - .use-image
+  before_script:
+    - npm install -g bun
+    - mkdir -p .bun/install/cache .npm
+    - bun install
+  cache:
+    key: "cache-bun-npm"
+    paths:
+      - .bun/install/cache
+      - .npm
+  variables:
+    BUN_INSTALL_CACHE: "$CI_PROJECT_DIR/.bun/install/cache"
+    npm_config_cache: "$CI_PROJECT_DIR/.npm"
+    GIT_CLEAN_FLAGS: -fdx -e node_modules/ -e dist/
+
+test:biome:
+  extends:
+    - .prepare
+  stage: test
+  only:
+    - main
+    - merge_requests
+  script:
+    - bun run lint
+
+release:
+  extends:
+    - .prepare
+  stage: release
+  only:
+    - main
+  script:
+    - bun scripts/ci/ensure-release.ts
+
+build:
+  extends:
+    - .prepare
+  stage: build
+  only:
+    - main
+  parallel:
+    matrix:
+      - PLATFORM: "darwin-arm64"
+        BUILD_SCRIPT: "build:darwin-arm64"
+      - PLATFORM: "darwin-x64"
+        BUILD_SCRIPT: "build:darwin-x64"
+      - PLATFORM: "linux-x64"
+        BUILD_SCRIPT: "build:linux-x64"
+      - PLATFORM: "linux-arm64"
+        BUILD_SCRIPT: "build:linux-arm64"
+      - PLATFORM: "win-x64"
+        BUILD_SCRIPT: "build:win-x64"
+      - PLATFORM: "win-arm64"
+        BUILD_SCRIPT: "build:win-arm64"
+  script:
+    - bun scripts/ci/build-and-publish.ts

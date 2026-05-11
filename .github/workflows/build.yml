@@ -1,0 +1,110 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: ✅ Lint
+        run: bun run lint
+
+  build:
+    name: Build for ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-13
+            target: bun-darwin-arm64
+            platform: darwin-arm64
+          - runner: macos-13
+            target: bun-darwin-x64
+            platform: darwin-x64
+          - runner: ubuntu-latest
+            target: bun-linux-x64
+            platform: linux-x64
+          - runner: ubuntu-latest
+            target: bun-linux-arm64
+            platform: linux-arm64
+          - runner: windows-latest
+            target: bun-win-x64
+            platform: win-x64
+          - runner: windows-latest
+            target: bun-win-arm64
+            platform: win-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: 🔨 Build
+        run: bun run ./scripts/build-with-version.ts ${{ matrix.target }}
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-copilot-ci-${{ matrix.platform }}
+          path: dist/gitlab-copilot-ci-${{ matrix.platform }}
+          if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: 📦 Prepare release artifacts
+        run: |
+          mkdir -p release-binaries
+          find release-artifacts -type f -name "gitlab-copilot-ci-*" | while read file; do
+            filename=$(basename "$file")
+            cp "$file" "release-binaries/$filename"
+          done
+          ls -la release-binaries/
+
+      - name: 🎉 Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-binaries/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
