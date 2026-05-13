@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const target = process.argv[2];
@@ -50,12 +50,35 @@ const defineRepo = `__BUILD_REPO__="${repo}"`;
 // Strip "bun-" prefix from target for output filename (e.g., "bun-linux-arm64" → "linux-arm64")
 const platformTarget = target.replace(/^bun-/, "");
 
-const buildCmd = `bun build ./app/main.ts --compile --target=${target} --define '${defineVersion}' --define '${defineCommit}' --define '${definePlatform}' --define '${defineRepo}' --outfile ./dist/gitlab-copilot-ci-${platformTarget}`;
-
 console.log(
   `Building ${target} with version ${pkg.version} (${commit.slice(0, 7)})`,
 );
-execSync(buildCmd, { stdio: "inherit" });
+
+// Use spawnSync with an args array to avoid shell quoting issues on Windows
+const result = spawnSync(
+  "bun",
+  [
+    "build",
+    "./app/main.ts",
+    "--compile",
+    `--target=${target}`,
+    "--define",
+    defineVersion,
+    "--define",
+    defineCommit,
+    "--define",
+    definePlatform,
+    "--define",
+    defineRepo,
+    "--outfile",
+    `./dist/gitlab-copilot-ci-${platformTarget}`,
+  ],
+  { stdio: "inherit" },
+);
+
+if (result.status !== 0) {
+  process.exit(result.status ?? 1);
+}
 
 // Clean up .*.bun-build temp files
 // for (const fileName of readdirSync(".")) {
