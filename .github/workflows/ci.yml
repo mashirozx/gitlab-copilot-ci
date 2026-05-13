@@ -116,9 +116,8 @@ jobs:
           ls -la release-binaries/
 
       - name: 🎉 Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
+        # if: github.ref_type == 'tag'
         with:
           files: release-binaries/*
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
