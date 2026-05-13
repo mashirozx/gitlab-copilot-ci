@@ -36,12 +36,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-13
+          - runner: macos-26
             target: bun-darwin-arm64
             platform: darwin-arm64
             build-output: darwin-arm64
             extension: ""
-          - runner: macos-13
+          - runner: macos-26
             target: bun-darwin-x64
             platform: darwin-x64
             build-output: darwin-x64
