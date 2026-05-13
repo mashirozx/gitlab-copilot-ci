@@ -18,7 +18,8 @@
     "biome": "biome check . --fix && biome format --write .",
     "format": "biome format --write .",
     "prepare": "husky",
-    "release": "bun run ./scripts/release.ts"
+    "release": "bun run ./scripts/release.ts",
+    "commit": "bun run ./scripts/commit.ts"
   },
   "dependencies": {
     "@biomejs/biome": "2.4.15",
