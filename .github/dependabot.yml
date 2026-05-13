@@ -1,23 +1,24 @@
 version: 2
 updates:
-  # NPM dependencies
-  - package-ecosystem: "npm"
+  # bun dependencies
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "16:00"
     open-pull-requests-limit: 10
     rebase-strategy: "auto"
     pull-request-branch-name:
       separator: "/"
+    commit-message:
+      # :arrow_up: for ⬆️
+      prefix: "chore(deps): ⬆️ "
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "16:00"
     open-pull-requests-limit: 10
     rebase-strategy: "auto"
