@@ -61,12 +61,12 @@ jobs:
             platform: win-x64
             build-output: windows-x64
             extension: ".exe"
-          - runner: windows-latest
-            target: bun-windows-arm64
-            # compile arm64 with x64, because win-arm64 built with error:
+          - runner: ubuntu-latest
+            # compile  win-arm64 with linux-arm64, because win-arm64 built with error:
             # Failed to extract executable for 'bun-windows-aarch64-v1.3.14'. The download may be incomplete.
+            target: bun-windows-arm64
             # platform: win-arm64
-            platform: win-x64
+            platform: linux-arm64
             build-output: windows-arm64
             extension: ".exe"
 
