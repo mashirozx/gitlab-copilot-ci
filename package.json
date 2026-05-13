@@ -24,7 +24,7 @@
     "@commitlint/cli": "21.0.0",
     "@commitlint/config-conventional": "21.0.0",
     "@gitbeaker/rest": "43.8.0",
-    "@types/bun": "1.3.13",
+    "@types/bun": "1.3.14",
     "@types/yargs": "17.0.35",
     "husky": "9.1.7",
     "typescript": "npm:@typescript/native-preview@7.0.0-dev.20260511.1",
