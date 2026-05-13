@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # NPM dependencies
-  - package-ecosystem: "npm"
+  # bun dependencies
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -11,6 +11,9 @@ updates:
     rebase-strategy: "auto"
     pull-request-branch-name:
       separator: "/"
+    commit-message:
+      # :arrow_up: for ⬆️
+      prefix: "chore(deps): ⬆️ "
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
