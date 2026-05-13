@@ -39,24 +39,36 @@ jobs:
           - runner: macos-13
             target: bun-darwin-arm64
             platform: darwin-arm64
+            build-output: darwin-arm64
+            extension: ""
           - runner: macos-13
             target: bun-darwin-x64
             platform: darwin-x64
+            build-output: darwin-x64
+            extension: ""
           - runner: ubuntu-latest
             target: bun-linux-x64
             platform: linux-x64
+            build-output: linux-x64
+            extension: ""
           - runner: ubuntu-latest
             target: bun-linux-arm64
             platform: linux-arm64
+            build-output: linux-arm64
+            extension: ""
           - runner: windows-latest
             target: bun-windows-x64
             platform: win-x64
+            build-output: windows-x64
+            extension: ".exe"
           - runner: windows-latest
             target: bun-windows-arm64
-            platform: win-x64
-            # win-arm64 built with error:
+            # compile arm64 with x64, because win-arm64 built with error:
             # Failed to extract executable for 'bun-windows-aarch64-v1.3.14'. The download may be incomplete.
             # platform: win-arm64
+            platform: win-x64
+            build-output: windows-arm64
+            extension: ".exe"
 
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gitlab-copilot-ci-${{ matrix.platform }}
-          path: dist/gitlab-copilot-ci-${{ matrix.platform }}*
+          path: dist/gitlab-copilot-ci-${{ matrix.build-output }}${{ matrix.extension }}
           if-no-files-found: error
 
   create-release:
