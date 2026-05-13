@@ -53,7 +53,10 @@ jobs:
             platform: win-x64
           - runner: windows-latest
             target: bun-windows-arm64
-            platform: win-arm64
+            platform: win-x64
+            # win-arm64 built with error:
+            # Failed to extract executable for 'bun-windows-aarch64-v1.3.14'. The download may be incomplete.
+            # platform: win-arm64
 
     steps:
       - uses: actions/checkout@v4
