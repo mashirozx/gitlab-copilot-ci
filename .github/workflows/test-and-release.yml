@@ -136,11 +136,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📥 Download all artifacts
+        if: steps.check-tag.outputs.exists == 'false'
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
 
       - name: 📦 Prepare release artifacts
+        if: steps.check-tag.outputs.exists == 'false'
         run: |
           mkdir -p release-binaries
           find release-artifacts -type f -name "gitlab-copilot-ci-*" | while read file; do
@@ -150,6 +152,7 @@ jobs:
           ls -la release-binaries/
 
       - name: 🎉 Create Release
+        if: steps.check-tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
