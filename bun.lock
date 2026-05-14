@@ -6,7 +6,7 @@
       "name": "gitlab-copilot-ci",
       "dependencies": {
         "@biomejs/biome": "2.4.15",
-        "@commitlint/cli": "21.0.0",
+        "@commitlint/cli": "21.0.1",
         "@commitlint/config-conventional": "21.0.0",
         "@gitbeaker/rest": "43.8.0",
         "@types/bun": "1.3.14",
@@ -42,7 +42,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.15", "https://registry.npmmirror.com/@biomejs/cli-win32-x64/-/cli-win32-x64-2.4.15.tgz", { "os": "win32", "cpu": "x64" }, "sha512-zBrGq5mx5wwpnow4+2BxUvleDM+GNd4sLbPaMapsSLQLD0NGRCquqPBTgN+7XkUteHvj7M+BstuI8tmnV7+HgQ=="],
 
-    "@commitlint/cli": ["@commitlint/cli@21.0.0", "https://registry.npmmirror.com/@commitlint/cli/-/cli-21.0.0.tgz", { "dependencies": { "@commitlint/format": "^21.0.0", "@commitlint/lint": "^21.0.0", "@commitlint/load": "^21.0.0", "@commitlint/read": "^21.0.0", "@commitlint/types": "^21.0.0", "tinyexec": "^1.0.0", "yargs": "^18.0.0" }, "bin": { "commitlint": "./cli.js" } }, "sha512-p3y2oC0G2R45zaadMwBxCiSesS8digi5RDplP3Zrfpzm7xIgrgAj0W4fGzONjpHyg8obDVJDU45g5txzeMcblg=="],
+    "@commitlint/cli": ["@commitlint/cli@21.0.1", "https://registry.npmmirror.com/@commitlint/cli/-/cli-21.0.1.tgz", { "dependencies": { "@commitlint/format": "^21.0.1", "@commitlint/lint": "^21.0.1", "@commitlint/load": "^21.0.1", "@commitlint/read": "^21.0.1", "@commitlint/types": "^21.0.1", "tinyexec": "^1.0.0", "yargs": "^18.0.0" }, "bin": { "commitlint": "cli.js" } }, "sha512-8vq10krmbJwBkvzXKhbs4o4JQEVscd3pqOlWuDUaDBwbeL694/P33UC29tZQFTAgPU9fVJ2+f2m3zw16yKWxHg=="],
 
     "@commitlint/config-conventional": ["@commitlint/config-conventional@21.0.0", "https://registry.npmmirror.com/@commitlint/config-conventional/-/config-conventional-21.0.0.tgz", { "dependencies": { "@commitlint/types": "^21.0.0", "conventional-changelog-conventionalcommits": "^9.2.0" } }, "sha512-QJX/rPK4Yu3f5J4OCIBy5aXq2e0EEdwSDFZ3NQvFAXTm3gs12ipyZ+yjhZxm3hHn6DB8wuv3zhFTL1I2tYzUBA=="],
 
