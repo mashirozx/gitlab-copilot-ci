@@ -62,3 +62,19 @@ func({ params1: "hello", params2: 42 })
   ```
 
 > Biome does not currently have a built-in rule for this pattern. Enforce manually during code review.
+
+## 3. Avoid Unnecessary `as` Type Casts
+
+Do not use `as` to cast a value to a type it already has. Before adding a cast, verify the inferred type — if TypeScript already infers the correct type, omit the cast.
+
+```ts
+// incorrect — yargs already infers string for demandOption string options
+const projectId = argv["project-id"] as string;
+const langs = argv["lang"] as string[];
+
+// correct — no cast needed
+const projectId = argv["project-id"];
+const langs = argv["lang"];
+```
+
+Use `as` only when genuinely narrowing or widening is required and the type cannot be inferred correctly otherwise (e.g., external JSON, opaque APIs, or intentional nominal typing). Always verify with `bun tsgo` that removing the cast causes an error before keeping it.

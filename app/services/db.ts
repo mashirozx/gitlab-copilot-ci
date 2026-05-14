@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { Temporal } from "temporal-polyfill";
 import { migrations } from "../migrations/index";
 import type { ReviewItem, StoredReview } from "../types/entities";
+import { logger } from "./logger";
 
 const runMigrations = (database: Database): void => {
   database.run(`
@@ -38,6 +39,24 @@ export const initializeDatabase = (dbPath: string): Database => {
   database.run("PRAGMA journal_mode = WAL");
   runMigrations(database);
   return database;
+};
+
+export const tryInitializeDatabase = (
+  dbPath: string | undefined,
+  errors: string[],
+): Database | null => {
+  if (!dbPath) return null;
+  try {
+    const db = initializeDatabase(dbPath);
+    logger.info(`[Database] Initialized SQLite at ${dbPath}`);
+    return db;
+  } catch (e) {
+    const msg = `[Database] Failed to initialize database: ${e instanceof Error ? e.message : String(e)}`;
+    logger.error(msg);
+    logger.error(e);
+    errors.push(msg);
+    return null;
+  }
 };
 
 export const getStoredReviewsForMR = ({

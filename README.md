@@ -68,8 +68,12 @@ Options:
   --review-data-tag              HTML tag for review data tracking (default: copilot-review-data)
   -d, --debug                    Debug mode: generate mock reviews only (default: false)
   --log                          Enable log file writing
-                                 - --log or --log=true: write to current directory
-                                 - --log=/path/to/dir: write to specified directory
+                                 - --log: write to current directory
+                                 - --log /path/to/dir: write to specified directory
+                                 - repeated values are allowed; only the first explicit path is used
+  --log-level                    Logger output level (default: 5)
+                                 - Numeric: 0 (silent) to 5 (debug), -999 (silent), +999 (verbose)
+                                 - Named: fatal, error, warn, log, info, debug, trace, verbose
   --db                           Path to SQLite database for review history (optional)
   --lang                         Additional output language(s) for translations
                                  (e.g., --lang=zh-CN --lang=ja), repeatable
@@ -129,12 +133,14 @@ Results will include translated sections in addition to English.
 
 ```bash
 ./dist/gitlab-copilot-ci-linux-x64 \
-  --log=/var/log/ci \
+  --log /var/log/ci \
   --gitlab-token YOUR_TOKEN \
   --gitlab-url https://gitlab.com/api/v4 \
   --project-id 123 \
   --mr-iid 456
 ```
+
+`--log` also works without a value to log into the current directory. Internally, the parser uses `array: true` plus `coerce` so the runtime value becomes `true | string | undefined`.
 
 Log files are created as: `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log`
 
