@@ -48,8 +48,6 @@ export const runCopilotReview = async ({
     const child = spawn(
       argv["copilot-bin"],
       [
-        "-C",
-        process.cwd(),
         "--model",
         argv["copilot-model"],
         "--allow-tool=read_file",
