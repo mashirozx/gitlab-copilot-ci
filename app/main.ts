@@ -1,59 +1,38 @@
 #!/usr/bin/env bun
 
-import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCopilotReview } from "./services/copilot";
 import {
   getStoredReviewsForMR,
-  initializeDatabase,
   storeReview,
+  tryInitializeDatabase,
 } from "./services/db";
 import { gitlab } from "./services/gitlab";
-import {
-  initializeLogger,
-  logError,
-  logInfo,
-  logWarn,
-} from "./services/logger";
+import { logger } from "./services/logger";
 import type { ReviewItem, StoredReview } from "./types/entities";
 import { argv } from "./utils/argv";
+import { getFormattedVersion } from "./utils/version";
 
 const main = async () => {
-  const projectId = argv["project-id"] as string;
-  const mrIid = parseInt(argv["mr-iid"] as string, 10);
-  const langs = (argv["lang"] as string[]) ?? [];
+  const projectId = argv["project-id"];
+  const mrIid = parseInt(argv["mr-iid"], 10);
+  const langs = argv["lang"];
   const errors: string[] = [];
 
-  const logArg = argv["log"];
-  if (logArg !== undefined && logArg !== "false") {
-    const logDir =
-      typeof logArg === "string" && logArg !== "true" ? logArg : undefined;
-    initializeLogger(logDir);
-  }
-
   if (argv["debug"]) {
-    logInfo(
+    logger.info(
       "[DEBUG MODE] Starting review in debug mode - will generate mock reviews",
     );
+    logger.info("[Arguments]", JSON.stringify(argv, null, 2));
   }
 
-  logInfo(`[Start] Gitlab Copilot CI`);
-  logInfo("[Arguments]", argv);
+  logger.silent(`Gitlab Copilot CI`);
+  logger.box(getFormattedVersion());
 
   // Initialize database if path is provided
-  let db: Database | null = null;
-  if (argv["db"]) {
-    try {
-      db = initializeDatabase(argv["db"] as string);
-      logInfo(`[Database] Initialized SQLite at ${argv["db"]}`);
-    } catch (e) {
-      const msg = `Failed to initialize database: ${(e as Error).message}`;
-      logError("[Database]", msg);
-      errors.push(msg);
-    }
-  }
+  const db = tryInitializeDatabase(argv["db"], errors);
 
   // A. Fetch MR details and diff (SHA values needed for comment positioning)
   const mr = await gitlab.MergeRequests.show(projectId, mrIid);
@@ -72,12 +51,13 @@ const main = async () => {
           database: db,
           mrIid: String(mrIid),
         });
-        logInfo(
+        logger.info(
           `[Database] Loaded ${previousReviews.length} previous review(s) for MR ${mrIid}`,
         );
       } catch (e) {
-        const msg = `Failed to load previous reviews: ${(e as Error).message}`;
-        logError("[Database]", msg);
+        const msg = `[Database] Failed to load previous reviews: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(msg);
+        logger.error(e);
         errors.push(msg);
       }
     }
@@ -107,20 +87,21 @@ const main = async () => {
             sourceSnippet,
           });
         }
-        logInfo(
+        logger.info(
           `[Database] Persisted ${reviews.length} review(s) for MR ${mrIid}`,
         );
       } catch (e) {
-        const msg = `Failed to persist reviews: ${(e as Error).message}`;
-        logError("[Database]", msg);
+        const msg = `[Database] Failed to persist reviews: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(msg);
+        logger.error(e);
         errors.push(msg);
       }
     }
 
     if (response.errors) errors.push(...response.errors);
 
-    logInfo("Review results:");
-    logInfo(JSON.stringify(response, null, 2));
+    logger.success("Review results:");
+    logger.log(JSON.stringify(response, null, 2));
 
     // C. Find existing summary comment — extract previous discussion IDs from it, then delete it
     const mrNotes = await gitlab.MergeRequestNotes.all(projectId, mrIid);
@@ -139,11 +120,11 @@ const main = async () => {
         try {
           previousDiscussions =
             JSON.parse(dataMatch[1] ?? "null").discussions ?? [];
-          logInfo(
+          logger.info(
             `Found ${previousDiscussions.length} previous review discussion(s) to check`,
           );
         } catch {
-          logWarn(
+          logger.warn(
             "Failed to parse previous discussion data from summary comment",
           );
         }
@@ -155,10 +136,11 @@ const main = async () => {
           mrIid,
           existingSummaryNote.id,
         );
-        logInfo("Deleted existing copilot review summary comment");
+        logger.success("Deleted existing copilot review summary comment");
       } catch (e) {
-        const msg = `Failed to delete existing summary comment: ${(e as Error).message}`;
-        logError(msg);
+        const msg = `Failed to delete existing summary comment: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(msg);
+        logger.error(e);
         errors.push(msg);
       }
     }
@@ -200,7 +182,7 @@ const main = async () => {
             tracked.id,
             true,
           );
-          logInfo(
+          logger.success(
             `Resolved discussion ${tracked.id} (${tracked.file}:${tracked.line}) — has replies from others`,
           );
         } else if (discussion.outdated) {
@@ -210,20 +192,21 @@ const main = async () => {
             tracked.id,
             true,
           );
-          logInfo(
+          logger.success(
             `Resolved discussion ${tracked.id} (${tracked.file}:${tracked.line}) — outdated discussion (cannot be fully deleted)`,
           );
         } else {
           for (const note of notes) {
             await gitlab.MergeRequestNotes.remove(projectId, mrIid, note.id);
           }
-          logInfo(
+          logger.success(
             `Deleted discussion ${tracked.id} (${tracked.file}:${tracked.line})`,
           );
         }
       } catch (e) {
-        const msg = `Failed to clean up discussion ${tracked.id}: ${(e as Error).message}`;
-        logError(msg);
+        const msg = `Failed to clean up discussion ${tracked.id}: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(msg);
+        logger.error(e);
         errors.push(msg);
       }
     }
@@ -240,28 +223,32 @@ const main = async () => {
           .join("");
         const commentBody = `${marker}\n\n${item.suggestion}${translationLines}`;
 
-        const position = {
+        /**
+         * IMPORTANT: Position object for GitLab MR discussions.
+         *
+         * Critical details that caused "line_code can't be blank" errors:
+         * 1. startSha MUST equal baseSha (not diff_refs.start_sha).
+         *    The start_sha in diff_refs is for a different comparison context
+         *    and causes invalid line_code computation.
+         * 2. oldLine MUST be omitted (not included) for newly added lines.
+         *    Only include oldLine when the line actually exists in the old version.
+         *    Omitting it allows GitLab API to properly compute the internal line_code.
+         *
+         * Reference: https://stackoverflow.com/a/65944171/8083009
+         */
+        const positionBase = {
           baseSha: mr.diff_refs.base_sha,
           headSha: mr.diff_refs.head_sha,
-          startSha: mr.diff_refs.start_sha,
+          startSha: mr.diff_refs.base_sha,
           positionType: "text" as const,
           newPath: item.file_path,
           oldPath: item.file_path,
           newLine: String(item.new_line),
-          oldLine: String((item as ReviewItem).old_line ?? item.new_line),
         };
 
-        logInfo(
-          `[Discussion] Creating discussion for ${item.file_path}:${item.new_line}`,
-        );
-        logInfo(
-          `[Discussion] Position params:`,
-          JSON.stringify(position, null, 2),
-        );
-        logInfo(
-          `[Discussion] MR diff_refs:`,
-          JSON.stringify(mr.diff_refs, null, 2),
-        );
+        const position = (item as ReviewItem).old_line
+          ? { ...positionBase, oldLine: String((item as ReviewItem).old_line) }
+          : positionBase;
 
         const discussion = await gitlab.MergeRequestDiscussions.create(
           projectId,
@@ -274,12 +261,13 @@ const main = async () => {
           file: item.file_path,
           line: item.new_line,
         });
-        logInfo(
+        logger.success(
           `Successfully posted comment to ${item.file_path}:${item.new_line} (discussion: ${discussion.id})`,
         );
       } catch (e) {
-        const msg = `Failed to post comment for ${item.file_path}:${item.new_line}: ${(e as Error).message}`;
-        logError(msg);
+        const msg = `Failed to post comment for ${item.file_path}:${item.new_line}: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(msg);
+        logger.error(e);
         errors.push(msg);
       }
     }
@@ -331,20 +319,24 @@ ${response.comment}`;
 
     try {
       await gitlab.MergeRequestNotes.create(projectId, mrIid, summaryBody);
-      logInfo("Posted copilot review summary comment");
+      logger.success("Posted copilot review summary comment");
     } catch (e) {
-      logError(`Failed to post summary comment: ${(e as Error).message}`);
+      const msg = `Failed to post summary comment: ${e instanceof Error ? e.message : String(e)}`;
+      logger.error(msg);
+      logger.error(e);
     }
   } finally {
     if (db) {
       try {
         db.close();
       } catch (e) {
-        logError("[Database] Error closing database:", (e as Error).message);
+        const msg = `[Database] Error closing database: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(msg);
+        logger.error(e);
       }
     }
     rmSync(tempDir, { recursive: true, force: true });
   }
 };
 
-main().catch(logError);
+main().catch((e) => logger.error(e));

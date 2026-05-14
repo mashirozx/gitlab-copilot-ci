@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { buildCopilotPrompt } from "../prompts";
 import type { ReviewResponse, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
-import { logError, logInfo } from "./logger";
+import { logger, writeLogStream } from "./logger";
 
 export const runCopilotReview = async ({
   diffFilePath,
@@ -18,7 +18,7 @@ export const runCopilotReview = async ({
   description?: string | null;
   previousReviews?: StoredReview[];
 }): Promise<ReviewResponse> => {
-  const langs = (argv["lang"] as string[]) ?? [];
+  const langs = argv["lang"];
 
   const prompt = buildCopilotPrompt({
     diffFilePath,
@@ -29,14 +29,29 @@ export const runCopilotReview = async ({
     debugMode: argv["debug"],
   });
 
-  logInfo("[Copilot] Starting review process...");
+  logger.info("[Copilot] Calling copilot binary...");
 
   return new Promise((resolve) => {
     const startTime = Date.now();
     let stdout = "";
     let stderr = "";
-    let stdoutLineBuffer = "";
-    let stderrLineBuffer = "";
+    // Pause line by line tracking
+    // let stdoutLineBuffer = "";
+    // let stderrLineBuffer = "";
+
+    const trackCopilotStd = () => {
+      if (stdout) {
+        writeLogStream(
+          `[Copilot:out] ==== Copilot Output Start ====\n\n${stdout}\n\n[Copilot:out]==== Copilot Output End ====\n`,
+        );
+      }
+
+      if (stderr) {
+        writeLogStream(
+          `[Copilot:err] ==== Copilot Error Output Start ====\n\n${stderr}\n\n[Copilot:err]==== Copilot Error Output End ====\n`,
+        );
+      }
+    };
 
     const env = { ...process.env };
     if (argv["copilot-github-token"]) {
@@ -44,6 +59,11 @@ export const runCopilotReview = async ({
       env.GH_TOKEN = argv["copilot-github-token"];
       env.GITHUB_TOKEN = argv["copilot-github-token"];
     }
+    // Preserve color output when piping: many CLIs strip colors when stdout is not a TTY.
+    // FORCE_COLOR=1 is honoured by Node/chalk-based tools; COLORTERM + TERM cover broader cases.
+    env.FORCE_COLOR = "1";
+    env.COLORTERM = env.COLORTERM ?? "truecolor";
+    env.TERM = env.TERM ?? "xterm-256color";
 
     const child = spawn(
       argv["copilot-bin"],
@@ -61,42 +81,39 @@ export const runCopilotReview = async ({
         "-p",
         prompt,
       ],
-      { env },
+      { env, stdio: "pipe" },
     );
 
-    child.stdout.on("data", (data) => {
-      const chunk = data.toString();
-      stdout += chunk;
-      stdoutLineBuffer += chunk;
-
-      const lines = stdoutLineBuffer.split("\n");
-      for (let i = 0; i < lines.length - 1; i++) {
-        process.stdout.write(`[Copilot:out] ${lines[i]}\n`);
-      }
-      stdoutLineBuffer = lines[lines.length - 1] ?? "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      process.stdout.write(text);
+      stdout += text;
+      // stdoutLineBuffer += text;
+      // const lines = stdoutLineBuffer.split("\n");
+      // for (const line of lines) {
+      //   logger.log(`[Copilot:out] ${line}`);
+      // }
+      // stdoutLineBuffer = lines[lines.length - 1] ?? "";
     });
 
-    child.stderr.on("data", (data) => {
-      const chunk = data.toString();
-      stderr += chunk;
-      stderrLineBuffer += chunk;
+    child.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      process.stderr.write(text);
+      stderr += text;
+      // stderrLineBuffer += text;
+      // const lines = stderrLineBuffer.split("\n");
+      // for (const line of lines) {
+      //   logger.log(`[Copilot:err] ${line}`);
+      // }
+    });
 
-      const lines = stderrLineBuffer.split("\n");
-      for (let i = 0; i < lines.length - 1; i++) {
-        process.stderr.write(`[Copilot:err] ${lines[i]}\n`);
-      }
-      stderrLineBuffer = lines[lines.length - 1] ?? "";
+    child.on("spawn", () => {
+      logger.start("[Copilot] Copilot CLI process started");
     });
 
     child.on("close", (code) => {
-      if (stdoutLineBuffer) {
-        process.stdout.write(`[Copilot:out] ${stdoutLineBuffer}\n`);
-      }
-      if (stderrLineBuffer) {
-        process.stderr.write(`[Copilot:err] ${stderrLineBuffer}\n`);
-      }
-
-      logInfo(`[Copilot] Process exited with code ${code}`);
+      trackCopilotStd();
+      logger.info(`[Copilot] Process exited with code ${code}`);
 
       const text = stdout.trim() || stderr.trim();
 
@@ -113,9 +130,9 @@ export const runCopilotReview = async ({
       }
 
       if (!jsonText) {
-        const errMsg = `Copilot CLI: no JSON found in output (missing [COPILOT_JSON_START] marker). Exit code: ${code}`;
-        logError("[Copilot]", errMsg);
-        logInfo("[Copilot] Full output:", text);
+        const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing [COPILOT_JSON_START] marker). Exit code: ${code}`;
+        logger.error(`[Copilot] ${errMsg}`);
+        logger.info("[Copilot] Full output:", text);
         const duration = Date.now() - startTime;
         resolve({ comment: "", reviews: [], duration, errors: [errMsg] });
         return;
@@ -130,34 +147,37 @@ export const runCopilotReview = async ({
           .then((contextInfo) => {
             result.model = contextInfo.model;
             result.context = contextInfo.context;
-            logInfo(
+            logger.info(
               "[Copilot] Parsed result:",
               JSON.stringify(result, null, 2),
             );
             resolve(result);
           })
           .catch((err) => {
-            const errMsg = `Copilot CLI: failed to get context info: ${(err as Error).message}`;
-            logError("[Copilot]", errMsg);
+            const errMsg = `[Copilot] Copilot CLI: failed to get context info: ${err instanceof Error ? err.message : String(err)}`;
+            logger.error(errMsg);
+            logger.error(err);
             result.errors = [...(result.errors ?? []), errMsg];
-            logInfo(
+            logger.info(
               "[Copilot] Parsed result:",
               JSON.stringify(result, null, 2),
             );
             resolve(result);
           });
       } catch (e) {
-        const errMsg = `Copilot CLI: failed to parse JSON response: ${(e as Error).message}`;
-        logError("[Copilot]", errMsg);
-        logInfo("[Copilot] JSON text:", jsonText);
+        const errMsg = `[Copilot] Copilot CLI: failed to parse JSON response: ${e instanceof Error ? e.message : String(e)}`;
+        logger.error(errMsg);
+        logger.error(e);
+        logger.info("[Copilot] JSON text:", jsonText);
         const duration = Date.now() - startTime;
         resolve({ comment: "", reviews: [], duration, errors: [errMsg] });
       }
     });
 
     child.on("error", (err) => {
-      const errMsg = `Copilot CLI: failed to start process: ${err.message}`;
-      logError("[Copilot]", errMsg);
+      const errMsg = `[Copilot] Copilot CLI: failed to start process: ${err.message}`;
+      logger.error(errMsg);
+      logger.error(err);
       const duration = Date.now() - startTime;
       resolve({ comment: "", reviews: [], duration, errors: [errMsg] });
     });
@@ -171,7 +191,7 @@ export const getContextInfo = async (
   context?: ReviewResponse["context"];
 }> => {
   return new Promise((resolve) => {
-    logInfo("[Copilot] Fetching context information from logs...");
+    logger.info("[Copilot] Fetching context information from logs...");
 
     try {
       const logsDir = join(homedir(), ".copilot", "logs");
@@ -181,13 +201,13 @@ export const getContextInfo = async (
         .reverse();
 
       if (files.length === 0) {
-        logInfo("[Copilot] No log files found");
+        logger.info("[Copilot] No log files found");
         resolve({});
         return;
       }
 
       const latestLogFile = join(logsDir, files[0] ?? "");
-      logInfo("[Copilot] Reading log file:", latestLogFile);
+      logger.info("[Copilot] Reading log file:", latestLogFile);
 
       const logContent = readFileSync(latestLogFile, "utf-8");
 
@@ -197,7 +217,7 @@ export const getContextInfo = async (
       } = {};
 
       result.model = argv["copilot-model"];
-      logInfo("[Copilot] Using model from arguments:", result.model);
+      logger.info("[Copilot] Using model from arguments:", result.model);
 
       const compactionMatches = logContent.match(
         /CompactionProcessor:\s+Utilization\s+([0-9.]+)%\s+\((\d+)\/(\d+)\s+tokens\)/g,
@@ -218,15 +238,17 @@ export const getContextInfo = async (
             used_length: usedTokens,
             total_length: totalTokens,
           };
-          logInfo("[Copilot] Extracted context:", result.context);
+          logger.info("[Copilot] Extracted context:", result.context);
         }
       } else {
-        logInfo("[Copilot] No CompactionProcessor info found in logs");
+        logger.info("[Copilot] No CompactionProcessor info found in logs");
       }
 
       resolve(result);
     } catch (err) {
-      logError("[Copilot] Failed to read logs:", (err as Error).message);
+      const msg = `[Copilot] Failed to read logs: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error(msg);
+      logger.error(err);
       resolve({});
     }
   });
