@@ -69,6 +69,6 @@ export const getFormattedVersion = (): string => {
 
 Repository: ${info.repo}
 License: MIT
-Author: mashirozx <moezhx@gmail.com>
+Author: Mashiro (mashirozx)
 GitHub: https://github.com/mashirozx`;
 };
