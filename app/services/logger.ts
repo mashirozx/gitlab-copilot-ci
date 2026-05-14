@@ -5,9 +5,26 @@ import {
   type WriteStream,
 } from "node:fs";
 import { join } from "node:path";
+import type { LogLevel, LogType } from "consola";
+import { consola, LogLevels } from "consola";
+import { stripAnsi } from "consola/utils";
 import { Temporal } from "temporal-polyfill";
+import { argv } from "../utils/argv";
 
 let logStream: WriteStream | null = null;
+
+export const writeLogStream = (message: unknown): void => {
+  if (!logStream) return;
+  logStream.write(`${stripAnsi(String(message))}\n`);
+};
+
+const getLogLevel = (value: string | undefined): LogLevel => {
+  if (!value || value === "5") return LogLevels.trace;
+  const num = parseInt(value, 10);
+  if (!Number.isNaN(num)) return num as LogLevel;
+  const logType = value.toLowerCase() as LogType;
+  return logType in LogLevels ? LogLevels[logType] : LogLevels.trace;
+};
 
 const formatTimestamp = (): string => {
   const dt = Temporal.Now.plainDateTimeISO();
@@ -20,51 +37,46 @@ const formatTimestamp = (): string => {
   return `${y}-${mo}-${d}.${h}-${mi}-${s}`;
 };
 
-const formatMessageArgs = (args: unknown[]): string => {
-  return args
-    .map((arg) => {
-      if (typeof arg === "string") {
-        return arg;
+const formatLogTimestamp = (): string => {
+  const dt = Temporal.Now.plainDateTimeISO();
+  const y = dt.year;
+  const mo = String(dt.month).padStart(2, "0");
+  const d = String(dt.day).padStart(2, "0");
+  const h = String(dt.hour).padStart(2, "0");
+  const mi = String(dt.minute).padStart(2, "0");
+  const s = String(dt.second).padStart(2, "0");
+  const ms = String(dt.millisecond).padStart(3, "0");
+  return `${y}-${mo}-${d}T${h}:${mi}:${s}.${ms}`;
+};
+
+const logger = consola
+  .create({
+    // throttle: 100,
+    formatOptions: {
+      date: true,
+    },
+    level: getLogLevel(argv["log-level"]),
+  })
+  .addReporter({
+    log(logObj) {
+      if (!logStream) return;
+      const timestamp = formatLogTimestamp();
+      const tag = logObj.type.toUpperCase();
+
+      if (logObj.args[0] instanceof Error) {
+        writeLogStream(`[\${timestamp}] [${tag}]`);
+        writeLogStream(logObj.args[0]);
+        writeLogStream(logObj.args[0].stack);
+      } else {
+        const args = logObj.args
+          .map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg)))
+          .join(" ");
+        writeLogStream(`[${timestamp}] [${tag}] ${args}\n`);
       }
-      return JSON.stringify(arg);
-    })
-    .join(" ");
-};
+    },
+  });
 
-export const logInfo = (...args: unknown[]): void => {
-  const message = formatMessageArgs(args);
-  console.log(message);
-  if (logStream) {
-    logStream.write(`[INFO] ${message}\n`);
-  }
-};
-
-export const logError = (...args: unknown[]): void => {
-  const message = formatMessageArgs(args);
-  console.error(message);
-  const stacks = args
-    .filter((arg): arg is Error => arg instanceof Error && !!arg.stack)
-    .map((err) => err.stack as string);
-  for (const stack of stacks) {
-    console.error(stack);
-  }
-  if (logStream) {
-    logStream.write(`[ERROR] ${message}\n`);
-    for (const stack of stacks) {
-      logStream.write(`[ERROR STACK] ${stack}\n`);
-    }
-  }
-};
-
-export const logWarn = (...args: unknown[]): void => {
-  const message = formatMessageArgs(args);
-  console.warn(message);
-  if (logStream) {
-    logStream.write(`[WARN] ${message}\n`);
-  }
-};
-
-export const initializeLogger = (logDir?: string): void => {
+const initializeLogFile = (logDir?: string): void => {
   const targetDir = logDir ?? process.cwd();
   const timestamp = formatTimestamp();
   const logFilePath = join(targetDir, `.gitlab-copilot-ci.${timestamp}.log`);
@@ -74,11 +86,11 @@ export const initializeLogger = (logDir?: string): void => {
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException;
     if (nodeErr.code === "ENOENT") {
-      console.log(
+      logger.warn(
         `[Logger] Warning: Log directory does not exist: ${targetDir}, skipping log file creation`,
       );
     } else {
-      console.log(
+      logger.warn(
         `[Logger] Warning: No write permission in ${targetDir}, skipping log file creation`,
       );
     }
@@ -86,5 +98,11 @@ export const initializeLogger = (logDir?: string): void => {
   }
 
   logStream = createWriteStream(logFilePath, { flags: "a" });
-  logInfo(`Logging enabled: ${logFilePath}`);
+  logger.info(`Logging enabled: ${logFilePath}`);
 };
+
+if (argv["log"]) {
+  initializeLogFile(argv["log"] === true ? undefined : argv["log"]);
+}
+
+export { logger };

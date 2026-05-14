@@ -60,7 +60,7 @@ The app source is split into focused modules under `app/`:
 | `app/migrations/0001_initial.sql` | Initial schema: `reviews` and `schema_migrations` tables |
 | `app/migrations/index.ts` | Migration registry and loader |
 | `app/services/argv.ts` | CLI argument parsing via yargs |
-| `app/services/logger.ts` | Logger functions (`logInfo`, `logError`, `logWarn`, `initializeLogger`); uses Temporal for timestamps |
+| `app/services/logger.ts` | Consola-based logger with file reporter and module-scope `--log` initialization; uses Temporal for timestamps |
 | `app/services/db.ts` | SQLite helpers with migration runner; uses Temporal for `created_at` |
 | `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) |
 | `app/services/gitlab.ts` | GitLab client singleton (`gitlab`) |
@@ -104,10 +104,13 @@ Rules:
 - `--review-data-tag`: HTML tag for tracking review discussions (default: `copilot-review-data`)
 - `--debug`: Test mode (generates mock reviews instead of real analysis)
 - **`--db`**: Path to SQLite database for review history (optional)
-- **`--log`**: Enable log file writing (independent of `--debug`)
-  - `--log` / `--log=true`: Write log to the current working directory
-  - `--log=/path/to/dir`: Write log to the specified directory (checks existence & write permission; warns and disables logging if invalid)
-  - Omit or `--log=false`: Logging disabled
+- **`--log`**: Enable log file writing (independent of `--debug`). Standard parser pattern for a flag that may appear with or without a value:
+  - Parser config: `type: "string", array: true, coerce: ...`
+  - Coerced runtime type: `true | string | undefined`
+  - `undefined`: logging disabled
+  - `true`: `--log` with no value, write to current working directory
+  - `string`: first explicit path value from `--log /path` or repeated forms like `--log /a --log /b`
+  - Standard resolution: for yargs options that must support both bare-flag and string-value forms, use `array: true` to capture presence and `coerce` to normalize the final runtime shape. Do not rely on `type: "string"` alone.
 
 ### Log File Writing
 
@@ -115,8 +118,9 @@ When `--log` flag is enabled (independent of `--debug`):
 
 1. **Log File Creation**
    - Attempts to create a log file at: `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log`
-   - If `--log` is `true`: uses the current working directory
-   - If `--log` is a string path: uses the specified directory
+  - Logger module reads `argv["log"]` at module scope and initializes file logging before other application logging runs
+  - If `argv["log"] === true`: uses the current working directory
+  - If `argv["log"]` is a string: uses that directory
    - Format: `yyyy-mm-dd.hh-mm-ss` (24-hour time)
    - Example: `.gitlab-copilot-ci.2025-05-13.14-30-45.log`
    - **Validation**: Before creating the log file:
@@ -133,16 +137,16 @@ When `--log` flag is enabled (independent of `--debug`):
      - `[ERROR]` for errors
      - `[WARN]` for warnings
 
-3. **Logger Functions**
-   - Implementation uses dedicated logger functions: `logInfo()`, `logError()`, `logWarn()`
-   - **Does NOT override console methods** (avoids conflicts with external tools)
-   - Each logger function calls the appropriate console method AND writes to log file if enabled
-   - Supports structured logging with automatic JSON serialization of non-string arguments
-   - Timestamp formatting: `Temporal.Now.plainDateTimeISO()` yields `yyyy-mm-dd.hh-mm-ss`
+3. **Logger Implementation**
+  - Implementation uses a shared `logger` instance from `consola`
+  - File logging is added via a custom reporter that mirrors console output into the log file when enabled
+  - **Does NOT override console methods**
+  - Supports structured logging with automatic JSON serialization of non-string arguments in the file reporter
+  - Timestamp formatting: `Temporal.Now.plainDateTimeISO()` yields `yyyy-mm-dd.hh-mm-ss`
 
 4. **Usage Example**
    ```bash
-   # Enable logging to cwd
+  # Enable logging to cwd (flag with no value)
    ./dist/gitlab-copilot-ci --log \
      --gitlab-token YOUR_TOKEN \
      --gitlab-url https://gitlab.com/api/v4 \
@@ -150,7 +154,14 @@ When `--log` flag is enabled (independent of `--debug`):
      --mr-iid 456
 
    # Enable logging to a specific directory
-   ./dist/gitlab-copilot-ci --log=/var/log/ci \
+   ./dist/gitlab-copilot-ci --log /var/log/ci \
+     --gitlab-token YOUR_TOKEN \
+     --gitlab-url https://gitlab.com/api/v4 \
+     --project-id 123 \
+     --mr-iid 456
+
+   # Repeated values are allowed; only the first explicit path is used
+   ./dist/gitlab-copilot-ci --log /var/log/ci --log /tmp/ignored \
      --gitlab-token YOUR_TOKEN \
      --gitlab-url https://gitlab.com/api/v4 \
      --project-id 123 \

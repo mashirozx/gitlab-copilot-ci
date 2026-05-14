@@ -13,6 +13,23 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
 const currentVersion = pkg.version;
 consola.info(`Current version: ${colorize("cyanBright", currentVersion)}`);
 
+const gitStatus = execSync("git status --porcelain").toString().trim();
+if (gitStatus) {
+  consola.error(
+    "Uncommitted changes detected. Please commit or stash them before releasing.",
+  );
+  consola.log(gitStatus);
+  process.exit(1);
+}
+
+const lastCommitMsg = execSync("git log -1 --format=%s").toString().trim();
+if (/^chore: 🔖 release v/.test(lastCommitMsg)) {
+  consola.error(
+    `Last commit is already a release: "${lastCommitMsg}". Bump the code first.`,
+  );
+  process.exit(1);
+}
+
 const [major = 0, minor = 0, patch = 0] = currentVersion.split(".").map(Number);
 
 // Format version with the changed segment highlighted

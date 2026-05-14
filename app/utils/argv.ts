@@ -70,9 +70,22 @@ export const argv = yargs(hideBin(process.argv))
   })
   .option("log", {
     describe:
-      "Enable log file writing. If true, writes to the current directory. If a string, writes to the specified directory.",
+      "Enable log file writing. Pass without a value to write to the current directory, or provide a path: --log /path/to/dir.",
     type: "string",
-    default: undefined,
+    array: true,
+    coerce: (arg: (string | null | undefined)[] | undefined) => {
+      if (arg === undefined) {
+        return undefined;
+      } else {
+        if (arg.length === 0) {
+          return true;
+        } else if (typeof arg[0] === "string") {
+          return arg[0];
+        } else {
+          return undefined;
+        }
+      }
+    },
   })
   .option("db", {
     describe: "Path to SQLite database for review history tracking (optional)",
@@ -85,6 +98,12 @@ export const argv = yargs(hideBin(process.argv))
     type: "string",
     array: true,
     default: [] as string[],
+  })
+  .option("log-level", {
+    describe:
+      "Logger output level: 0-5 (numeric), -999/+999 (custom), or type name (fatal, error, warn, log, info, debug, trace, verbose)",
+    type: "string",
+    default: "5",
   })
   .version(
     "version",

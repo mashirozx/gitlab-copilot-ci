@@ -8,7 +8,15 @@ This app is compiled into a binary file. During merge request CI runs on a CI se
 
 - Install dependencies with locked versions: e.g., `bun install -E package`.
 - Follow code style rules in `skills/code-style-guideline/SKILL.md` (arrow functions, named params).
-- Before running any command, briefly explain the operation you are about to execute.
+- See `skills/project-guideline/SKILL.md` for complete project structure, development guidelines, and LLM maintenance instructions.
+- See `skills/karpathy-guidelines/SKILL.md` for advanced coding practices and patterns.
+
+## LLM Behavior Rule
+
+**At the beginning of each response**, the LLM must explicitly state:
+> I acknowledge and will follow the LLM rules defined in `AGENTS.md` and other project guideline files.
+
+This statement confirms that the LLM has read and understands the project guidelines, code style requirements, and maintenance instructions before proceeding with any task.
 
 # LLM Maintenance Instruction
 
