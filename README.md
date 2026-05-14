@@ -176,5 +176,5 @@ bun tsgo
 
 ## License
 
-MIT License - Copyright (c) 2026 mashirozx
+MIT License - Copyright (c) 2026 [Mashiro](https://github.com/mashirozx)
 
