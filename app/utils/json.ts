@@ -30,21 +30,3 @@ export const extractMarkedJsonText = ({
     .substring(startIndex, endIndex === -1 ? text.length : endIndex)
     .trim();
 };
-
-export const formatJsonLineForConsole = ({
-  line,
-}: {
-  line: string;
-}): string => {
-  if (!line.trim()) {
-    return "\n";
-  }
-
-  const parsed = tryParseJson<unknown>({ text: line });
-
-  if (parsed === null) {
-    return `${line}\n`;
-  }
-
-  return `${JSON.stringify(parsed, null, 2)}\n`;
-};

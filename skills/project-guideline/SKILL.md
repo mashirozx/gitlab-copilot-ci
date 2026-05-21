@@ -59,7 +59,8 @@ The app source is split into focused modules under `app/`:
 | `app/main.ts` | Entry point — orchestrates the review workflow and dispatches review generation to the provider selected by `--llm-service` |
 | `app/constants.ts` | Shared app-wide constants, including the JSON marker prefix required in prompt instructions and provider CLI output parsing |
 | `app/utils/cli-env.ts` | Shared CLI environment helpers, including color-preserving defaults used by both Copilot and Pi child processes |
-| `app/utils/json.ts` | Shared JSON helpers for extracting marker-prefixed payloads, safe parsing, and pretty-printing JSON event lines |
+| `app/utils/json.ts` | Shared JSON helpers for extracting marker-prefixed payloads and safe parsing |
+| `app/utils/pi-console.ts` | Pi-specific console event formatter that turns Pi JSON stream events into concise, human-readable console output without changing raw log capture |
 | `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
 | `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
 | `pi-tst.ts` | Manual Pi spawn repro script for local debugging of stdout/stderr behavior; run with `GEMINI_API_KEY=... bun run ./pi-tst.ts` and add `--bad-key` to force an auth failure path |
@@ -75,7 +76,7 @@ The app source is split into focused modules under `app/`:
 | `app/services/db.ts` | `DatabaseService` that owns the optional SQLite connection, migration runner, review reads/writes, and close lifecycle; uses Temporal for `created_at` and imports its runtime SQL statements from `app/services/sql/*.sql` |
 | `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
 | `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) using shared CLI env, JSON extraction/parsing, and elapsed-time helpers |
-| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponse` contract |
+| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-console.ts`, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponse` contract |
 | `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, summary-note lookup/removal, discussion cleanup, and comment creation |
 
 Rules:
@@ -139,7 +140,9 @@ When `--llm-service=pi` is selected:
 - It forwards `--llm-model` as `pi --model <pattern>`
 - It passes the full review prompt as the final CLI argument
 - It spawns Pi with stdin ignored (`stdio: ["ignore", "pipe", "pipe"]`) so the CLI does not hang waiting for EOF on stdin
-- Pi's raw JSONL stream is preserved for logging and parsing, but console output is line-buffered and pretty-printed to make emitted JSON events human-readable during local runs
+- Pi's raw JSONL stream is preserved for logging and parsing, but console output is reformatted into concise event summaries during local runs
+- Tool execution events are summarized on console as readable blocks such as `Read ...`, `Grep ...`, and `Glob ...`, with green bullets for success and red bullets for errors
+- Noisy Pi message payload events are suppressed on console; the full raw JSON stream remains available in the log file when `--log` is enabled
 - It parses Pi's JSONL stdout stream and waits for the `agent_end` event to extract the assistant's final text response
 - The assistant response must still contain the shared `REVIEW_RESPONSE_JSON_MARKER` line so the app can parse the embedded review JSON
 - Pi provider/auth failures can arrive entirely on stdout inside JSON events; stderr may remain empty even when the run fails
