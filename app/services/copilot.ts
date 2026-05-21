@@ -2,9 +2,13 @@ import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
 import { buildCopilotPrompt } from "../prompts";
 import type { ReviewResponse, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
+import { withCliColorEnv } from "../utils/cli-env";
+import { extractMarkedJsonText, parseJson } from "../utils/json";
+import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
 
 export const runCopilotReview = async ({
@@ -32,7 +36,7 @@ export const runCopilotReview = async ({
   logger.info("[Copilot] Calling copilot binary...");
 
   return new Promise((resolve) => {
-    const startTime = Date.now();
+    const startTime = getNowEpochMilliseconds();
     let stdout = "";
     let stderr = "";
     // Pause line by line tracking
@@ -53,23 +57,18 @@ export const runCopilotReview = async ({
       }
     };
 
-    const env = { ...process.env };
+    const env = withCliColorEnv({ env: { ...process.env } });
     if (argv["copilot-github-token"]) {
       env.COPILOT_GITHUB_TOKEN = argv["copilot-github-token"];
       env.GH_TOKEN = argv["copilot-github-token"];
       env.GITHUB_TOKEN = argv["copilot-github-token"];
     }
-    // Preserve color output when piping: many CLIs strip colors when stdout is not a TTY.
-    // FORCE_COLOR=1 is honoured by Node/chalk-based tools; COLORTERM + TERM cover broader cases.
-    env.FORCE_COLOR = "1";
-    env.COLORTERM = env.COLORTERM ?? "truecolor";
-    env.TERM = env.TERM ?? "xterm-256color";
 
     const child = spawn(
       argv["copilot-bin"],
       [
         "--model",
-        argv["copilot-model"],
+        argv["llm-model"],
         "--allow-tool=read_file",
         "--allow-tool=list_directory",
         "--allow-tool=search_files",
@@ -116,31 +115,32 @@ export const runCopilotReview = async ({
       logger.info(`[Copilot] Process exited with code ${code}`);
 
       const text = stdout.trim() || stderr.trim();
-
-      let jsonText: string | null = null;
-      const jsonMarker = "[COPILOT_JSON_START]";
-      const markerIndex = text.indexOf(jsonMarker);
-
-      if (markerIndex !== -1) {
-        const startIndex = markerIndex + jsonMarker.length;
-        const endIndex = text.indexOf("\n", startIndex);
-        jsonText = text
-          .substring(startIndex, endIndex === -1 ? text.length : endIndex)
-          .trim();
-      }
+      const jsonText = extractMarkedJsonText({
+        text,
+        marker: REVIEW_RESPONSE_JSON_MARKER,
+      });
 
       if (!jsonText) {
-        const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing [COPILOT_JSON_START] marker). Exit code: ${code}`;
+        const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing ${REVIEW_RESPONSE_JSON_MARKER} marker). Exit code: ${code}`;
         logger.error(`[Copilot] ${errMsg}`);
         logger.info("[Copilot] Full output:", text);
-        const duration = Date.now() - startTime;
-        resolve({ comment: "", reviews: [], duration, errors: [errMsg] });
+        const duration = getElapsedMilliseconds({
+          startTimeMs: startTime,
+        });
+        resolve({
+          comment: "",
+          reviews: [],
+          duration,
+          errors: [errMsg],
+        });
         return;
       }
 
       try {
-        const duration = Date.now() - startTime;
-        const result = JSON.parse(jsonText) as ReviewResponse;
+        const duration = getElapsedMilliseconds({
+          startTimeMs: startTime,
+        });
+        const result = parseJson<ReviewResponse>({ text: jsonText });
         result.duration = duration;
 
         getContextInfo(env)
@@ -169,8 +169,15 @@ export const runCopilotReview = async ({
         logger.error(errMsg);
         logger.error(e);
         logger.info("[Copilot] JSON text:", jsonText);
-        const duration = Date.now() - startTime;
-        resolve({ comment: "", reviews: [], duration, errors: [errMsg] });
+        const duration = getElapsedMilliseconds({
+          startTimeMs: startTime,
+        });
+        resolve({
+          comment: "",
+          reviews: [],
+          duration,
+          errors: [errMsg],
+        });
       }
     });
 
@@ -178,8 +185,15 @@ export const runCopilotReview = async ({
       const errMsg = `[Copilot] Copilot CLI: failed to start process: ${err.message}`;
       logger.error(errMsg);
       logger.error(err);
-      const duration = Date.now() - startTime;
-      resolve({ comment: "", reviews: [], duration, errors: [errMsg] });
+      const duration = getElapsedMilliseconds({
+        startTimeMs: startTime,
+      });
+      resolve({
+        comment: "",
+        reviews: [],
+        duration,
+        errors: [errMsg],
+      });
     });
   });
 };
@@ -216,7 +230,7 @@ export const getContextInfo = async (
         context?: ReviewResponse["context"];
       } = {};
 
-      result.model = argv["copilot-model"];
+      result.model = argv["llm-model"];
       logger.info("[Copilot] Using model from arguments:", result.model);
 
       const compactionMatches = logContent.match(

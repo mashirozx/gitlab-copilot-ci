@@ -4,7 +4,9 @@ import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const packageJson = JSON.parse(
-  readFileSync("./package.json", { encoding: "utf-8" }),
+  readFileSync("./package.json", {
+    encoding: "utf-8",
+  }),
 );
 const version = packageJson.version as string;
 

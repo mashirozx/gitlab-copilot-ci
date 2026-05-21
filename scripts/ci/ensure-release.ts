@@ -3,7 +3,9 @@
 import { readFileSync } from "node:fs";
 
 const packageJson = JSON.parse(
-  readFileSync("./package.json", { encoding: "utf-8" }),
+  readFileSync("./package.json", {
+    encoding: "utf-8",
+  }),
 );
 const version = packageJson.version as string;
 

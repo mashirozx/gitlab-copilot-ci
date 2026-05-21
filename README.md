@@ -55,10 +55,16 @@ The binary can be used as a CI step in GitLab CI/CD pipelines.
 
 ```
 Options:
+  --llm-service                  LLM service provider to use for code review
+                                 (choices: github-copilot, pi; default: github-copilot)
   --gitlab-token, --gt           GitLab API token (default: GITLAB_TOKEN)
   --gitlab-url, --gu             GitLab API URL (default: GITLAB_API_URL)
   --copilot-bin                  GitHub Copilot CLI binary name or path (default: copilot)
-  --copilot-model                GitHub Copilot model name (default: gpt-5.4)
+  --pi-bin                       Pi CLI binary name or path (default: PI_BIN or pi)
+  --pi-provider                  Pi provider name passed to --provider
+                                 (default: PI_PROVIDER when set)
+  --llm-model                    LLM model name (default: gpt-5.4)
+  --copilot-model                Alias for --llm-model
   --copilot-github-token         GitHub token for Copilot authentication
                                  (default: COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN)
   --project-id, -p               GitLab project ID (default: CI_PROJECT_ID)
@@ -98,7 +104,7 @@ code-review:
   script:
     - ./dist/gitlab-copilot-ci-linux-x64
       --gitlab-token $CI_JOB_TOKEN
-      --gitlab-url $CI_API_V4_URL
+      --gitlab-url $CI_SERVER_URL
       --project-id $CI_PROJECT_ID
       --mr-iid $CI_MERGE_REQUEST_IID
 ```
@@ -112,7 +118,7 @@ code-review:
     - ./dist/gitlab-copilot-ci-linux-x64
   env:
     GITLAB_TOKEN: $CI_JOB_TOKEN
-    GITLAB_API_URL: $CI_API_V4_URL
+    GITLAB_API_URL: $CI_SERVER_URL
 ```
 
 ### Translation Example
@@ -171,7 +177,7 @@ bun run format
 bun run biome
 
 # Type check
-bun tsgo
+bun run tsgo
 ```
 
 ## License
