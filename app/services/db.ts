@@ -2,100 +2,133 @@ import { Database } from "bun:sqlite";
 import { Temporal } from "temporal-polyfill";
 import { migrations } from "../migrations/index";
 import type { ReviewItem, StoredReview } from "../types/entities";
+import { argv } from "../utils/argv";
 import { logger } from "./logger";
+import createSchemaMigrationsSql from "./sql/create_schema_migrations.sql" with {
+  type: "text",
+};
+import insertSchemaMigrationSql from "./sql/insert_schema_migration.sql" with {
+  type: "text",
+};
+import selectReviewsForMrSql from "./sql/select_reviews_for_mr.sql" with {
+  type: "text",
+};
+import selectSchemaMigrationByNameSql from "./sql/select_schema_migration_by_name.sql" with {
+  type: "text",
+};
+import setJournalModeWalSql from "./sql/set_journal_mode_wal.sql" with {
+  type: "text",
+};
+import upsertReviewSql from "./sql/upsert_review.sql" with { type: "text" };
 
-const runMigrations = (database: Database): void => {
-  database.run(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      name TEXT PRIMARY KEY,
-      applied_at INTEGER NOT NULL
-    )
-  `);
+export class DatabaseService {
+  private database: Database | null = null;
+  private readonly dbPath = argv["db"];
 
-  for (const migration of migrations) {
-    const existing = database
-      .query<{ name: string }, [string]>(
-        "SELECT name FROM schema_migrations WHERE name = ?",
-      )
-      .get(migration.name);
+  private runMigrations = ({ database }: { database: Database }): void => {
+    database.run(createSchemaMigrationsSql);
 
-    if (existing) continue;
+    for (const migration of migrations) {
+      const existing = database
+        .query<{ name: string }, [string]>(selectSchemaMigrationByNameSql)
+        .get(migration.name);
 
-    for (const statement of migration.sql
-      .split(";")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)) {
-      database.run(statement);
+      if (existing) continue;
+
+      for (const statement of migration.sql
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)) {
+        database.run(statement);
+      }
+
+      database
+        .query(insertSchemaMigrationSql)
+        .run(migration.name, Temporal.Now.instant().epochMilliseconds);
+    }
+  };
+
+  private initializeDatabase = ({ dbPath }: { dbPath: string }): Database => {
+    const database = new Database(dbPath);
+    database.run(setJournalModeWalSql);
+    this.runMigrations({ database });
+    return database;
+  };
+
+  initialize = ({ errors }: { errors: string[] }): void => {
+    if (!this.dbPath || this.database) {
+      return;
     }
 
-    database
-      .query("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)")
-      .run(migration.name, Temporal.Now.instant().epochMilliseconds);
-  }
-};
+    try {
+      this.database = this.initializeDatabase({
+        dbPath: this.dbPath,
+      });
+      logger.info(`[Database] Initialized SQLite at ${this.dbPath}`);
+    } catch (e) {
+      const msg = `[Database] Failed to initialize database: ${e instanceof Error ? e.message : String(e)}`;
+      logger.error(msg);
+      logger.error(e);
+      errors.push(msg);
+      this.database = null;
+    }
+  };
 
-export const initializeDatabase = (dbPath: string): Database => {
-  const database = new Database(dbPath);
-  database.run("PRAGMA journal_mode = WAL");
-  runMigrations(database);
-  return database;
-};
+  isEnabled = (): boolean => this.database !== null;
 
-export const tryInitializeDatabase = (
-  dbPath: string | undefined,
-  errors: string[],
-): Database | null => {
-  if (!dbPath) return null;
-  try {
-    const db = initializeDatabase(dbPath);
-    logger.info(`[Database] Initialized SQLite at ${dbPath}`);
-    return db;
-  } catch (e) {
-    const msg = `[Database] Failed to initialize database: ${e instanceof Error ? e.message : String(e)}`;
-    logger.error(msg);
-    logger.error(e);
-    errors.push(msg);
-    return null;
-  }
-};
+  getStoredReviewsForMR = ({ mrIid }: { mrIid: string }): StoredReview[] => {
+    if (!this.database) {
+      return [];
+    }
 
-export const getStoredReviewsForMR = ({
-  database,
-  mrIid,
-}: {
-  database: Database;
-  mrIid: string;
-}): StoredReview[] => {
-  return database
-    .query<StoredReview, [string]>(
-      "SELECT id, file_path, new_line, suggestion, source_snippet, mr_iid, created_at FROM reviews WHERE mr_iid = ? ORDER BY created_at DESC",
-    )
-    .all(mrIid);
-};
+    return this.database
+      .query<StoredReview, [string]>(selectReviewsForMrSql)
+      .all(mrIid);
+  };
 
-export const storeReview = ({
-  database,
-  mrIid,
-  review,
-  sourceSnippet,
-}: {
-  database: Database;
-  mrIid: string;
-  review: ReviewItem;
-  sourceSnippet: string;
-}): void => {
-  const id = `${mrIid}-${review.file_path}-${review.new_line}-${Temporal.Now.instant().epochMilliseconds}`;
-  database
-    .query(
-      "INSERT OR REPLACE INTO reviews (id, file_path, new_line, suggestion, source_snippet, mr_iid, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    )
-    .run(
-      id,
-      review.file_path,
-      review.new_line,
-      review.suggestion,
-      sourceSnippet,
-      mrIid,
-      Temporal.Now.instant().epochMilliseconds,
-    );
-};
+  storeReview = ({
+    mrIid,
+    review,
+    sourceSnippet,
+  }: {
+    mrIid: string;
+    review: ReviewItem;
+    sourceSnippet: string;
+  }): void => {
+    if (!this.database) {
+      return;
+    }
+
+    const id = `${mrIid}-${review.file_path}-${review.new_line}-${Temporal.Now.instant().epochMilliseconds}`;
+    this.database
+      .query(upsertReviewSql)
+      .run(
+        id,
+        review.file_path,
+        review.new_line,
+        review.suggestion,
+        sourceSnippet,
+        mrIid,
+        Temporal.Now.instant().epochMilliseconds,
+      );
+  };
+
+  close = ({ errors }: { errors: string[] }): void => {
+    if (!this.database) {
+      return;
+    }
+
+    try {
+      this.database.close();
+    } catch (e) {
+      const msg = `[Database] Error closing database: ${e instanceof Error ? e.message : String(e)}`;
+      logger.error(msg);
+      logger.error(e);
+      errors.push(msg);
+    } finally {
+      this.database = null;
+    }
+  };
+}
+
+export const databaseService = new DatabaseService();

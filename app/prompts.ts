@@ -1,3 +1,4 @@
+import { REVIEW_RESPONSE_JSON_MARKER } from "./constants";
 import type { StoredReview } from "./types/entities";
 
 const buildTranslationsSpec = (langs: string[]): string => {
@@ -17,8 +18,9 @@ const buildTranslationsSectionInstructions = (langs: string[]): string => {
 
 Then add a translated section for language "${lang}" using the same section structure, written entirely in ${lang}. Place it after the divider above. Use a heading like:
 # 📝 Copilot Code Review (${lang})
-Include translated equivalents of "## 📋 Pull Request Changes" and "## 🔍 Review Summary" section content.
+Include translated equivalents of "## 📋 Pull Request Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
+The Other Suggestions section may be a bullet list, numbered list, or short paragraph, but it must stay in the comment markdown rather than the reviews JSON array.
 If no suggestions, write the localized equivalent of "✨ No issues found!".`,
     )
     .join("");
@@ -49,7 +51,10 @@ export const buildCopilotPrompt = ({
 
 ## Previous Reviews (for validation - check if still applicable)
 
-The following reviews were posted on this MR in previous runs. Please verify if each is still valid in the current diff. Include valid ones in your response.
+The following reviews were posted on this MR in previous runs. Please verify if each is still valid in the current diff.
+
+- If a previous review is still valid and can be mapped to an exact valid current diff line, include it in the "reviews" array.
+- If it remains conceptually valid but cannot be mapped to an exact valid current diff line, include it only in the comment's "## 💡 Other Suggestions" section, not in the "reviews" array.
 
 ${previousReviews
   .map(
@@ -87,7 +92,7 @@ ${review.source_snippet}
      - For each changed file, use ONLY the line numbers that appear in the "new_line" field of the diff
      - The line number must be within the actual range of changed lines in that file
      - Example: If package.json has changes on lines 10-15, use one of those lines, NOT 136
-     - If unsure about valid lines, use the first changed line of any file in the diff
+      - If you cannot identify an exact valid changed line from the diff, do not emit that mock inline review; put it only in the "## 💡 Other Suggestions" section of the comment
   5. PREFIX each suggestion with "[MOCK] " at the beginning
   6. Must provide both "suggestion" and all requested translation fields with actual content (never empty).
   7. **IMPORTANT: The file_path and new_line must correspond to ACTUAL changes in the diff. GitLab will reject invalid line numbers.**
@@ -102,7 +107,7 @@ ${review.source_snippet}
       ? `- For each review item, provide translations for: ${langs.join(", ")}`
       : "";
 
-  const commentTemplate = `MUST use this exact template:\n\n# 📝 Copilot Code Review\n\n## 📋 Pull Request Changes\n[English description of what the PR changes]\n\n## 🔍 Review Summary\nFound X suggestion(s) from GitHub Copilot:\n\n[List of suggestions in English only, format: "- **file:line**: suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!${translationsSections}`;
+  const commentTemplate = `MUST use this exact template:\n\n# 📝 Copilot Code Review\n\n## 📋 Pull Request Changes\n[English description of what the PR changes]\n\n## 🔍 Review Summary\nFound X suggestion(s) from GitHub Copilot:\n\n[List of inline-review suggestions in English only, format: "- **file:line**: suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: None.${translationsSections}`;
 
   const guidelineFilesSection = `
 
@@ -160,9 +165,15 @@ Notes:
 Rules:
 - Keep suggestion and all translations aligned in meaning
 - Only include actionable review findings
+- Every review item in "reviews" must map to an exact valid line in the provided MR diff.
+- Do not use absolute file line numbers in "reviews".
+- Do not guess, approximate, or infer a nearby line number for "reviews".
+- If a finding cannot be mapped to an exact valid diff line, keep it out of "reviews" and include it only in the comment's "## 💡 Other Suggestions" section.
+- The "## 💡 Other Suggestions" section is part of the comment markdown only. Do not create any separate JSON field for it.
+- The comment may include additional valid findings in "## 💡 Other Suggestions" even when they are not suitable for inline review comments.
 ${translationsNote}
 - Output the JSON on a single line, minified (no newlines)
-- Prefix the JSON line with: [COPILOT_JSON_START]
+- Prefix the JSON line with: ${REVIEW_RESPONSE_JSON_MARKER}
 - Do not include any extra prose before or after the JSON line
 - Format the comment field as valid markdown ready to post as GitLab comment
 - Follow the template structure exactly for consistency

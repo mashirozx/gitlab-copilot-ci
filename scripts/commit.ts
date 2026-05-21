@@ -19,14 +19,26 @@ type CommitType = {
 // ─── Commit type definitions ─────────────────────────────────────────────────
 
 const COMMIT_TYPES: CommitType[] = [
-  { value: "feat", hint: "A new user-facing feature", emoji: "✨" },
-  { value: "fix", hint: "A bug fix", emoji: "🐛" },
+  {
+    value: "feat",
+    hint: "A new user-facing feature",
+    emoji: "✨",
+  },
+  {
+    value: "fix",
+    hint: "A bug fix",
+    emoji: "🐛",
+  },
   {
     value: "chore",
     hint: "Build process, tooling or maintenance tasks",
     emoji: "🔧",
   },
-  { value: "docs", hint: "Documentation only changes", emoji: "📝" },
+  {
+    value: "docs",
+    hint: "Documentation only changes",
+    emoji: "📝",
+  },
   {
     value: "style",
     hint: "Code style / formatting (no logic changes)",
@@ -37,10 +49,26 @@ const COMMIT_TYPES: CommitType[] = [
     hint: "Code change that neither fixes a bug nor adds a feature",
     emoji: "♻️",
   },
-  { value: "test", hint: "Adding or updating tests", emoji: "✅" },
-  { value: "ci", hint: "CI/CD configuration changes", emoji: "🔄" },
-  { value: "perf", hint: "Performance improvements", emoji: "⚡" },
-  { value: "revert", hint: "Revert a previous commit", emoji: "⏪" },
+  {
+    value: "test",
+    hint: "Adding or updating tests",
+    emoji: "✅",
+  },
+  {
+    value: "ci",
+    hint: "CI/CD configuration changes",
+    emoji: "🔄",
+  },
+  {
+    value: "perf",
+    hint: "Performance improvements",
+    emoji: "⚡",
+  },
+  {
+    value: "revert",
+    hint: "Revert a previous commit",
+    emoji: "⏪",
+  },
 ];
 
 const COMMON_EMOJIS = [
@@ -138,7 +166,9 @@ const runCommandOrExit = ({
   args: string[];
 }) => {
   consola.info(`Running ${label}...`);
-  const result = spawnSync(command, args, { stdio: "inherit" });
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+  });
   if (result.status !== 0) {
     consola.error(`${label} failed. Aborting.`);
     process.exit(result.status ?? 1);
@@ -153,8 +183,16 @@ const hasUncommittedChanges = (): boolean => {
 };
 
 const runChecks = () => {
-  runCommandOrExit({ label: "biome", command: "bun", args: ["run", "biome"] });
-  runCommandOrExit({ label: "tsgo", command: "bun", args: ["run", "tsgo"] });
+  runCommandOrExit({
+    label: "biome",
+    command: "bun",
+    args: ["run", "biome"],
+  });
+  runCommandOrExit({
+    label: "tsgo",
+    command: "bun",
+    args: ["run", "tsgo"],
+  });
 
   consola.info("Staging all changes...");
   execSync("git add .", { stdio: "inherit" });
@@ -254,15 +292,21 @@ const main = async ({
   defaultEmoji?: string | null; // null = use type default, undefined = keep previous
   defaultMessage?: string;
 } = {}) => {
-  const type = await selectType({ initial: defaultType });
+  const type = await selectType({
+    initial: defaultType,
+  });
   const typeDefault = COMMIT_TYPES.find((t) => t.value === type)?.emoji;
   // If user explicitly set an emoji previously (defaultEmoji != null), keep it; otherwise use type's default
   const emojiInitial =
     defaultEmoji !== undefined && defaultEmoji !== null
       ? defaultEmoji
       : typeDefault;
-  const emoji = await selectEmoji({ initial: emojiInitial });
-  const message = await inputMessage({ initial: defaultMessage });
+  const emoji = await selectEmoji({
+    initial: emojiInitial,
+  });
+  const message = await inputMessage({
+    initial: defaultMessage,
+  });
 
   const commitMessage = `${type}: ${emoji} ${message}`;
 

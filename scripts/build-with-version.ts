@@ -35,7 +35,9 @@ const commit =
   process.env.GITHUB_SHA || // GitHub Actions
   process.env.CIRCLECI_SHA || // CircleCI
   process.env.BUILD_SOURCEVERSION || // Azure Pipelines
-  execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+  execSync("git rev-parse HEAD", {
+    encoding: "utf-8",
+  }).trim();
 
 // Get platform and architecture
 const platform = `${process.platform}-${process.arch}`;

@@ -3,6 +3,12 @@ import { hideBin } from "yargs/helpers";
 import { getFormattedVersion } from "./version";
 
 export const argv = yargs(hideBin(process.argv))
+  .option("llm-service", {
+    describe: "LLM service provider to use for code review",
+    type: "string",
+    choices: ["github-copilot", "pi"] as const,
+    default: "github-copilot",
+  })
   .option("gitlab-token", {
     alias: "gt",
     describe: "GitLab API token",
@@ -20,8 +26,19 @@ export const argv = yargs(hideBin(process.argv))
     type: "string",
     default: process.env.COPILOT_BIN ?? "copilot",
   })
-  .option("copilot-model", {
-    describe: "GitHub Copilot model name",
+  .option("pi-bin", {
+    describe: "Pi CLI binary name or path",
+    type: "string",
+    default: process.env.PI_BIN ?? "pi",
+  })
+  .option("pi-provider", {
+    describe: "Pi model provider name",
+    type: "string",
+    default: process.env.PI_PROVIDER,
+  })
+  .option("llm-model", {
+    alias: "copilot-model",
+    describe: "LLM model name",
     type: "string",
     default: "gpt-5.4",
   })

@@ -14,14 +14,14 @@ keywords:
 
 ## Project Overview
 
-**gitlab-copilot-ci** is a Bun-based shell application compiled into a binary for automated code review. The binary integrates with GitLab CI systems to perform code reviews using GitHub Copilot and post results back to merge requests.
+**gitlab-copilot-ci** is a Bun-based shell application compiled into a binary for automated code review. The binary integrates with GitLab CI systems to perform code reviews using a selectable LLM CLI provider (currently GitHub Copilot or Pi) and post results back to merge requests.
 
 ### Two Runtime Environments
 
 #### 1. App Runtime
 - **Context**: Binary executes in CI of *external projects* (customer repositories)
-- **Purpose**: Review code changes in merge requests using GitHub Copilot
-- **Configuration**: Invoked with GitLab and Copilot API tokens via CLI arguments or environment variables
+- **Purpose**: Review code changes in merge requests using the configured LLM service provider
+- **Configuration**: Invoked with GitLab credentials plus provider-specific CLI authentication via CLI arguments or environment variables
 - **State Management**: Uses SQLite (optional `--db` argument) to track review history
 - **Entry Point**: `app/main.ts` (compiled to `dist/gitlab-copilot-ci` binary)
 
@@ -39,11 +39,14 @@ keywords:
 ### Review vs. Summary
 
 - **Review** (inline): One comment on a specific diff line. Each review is a `ReviewItem` with `file_path`, `new_line`, `suggestion`, and optional `translations: Record<string, string>` for additional languages.
-- **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. Marked with HTML comment `<!-- copilot-summary-marker -->`.
+- **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. It also includes a `## 💡 Other Suggestions` section for valid findings that should stay out of inline review comments because they cannot be mapped safely to an exact current diff line. Marked with HTML comment `<!-- copilot-summary-marker -->`.
 
 ### Related Terms
 - **Thread/Discussion**: GitLab's term for a conversation thread on a diff line. Each review comment starts a discussion.
 - **Review tracking**: Information embedded in the summary comment's HTML (`<!-- copilot-review-data:... -->`) to track which discussions were created by Copilot.
+- **Discussion note deletion**: Inline review notes inside a merge-request discussion must be deleted through `MergeRequestDiscussions.removeNote(...)`, not `MergeRequestNotes.remove(...)`.
+- **Tracking retention**: When a run replaces the summary comment, it must carry forward any previously tracked discussions that could not be cleaned up in the current run, plus newly created discussions from the current run.
+- **Preserve behavior docs during refactors**: When moving logic between files, keep critical inline documentation with the owning code path, especially GitLab MR discussion position rules that explain `startSha = baseSha` and when `oldLine` must be omitted.
 
 ---
 
@@ -53,23 +56,34 @@ The app source is split into focused modules under `app/`:
 
 | File | Purpose |
 |------|---------|
-| `app/main.ts` | Entry point — orchestrates the review workflow |
-| `app/types/entities.ts` | Shared TypeScript types (`ReviewItem`, `StoredReview`, `ReviewResponse`) |
+| `app/main.ts` | Entry point — orchestrates the review workflow and dispatches review generation to the provider selected by `--llm-service` |
+| `app/constants.ts` | Shared app-wide constants, including the JSON marker prefix required in prompt instructions and provider CLI output parsing |
+| `app/utils/cli-env.ts` | Shared CLI environment helpers, including color-preserving defaults used by both Copilot and Pi child processes |
+| `app/utils/json.ts` | Shared JSON helpers for extracting marker-prefixed payloads, safe parsing, and pretty-printing JSON event lines |
+| `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
+| `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
+| `pi-tst.ts` | Manual Pi spawn repro script for local debugging of stdout/stderr behavior; run with `GEMINI_API_KEY=... bun run ./pi-tst.ts` and add `--bad-key` to force an auth failure path |
+| `app/types/entities.ts` | Shared TypeScript types (`ReviewItem`, `StoredReview`, `ReviewResponse`, and GitLab review-tracking/MR helper types) |
 | `app/types/sql.d.ts` | Ambient module declaration for `.sql` file imports |
-| `app/prompts.ts` | Prompt template builder (`buildCopilotPrompt`) with multilingual support |
+| `app/prompts.ts` | Prompt template builder (`buildCopilotPrompt`) with multilingual support, strict diff-line rules for inline reviews, and a markdown-only `## 💡 Other Suggestions` summary section |
+| `app/utils/review-helpers.ts` | Pure lookup helpers for the review workflow, such as finding diff entries by file path |
+| `app/utils/review-summary.ts` | Pure summary markdown builders for performance/error sections and final MR summary note composition |
 | `app/migrations/0001_initial.sql` | Initial schema: `reviews` and `schema_migrations` tables |
 | `app/migrations/index.ts` | Migration registry and loader |
-| `app/services/argv.ts` | CLI argument parsing via yargs |
+| `app/services/argv.ts` | CLI argument parsing via yargs, including provider selection with `--llm-service` |
 | `app/services/logger.ts` | Consola-based logger with file reporter and module-scope `--log` initialization; uses Temporal for timestamps |
-| `app/services/db.ts` | SQLite helpers with migration runner; uses Temporal for `created_at` |
-| `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) |
-| `app/services/gitlab.ts` | GitLab client singleton (`gitlab`) |
+| `app/services/db.ts` | `DatabaseService` that owns the optional SQLite connection, migration runner, review reads/writes, and close lifecycle; uses Temporal for `created_at` and imports its runtime SQL statements from `app/services/sql/*.sql` |
+| `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
+| `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) using shared CLI env, JSON extraction/parsing, and elapsed-time helpers |
+| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponse` contract |
+| `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, summary-note lookup/removal, discussion cleanup, and comment creation |
 
 Rules:
 - No default exports in `app/` (enforced by biome, except `app/types/sql.d.ts`)
 - Use named imports throughout
 - Service imports from within `app/` use `./services/xxx`
-- Type imports use `./types/entities` or `../types/entities`
+- Type imports use `./types/entities` or `../types/entities`, including GitLab-specific helper types shared between `main.ts` and `services/gitlab.ts`
+- Pure parser/formatter/lookup logic that does not own side effects should live under `app/utils/`, not `app/main.ts`
 
 ---
 
@@ -90,10 +104,13 @@ Rules:
 ### CLI Arguments and Environment Variables
 
 **app/main.ts** (via `app/services/argv.ts`) accepts:
+- `--llm-service`: LLM service provider for review generation. Choices: `github-copilot`, `pi`. Default: `github-copilot`.
 - `--gitlab-token` / `GITLAB_TOKEN`: GitLab API authentication
 - `--gitlab-url` / `GITLAB_API_URL`: GitLab API base URL (e.g., `https://gitlab.com/api/v4`)
 - `--copilot-bin`: Path to GitHub Copilot CLI binary (default: `copilot`)
-- `--copilot-model`: Model name for Copilot (default: `gpt-5.4`)
+- `--pi-bin`: Path to Pi CLI binary (default: `pi`, or `PI_BIN` when set)
+- `--pi-provider`: Pi provider name passed through to `pi --provider` (optional, defaults to `PI_PROVIDER` when set)
+- `--llm-model` / `--copilot-model`: Shared LLM model name option. `--llm-model` is the canonical flag and `--copilot-model` is a backward-compatible alias. Default: `gpt-5.4`.
 - `--copilot-github-token`: GitHub token for Copilot authentication (from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`)
 - `--project-id` / `CI_PROJECT_ID`: GitLab project ID
 - `--mr-iid` / `CI_MERGE_REQUEST_IID`: Merge request IID
@@ -111,6 +128,22 @@ Rules:
   - `true`: `--log` with no value, write to current working directory
   - `string`: first explicit path value from `--log /path` or repeated forms like `--log /a --log /b`
   - Standard resolution: for yargs options that must support both bare-flag and string-value forms, use `array: true` to capture presence and `coerce` to normalize the final runtime shape. Do not rely on `type: "string"` alone.
+
+### Pi Provider Runtime
+
+When `--llm-service=pi` is selected:
+
+- The app starts Pi with `--mode json --no-session --tools read,grep,find,ls`
+- It forwards optional `--pi-provider` as `pi --provider <name>`
+- If `--pi-provider` is omitted and `--llm-model` starts with `gemini-` while `GEMINI_API_KEY` is present, the app infers `--provider google`
+- It forwards `--llm-model` as `pi --model <pattern>`
+- It passes the full review prompt as the final CLI argument
+- It spawns Pi with stdin ignored (`stdio: ["ignore", "pipe", "pipe"]`) so the CLI does not hang waiting for EOF on stdin
+- Pi's raw JSONL stream is preserved for logging and parsing, but console output is line-buffered and pretty-printed to make emitted JSON events human-readable during local runs
+- It parses Pi's JSONL stdout stream and waits for the `agent_end` event to extract the assistant's final text response
+- The assistant response must still contain the shared `REVIEW_RESPONSE_JSON_MARKER` line so the app can parse the embedded review JSON
+- Pi provider/auth failures can arrive entirely on stdout inside JSON events; stderr may remain empty even when the run fails
+- If Pi ends with an assistant-side provider error instead of review JSON, `app/services/pi.ts` surfaces that provider error message directly in `ReviewResponse.errors`
 
 ### Log File Writing
 
@@ -166,7 +199,7 @@ When `--log` flag is enabled (independent of `--debug`):
      --gitlab-url https://gitlab.com/api/v4 \
      --project-id 123 \
      --mr-iid 456
-   
+
    # Log file will be created: .gitlab-copilot-ci.2025-05-13.14-30-45.log
    ```
 
@@ -179,9 +212,12 @@ When `--db <path>` is provided:
 - **Migrations stored in**: `app/migrations/`
   - SQL files (e.g., `0001_initial.sql`) define schema changes
   - `app/migrations/index.ts` imports all migrations and provides `migrations: Migration[]` array
+- **Runtime DB queries stored in**: `app/services/sql/`
+  - `.sql` files are imported with `with { type: "text" }` in `app/services/db.ts`
+  - Current runtime statements cover `schema_migrations` bootstrap, `PRAGMA journal_mode = WAL`, review lookup by MR IID, and review upsert
 - **Tracking table**: `schema_migrations` (created automatically)
   - Columns: `name TEXT PRIMARY KEY`, `applied_at INTEGER` (milliseconds via Temporal)
-- **Migration runner** (`runMigrations` in `app/services/db.ts`)
+- **Migration runner** (`DatabaseService.runMigrations` in `app/services/db.ts`)
   - On database initialization, checks which migrations have been applied
   - Runs pending migrations in order
   - Records migration name and timestamp in `schema_migrations`
@@ -209,10 +245,10 @@ CREATE TABLE schema_migrations (
 #### Database Initialization
 
 ```typescript
-const db = initializeDatabase(dbPath);
-// 1. Opens SQLite at dbPath
+databaseService.initialize({ errors });
+// 1. Reads argv["db"] and opens SQLite when configured
 // 2. Sets PRAGMA journal_mode = WAL
-// 3. Calls runMigrations(db) to apply any pending migrations
+// 3. Calls DatabaseService.runMigrations({ database }) to apply pending migrations
 ```
 
 #### Review Storage
@@ -220,8 +256,9 @@ const db = initializeDatabase(dbPath);
 **Before**: Used `database.exec()` (deprecated in Bun)
 **Now**: Uses `database.run()` (scalar statements) and `database.query().run()` for parameterized queries
 
-- `getStoredReviewsForMR()`: Returns `StoredReview[]` with English-only suggestions
-- `storeReview()`: Inserts review with English suggestion stored in `suggestion` column (no secondary translations)
+- `databaseService.getStoredReviewsForMR()`: Returns `StoredReview[]` with English-only suggestions
+- `databaseService.storeReview()`: Inserts review with English suggestion stored in `suggestion` column (no secondary translations)
+- `databaseService.close()`: Closes the optional SQLite connection during shutdown and reports close failures into the shared error list
 - Review ID: `{mrIid}-{file_path}-{new_line}-{epochMilliseconds}`
 
 ### SQLite Database & Migrations
@@ -294,9 +331,9 @@ With `--lang=zh-CN --lang=ja` option:
    - Example:
      ```
      use const instead of let
-     
+
      使用 const 而不是 let
-     
+
      letではなくconstを使用します
      ```
 
@@ -309,11 +346,11 @@ With `--lang=zh-CN --lang=ja` option:
      # 📝 Copilot Code Review
      ## 📋 Pull Request Changes [English]
      ...
-     
+
      # 📝 Copilot Code Review (zh-CN)
      ## 📋 拉取请求变更
      ...
-     
+
      # 📝 Copilot Code Review (ja)
      ## 📋 プルリクエストの変更
      ...
@@ -372,13 +409,15 @@ type ReviewResponse = {
    - Diff snapshot
    - Previous reviews from SQLite (if `--db` used)
    - Repository context (read AGENTS.md, skills/*/SKILL.md)
+  - Instruction that non-inline findings stay inside the summary comment's `## 💡 Other Suggestions` section instead of being returned as structured review items
 3. **Call Copilot CLI**: Spawn GitHub Copilot process with:
    - Read-only tools: `read_file`, `list_directory`, `search_files`, `grep`
    - Disabled: file modification, shell execution
 4. **Parse Response**: Extract JSON marked with `[COPILOT_JSON_START]`
-5. **Post Reviews**: Create inline discussions for each review item
-6. **Cleanup Old**: Resolve/delete previous discussions not in current review set
-7. **Post Summary**: Add top-level summary comment with tracking data and performance metrics
+5. **Load Existing Summary State**: Read the existing Copilot summary note and parse tracked discussion IDs from its embedded JSON
+6. **Cleanup Old**: Delete the old summary note, then resolve/delete previous tracked discussions not retained in the new review pass
+7. **Post Reviews**: Create inline discussions for each review item through `GitLabService.createReviewDiscussion()`
+8. **Post Summary**: Add a top-level summary comment with tracking data and performance metrics through `GitLabService.createSummaryNote()`
 
 ### Handling Previous Reviews
 
@@ -401,7 +440,7 @@ When an MR is updated:
   - Version and name from `package.json`
   - Platform/arch from Node.js `process.platform` and `process.arch`
   - Commit SHA from `git rev-parse HEAD` (executed in real-time)
-  
+
 - **Compiled Binary**: When building with `bun run build:*-*`, version info is baked into the binary:
   - Bun's `--define` flag injects values at compile time: `__BUILD_VERSION__`, `__BUILD_PLATFORM__`, `__BUILD_COMMIT__`
   - Binary's `--version` output shows the version/commit from the time of build

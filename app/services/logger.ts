@@ -8,8 +8,8 @@ import { join } from "node:path";
 import type { LogLevel, LogType } from "consola";
 import { consola, LogLevels } from "consola";
 import { stripAnsi } from "consola/utils";
-import { Temporal } from "temporal-polyfill";
 import { argv } from "../utils/argv";
+import { formatLocalTimestamp } from "../utils/time";
 
 let logStream: WriteStream | null = null;
 
@@ -26,29 +26,6 @@ const getLogLevel = (value: string | undefined): LogLevel => {
   return logType in LogLevels ? LogLevels[logType] : LogLevels.trace;
 };
 
-const formatTimestamp = (): string => {
-  const dt = Temporal.Now.plainDateTimeISO();
-  const y = dt.year;
-  const mo = String(dt.month).padStart(2, "0");
-  const d = String(dt.day).padStart(2, "0");
-  const h = String(dt.hour).padStart(2, "0");
-  const mi = String(dt.minute).padStart(2, "0");
-  const s = String(dt.second).padStart(2, "0");
-  return `${y}-${mo}-${d}.${h}-${mi}-${s}`;
-};
-
-const formatLogTimestamp = (): string => {
-  const dt = Temporal.Now.plainDateTimeISO();
-  const y = dt.year;
-  const mo = String(dt.month).padStart(2, "0");
-  const d = String(dt.day).padStart(2, "0");
-  const h = String(dt.hour).padStart(2, "0");
-  const mi = String(dt.minute).padStart(2, "0");
-  const s = String(dt.second).padStart(2, "0");
-  const ms = String(dt.millisecond).padStart(3, "0");
-  return `${y}-${mo}-${d}T${h}:${mi}:${s}.${ms}`;
-};
-
 const logger = consola
   .create({
     // throttle: 100,
@@ -60,7 +37,11 @@ const logger = consola
   .addReporter({
     log(logObj) {
       if (!logStream) return;
-      const timestamp = formatLogTimestamp();
+      const timestamp = formatLocalTimestamp({
+        includeMilliseconds: true,
+        dateTimeSeparator: "T",
+        timeSeparator: ":",
+      });
       const tag = logObj.type.toUpperCase();
 
       if (logObj.args[0] instanceof Error) {
@@ -78,7 +59,10 @@ const logger = consola
 
 const initializeLogFile = (logDir?: string): void => {
   const targetDir = logDir ?? process.cwd();
-  const timestamp = formatTimestamp();
+  const timestamp = formatLocalTimestamp({
+    dateTimeSeparator: ".",
+    timeSeparator: "-",
+  });
   const logFilePath = join(targetDir, `.gitlab-copilot-ci.${timestamp}.log`);
 
   try {
@@ -97,7 +81,9 @@ const initializeLogFile = (logDir?: string): void => {
     return;
   }
 
-  logStream = createWriteStream(logFilePath, { flags: "a" });
+  logStream = createWriteStream(logFilePath, {
+    flags: "a",
+  });
   logger.info(`Logging enabled: ${logFilePath}`);
 };
 
