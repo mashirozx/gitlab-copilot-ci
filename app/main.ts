@@ -10,7 +10,15 @@ import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
 import type { StoredReview, TrackedDiscussion } from "./types/entities";
 import { argv } from "./utils/argv";
-import { findDiffItemByFilePath } from "./utils/review-helpers";
+import {
+  buildDiffPageFileContent,
+  colorizeDiffLineCode,
+  recomputeReviewPositionFromDiffReference,
+} from "./utils/diff-files";
+import {
+  findDiffItemByFilePath,
+  formatReviewLocation,
+} from "./utils/review-helpers";
 import { buildSummaryNote } from "./utils/review-summary";
 import { getFormattedVersion } from "./utils/version";
 
@@ -33,12 +41,24 @@ const main = async () => {
 
   // A. Fetch MR details and diff (SHA values needed for comment positioning)
   const mr = await gitlabService.getMergeRequest();
-  const changes = await gitlabService.getMergeRequestDiffs();
+  const {
+    changes,
+    pages: diffPages,
+    errors: diffFetchErrors,
+  } = await gitlabService.getMergeRequestDiffs();
+  errors.push(...diffFetchErrors);
   const tempDir = mkdtempSync(join(tmpdir(), "copilot-review-"));
 
   try {
-    const diffFilePath = join(tempDir, "mr-diff.json");
-    writeFileSync(diffFilePath, JSON.stringify(changes, null, 2), "utf-8");
+    const diffFilePaths = diffPages.map(({ page, diffs }) => {
+      const diffFilePath = join(tempDir, `mr-diff.page-${page}.diff`);
+      writeFileSync(diffFilePath, buildDiffPageFileContent({ diffs }), "utf-8");
+      return diffFilePath;
+    });
+
+    logger.info(
+      `[GitLab] Loaded ${changes.length} diff file entries across ${diffPages.length} page(s)`,
+    );
 
     // Load previous reviews from database if available
     let previousReviews: StoredReview[] = [];
@@ -64,7 +84,7 @@ const main = async () => {
     const reviewRunner =
       argv["llm-service"] === "pi" ? runPiReview : runCopilotReview;
     const response = await reviewRunner({
-      diffFilePath,
+      diffFilePaths,
       title: mr.title,
       description: mr.description,
       previousReviews,
@@ -138,6 +158,7 @@ const main = async () => {
 
     // E. Post inline review comments, tracking created discussion IDs
     const createdDiscussions: TrackedDiscussion[] = [];
+    const diffLineMatchState = new Map<string, number>();
     for (const item of reviews) {
       try {
         const discussion = await gitlabService.createReviewDiscussion({
@@ -146,14 +167,54 @@ const main = async () => {
         });
         createdDiscussions.push(discussion);
         logger.success(
-          `Successfully posted comment to ${item.file_path}:${item.new_line} (discussion: ${discussion.id})`,
+          `Successfully posted comment to ${formatReviewLocation({ review: item })} (discussion: ${discussion.id})`,
         );
       } catch (e) {
-        const msg = `Failed to post comment for ${item.file_path}:${item.new_line}: ${e instanceof Error ? e.message : String(e)}`;
+        const recomputedReview = recomputeReviewPositionFromDiffReference({
+          review: item,
+          diffFilePaths,
+          matchState: diffLineMatchState,
+        });
+
+        // logger.warn(
+        //   `Failed to post comment for ${formatReviewLocation({ review: item })} at specified position. Attempted to recompute position from diff reference, result`,
+        //   JSON.stringify({ recomputedReview, item }, null, 2),
+        // );
+
+        if (
+          item.diff_line_code !== undefined &&
+          recomputedReview &&
+          (recomputedReview.file_path !== item.file_path ||
+            recomputedReview.new_line !== item.new_line ||
+            recomputedReview.old_line !== item.old_line)
+        ) {
+          try {
+            logger.warn(
+              `Retrying ${formatReviewLocation({ review: item })} using ${item.diff_file} to find ${colorizeDiffLineCode(item.diff_line_code)} -> ${formatReviewLocation({ review: recomputedReview })}`,
+            );
+
+            const discussion = await gitlabService.createReviewDiscussion({
+              review: recomputedReview,
+              mergeRequest: mr,
+            });
+            createdDiscussions.push(discussion);
+            logger.success(
+              `Successfully posted comment to ${formatReviewLocation({ review: recomputedReview })} after recomputing position by using ${item.diff_file} to find${colorizeDiffLineCode(item.diff_line_code)} (discussion: ${discussion.id})`,
+            );
+            continue;
+          } catch (retryError) {
+            const retryMsg = `Failed to post recomputed comment for ${formatReviewLocation({ review: recomputedReview })} by using ${item.diff_file} to find ${colorizeDiffLineCode(item.diff_line_code)}: ${retryError instanceof Error ? retryError.message : String(retryError)}`;
+            logger.error(retryMsg);
+            logger.error(retryError);
+            errors.push(retryMsg);
+          }
+        }
+
+        const msg = `Failed to post comment for ${formatReviewLocation({ review: item })}: ${e instanceof Error ? e.message : String(e)}`;
         logger.error(msg);
         logger.debug(
           "Failed with payload :",
-          JSON.stringify({ item, mr }, null, 2),
+          JSON.stringify({ item }, null, 2),
         );
         logger.error(e);
         errors.push(msg);

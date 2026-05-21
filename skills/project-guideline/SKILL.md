@@ -38,7 +38,7 @@ keywords:
 
 ### Review vs. Summary
 
-- **Review** (inline): One comment on a specific diff line. Each review is a `ReviewItem` with `file_path`, `new_line`, `suggestion`, and optional `translations: Record<string, string>` for additional languages.
+- **Review** (inline): One comment on a specific diff position. Each review is a `ReviewItem` with `file_path`, `suggestion`, optional `new_line`, optional `old_line`, optional `diff_file`, optional `diff_line_code`, and optional `translations: Record<string, string>` for additional languages. New review output is expected to include `diff_file` and `diff_line_code`, and at least one of `new_line` or `old_line` must be present.
 - **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. It also includes a `## 💡 Other Suggestions` section for valid findings that should stay out of inline review comments because they cannot be mapped safely to an exact current diff line. Marked with HTML comment `<!-- copilot-summary-marker -->`.
 
 ### Related Terms
@@ -56,7 +56,7 @@ The app source is split into focused modules under `app/`:
 
 | File | Purpose |
 |------|---------|
-| `app/main.ts` | Entry point — orchestrates the review workflow and dispatches review generation to the provider selected by `--llm-service` |
+| `app/main.ts` | Entry point — orchestrates the review workflow, writes one temporary `mr-diff.page-<n>.diff` file per paginated GitLab diff page, retries failed inline posts with positions recomputed from diff-file references, and dispatches review generation to the provider selected by `--llm-service` |
 | `app/constants.ts` | Shared app-wide constants, including the JSON marker prefix required in prompt instructions and provider CLI output parsing |
 | `app/utils/cli-env.ts` | Shared CLI environment helpers, including color-preserving defaults used by both Copilot and Pi child processes |
 | `app/utils/json.ts` | Shared JSON helpers for extracting marker-prefixed payloads and safe parsing |
@@ -64,10 +64,11 @@ The app source is split into focused modules under `app/`:
 | `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
 | `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
 | `pi-tst.ts` | Manual Pi spawn repro script for local debugging of stdout/stderr behavior; run with `GEMINI_API_KEY=... bun run ./pi-tst.ts` and add `--bad-key` to force an auth failure path |
-| `app/types/entities.ts` | Shared TypeScript types (`ReviewItem`, `StoredReview`, `ReviewResponse`, and GitLab review-tracking/MR helper types) |
+| `app/types/entities.ts` | Shared TypeScript types (`ReviewItem`, `StoredReview`, `ReviewResponse`, and GitLab review-tracking, paginated diff wrapper/result, and MR helper types). Individual MR diff items use gitbeaker's upstream `MergeRequestDiffSchema`. |
 | `app/types/sql.d.ts` | Ambient module declaration for `.sql` file imports |
-| `app/prompts.ts` | Prompt template builder (`buildCopilotPrompt`) with multilingual support, strict diff-line rules for inline reviews, and a markdown-only `## 💡 Other Suggestions` summary section |
-| `app/utils/review-helpers.ts` | Pure lookup helpers for the review workflow, such as finding diff entries by file path |
+| `app/prompts.ts` | Prompt template builder (`buildCopilotPrompt`) with multilingual support, a dedicated unified-diff line-number guidance block, support for `new_line`/`old_line` review positions plus `diff_file`/`diff_line_code` references, explicit instructions to read all paginated `mr-diff.page-*.diff` files, and a markdown-only `## 💡 Other Suggestions` summary section |
+| `app/utils/diff-files.ts` | Diff-page helpers for building line-addressable unified diff files, including always-on `# gitlab-meta ...` comment lines plus standard extended diff headers for file metadata such as mode changes and renames, and recomputing GitLab review positions from `diff_file` / `diff_line_code` references |
+| `app/utils/review-helpers.ts` | Pure lookup helpers for the review workflow, such as finding diff entries by file path and formatting/choosing review line positions |
 | `app/utils/review-summary.ts` | Pure summary markdown builders for performance/error sections and final MR summary note composition |
 | `app/migrations/0001_initial.sql` | Initial schema: `reviews` and `schema_migrations` tables |
 | `app/migrations/index.ts` | Migration registry and loader |
@@ -77,7 +78,7 @@ The app source is split into focused modules under `app/`:
 | `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
 | `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) using shared CLI env, JSON extraction/parsing, and elapsed-time helpers |
 | `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-console.ts`, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponse` contract |
-| `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, summary-note lookup/removal, discussion cleanup, and comment creation |
+| `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, paginated `/diffs` retrieval, summary-note lookup/removal, discussion cleanup, and comment creation, including inline review positions that may use `new_line`, `old_line`, or both |
 
 Rules:
 - No default exports in `app/` (enforced by biome, except `app/types/sql.d.ts`)
@@ -115,6 +116,7 @@ Rules:
 - `--copilot-github-token`: GitHub token for Copilot authentication (from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`)
 - `--project-id` / `CI_PROJECT_ID`: GitLab project ID
 - `--mr-iid` / `CI_MERGE_REQUEST_IID`: Merge request IID
+- `--max-git-diff-page`: Maximum number of paginated GitLab MR diff pages to fetch. Default: unlimited. The runtime currently requests `per_page=20`, so a limit of `N` pages means at most the first `20 * N` diff entries are provided to review generation.
 - `--lang`: Additional output language(s) for translations (repeatable, e.g. `--lang=zh-CN --lang=ja`). English is always included. Results in summary/inline comments are displayed in the order specified. Default: `[]` (English only).
 - `--version` / `-v`: Show version information and exit immediately. Prints: `${name} ${version} (${platform}-${arch}) - ${commit-hash}`
 - `--review-marker`: HTML comment marker for inline reviews (default: `copilot-review-marker`)
@@ -147,6 +149,27 @@ When `--llm-service=pi` is selected:
 - The assistant response must still contain the shared `REVIEW_RESPONSE_JSON_MARKER` line so the app can parse the embedded review JSON
 - Pi provider/auth failures can arrive entirely on stdout inside JSON events; stderr may remain empty even when the run fails
 - If Pi ends with an assistant-side provider error instead of review JSON, `app/services/pi.ts` surfaces that provider error message directly in `ReviewResponse.errors`
+
+### Inline Review Positions
+
+- GitLab MR diffs are fetched page by page from `GET /projects/:id/merge_requests/:merge_request_iid/diffs` with `per_page=20`
+- Diff page counting is endpoint page counting, not changed-file counting: page 1 contains up to 20 diff entries, page 2 the next up to 20, and so on
+- If `--max-git-diff-page` is set and the fetch loop reaches that page limit, later pages are skipped and a warning is appended to the summary error block
+- Runtime writes each fetched diff page to its own temp unified diff file named `mr-diff.page-<n>.diff`
+- Those temp diff files always include `# gitlab-meta ...` comment lines for GitLab diff fields such as old/new path, mode values, and the `new_file` / `renamed_file` / `deleted_file` booleans
+- They also include standard extended Git diff headers when metadata is available, such as `old mode` / `new mode`, `new file mode`, `deleted file mode`, and `rename from` / `rename to`
+- Prompted review items are expected to include `diff_file` and `diff_line_code` so failed GitLab inline positions can be recomputed from the original diff page line text reference
+- If posting an inline review fails, the runtime retries once using a recomputed `file_path` / `new_line` / `old_line` derived from that diff-file reference
+- `diff_line_code` must be the exact diff line text as it appears in the page file, including the leading diff marker (` `, `+`, or `-`)
+- When duplicate `diff_line_code` values occur in the same diff file, recomputation tries the next later exact match first for repeated citations, then wraps to the earliest match if needed
+- Prompted review items may provide `new_line`, `old_line`, or both in the `reviews` array
+- The prompt includes a dedicated "How To Compute Correct Diff Line Numbers" block that teaches the reviewer model how to walk unified diff hunks and derive valid `old_line` / `new_line` values
+- The MR diff input is paginated through GitLab's `GET /projects/:id/merge_requests/:merge_request_iid/diffs` endpoint using `page` and `per_page`
+- Prompting tells the reviewer model to read all provided diff page files before deciding whether a changed file or diff line exists
+- Every provided review line must map to a valid diff position in the current MR diff
+- At least one of `new_line` or `old_line` must be present for every review item
+- `GitLabService.createReviewDiscussion()` posts exactly the provided `newLine` and/or `oldLine` fields to GitLab's diff position payload
+- SQLite review persistence still requires `new_line` under the current schema, so old-line-only reviews are posted to GitLab but skipped for DB storage
 
 ### Log File Writing
 
@@ -465,7 +488,7 @@ When an MR is updated:
 ```
 Commit to main
     ↓
-test:biome (code quality check)
+test:biome + test:unit (parallel quality gates)
     ↓
 release (ensure GitLab release exists)
    ↓
@@ -475,8 +498,14 @@ build jobs upload versioned binaries to the release/package registry
 
 Create MR
     ↓
-test:biome (quality gate)
+test:biome + test:unit (parallel quality gates)
 ```
+
+### GitHub Actions CI
+
+- Workflow file: `.github/workflows/test-and-release.yml`
+- The `biome` and `unit-test` jobs run in parallel on every push to `main` and on pull requests targeting `main`
+- The `build` matrix job waits for both `biome` and `unit-test` to pass via `needs: [biome, unit-test]`
 
 ### Build Platforms
 

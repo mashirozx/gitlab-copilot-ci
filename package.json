@@ -13,6 +13,7 @@
     "build:linux-arm64": "bun run ./scripts/build-with-version.ts bun-linux-arm64",
     "build:win-x64": "bun run ./scripts/build-with-version.ts bun-windows-x64",
     "build:win-arm64": "bun run ./scripts/build-with-version.ts bun-windows-arm64",
+    "test": "bun test",
     "tsgo": "tsgo",
     "lint": "biome check .",
     "biome": "biome check . --fix && biome format --write .",

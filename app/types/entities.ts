@@ -1,7 +1,11 @@
+import type { MergeRequestDiffSchema } from "@gitbeaker/rest";
+
 export type ReviewItem = {
   file_path: string;
-  new_line: number;
+  new_line?: number;
   old_line?: number;
+  diff_file?: string;
+  diff_line_code?: string;
   suggestion: string;
   translations?: Record<string, string>;
 };
@@ -33,6 +37,27 @@ export type MergeRequestPositionContext = {
     base_sha: string;
     head_sha: string;
   };
+};
+
+export type MergeRequestDiffPage = {
+  page: number;
+  diffs: MergeRequestDiffSchema[];
+};
+
+export type MergeRequestDiffsResult = {
+  changes: MergeRequestDiffSchema[];
+  pages: MergeRequestDiffPage[];
+  errors: string[];
+};
+
+export type ReviewTrackingData = {
+  discussions?: TrackedDiscussion[];
+};
+
+export type CleanupPreviousDiscussionsResult = {
+  processedDiscussions: TrackedDiscussion[];
+  remainingDiscussions: TrackedDiscussion[];
+  errors: string[];
 };
 
 export type StoredReview = {

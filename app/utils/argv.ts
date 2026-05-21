@@ -63,6 +63,22 @@ export const argv = yargs(hideBin(process.argv))
     type: "string",
     default: process.env.CI_MERGE_REQUEST_IID,
   })
+  .option("max-git-diff-page", {
+    describe:
+      "Maximum number of GitLab merge request diff pages to fetch. Defaults to unlimited. With the current per-page size of 20, a value of 5 reads at most the first 100 diff entries.",
+    type: "number",
+    coerce: (arg: number | undefined) => {
+      if (arg === undefined) {
+        return undefined;
+      }
+
+      if (!Number.isInteger(arg) || arg <= 0) {
+        throw new Error("--max-git-diff-page must be a positive integer");
+      }
+
+      return arg;
+    },
+  })
   .option("review-marker", {
     describe: "HTML comment marker for review comments",
     type: "string",

@@ -26,15 +26,59 @@ If no suggestions, write the localized equivalent of "✨ No issues found!".`,
     .join("");
 };
 
+const buildDiffLineNumberGuidance = (): string => {
+  return `
+
+## How To Compute Correct Diff Line Numbers
+
+Use this procedure exactly before emitting any item in "reviews":
+
+1. Find the target file inside the provided mr-diff.page-*.diff files.
+2. Read that file's diff hunk headers. A header looks like @@ -oldStart,oldCount +newStart,newCount @@.
+3. Initialize two counters from the header:
+   - oldLine = oldStart
+   - newLine = newStart
+4. Walk the hunk line by line after the header:
+   - A line starting with a single space is context. It exists on both sides. After processing it, increment both oldLine and newLine.
+   - A line starting with '-' is removed from the old file. That line maps to oldLine only. After processing it, increment oldLine only.
+   - A line starting with '+' is added in the new file. That line maps to newLine only. After processing it, increment newLine only.
+5. Never count the hunk header itself as a code line.
+6. Never use a file's absolute line number unless you derived it from the diff hunk counters above.
+7. For a review item:
+   - set only "new_line" when the finding points at an added line
+   - set only "old_line" when the finding points at a removed line
+   - set both only when the finding truly refers to a valid paired old/new diff position
+8. At least one of "new_line" or "old_line" must be present.
+9. Also record the exact diff page file name in "diff_file" and the exact original diff line text in "diff_line_code".
+10. "diff_line_code" must be the full line exactly as it appears in the diff file, including its leading diff marker (\` \`, \`+\`, or \`-\`).
+11. If the same exact diff line text appears multiple times in the same diff file, keep citing the exact line text. The runtime will try later matches first for repeated citations, then wrap to earlier matches only if needed.
+12. If you cannot compute an exact valid diff position from the hunk, do not emit that finding in "reviews". Put it only in the comment's "## 💡 Other Suggestions" section.
+
+Mini example:
+
+@@ -10,3 +10,4 @@
+ context A
+-old call()
++new call()
+ context B
+
+Mapping:
+- " context A" -> old_line 10, new_line 10
+- "-old call()" -> old_line 11 only
+- "+new call()" -> new_line 11 only
+- " context B" -> old_line 12, new_line 12
+`;
+};
+
 export const buildCopilotPrompt = ({
-  diffFilePath,
+  diffFilePaths,
   title,
   description,
   previousReviews,
   langs,
   debugMode,
 }: {
-  diffFilePath: string;
+  diffFilePaths: string[];
   title: string;
   description?: string | null;
   previousReviews?: StoredReview[];
@@ -61,7 +105,7 @@ ${previousReviews
     (review, idx) => `
 ### Previous Review ${idx + 1}
 **File**: ${review.file_path}
-**Line**: ${review.new_line}
+**Line**: ${review.old_line ? `new ${review.new_line}, old ${review.old_line}` : review.new_line}
 **Suggestion**: ${review.suggestion}
 **Context**:
 \`\`\`
@@ -88,19 +132,20 @@ ${review.source_snippet}
   2. Include the author or source at the end (e.g., "- Jane Austen" or "- Unknown")
   3. Avoid any political, religious, or sensitive topics
   4. **CRITICAL - Pick VALID file and line from the diff:**
-     - Look at the mr-diff.json above to see which files changed
-     - For each changed file, use ONLY the line numbers that appear in the "new_line" field of the diff
-     - The line number must be within the actual range of changed lines in that file
-     - Example: If package.json has changes on lines 10-15, use one of those lines, NOT 136
-      - If you cannot identify an exact valid changed line from the diff, do not emit that mock inline review; put it only in the "## 💡 Other Suggestions" section of the comment
+     - Follow the "How To Compute Correct Diff Line Numbers" section exactly
+      - Use only files and diff positions that exist in the provided mr-diff.page-*.diff files
   5. PREFIX each suggestion with "[MOCK] " at the beginning
   6. Must provide both "suggestion" and all requested translation fields with actual content (never empty).
-  7. **IMPORTANT: The file_path and new_line must correspond to ACTUAL changes in the diff. GitLab will reject invalid line numbers.**
+  7. **IMPORTANT: The file_path and any provided new_line/old_line values must correspond to ACTUAL changes in the diff. GitLab will reject invalid line numbers.**
 `
     : "";
 
   const translationsSpec = buildTranslationsSpec(langs);
   const translationsSections = buildTranslationsSectionInstructions(langs);
+  const diffLineNumberGuidance = buildDiffLineNumberGuidance();
+  const diffFilesList = diffFilePaths
+    .map((filePath) => `- ${filePath}`)
+    .join("\n");
 
   const translationsNote =
     langs.length > 0
@@ -135,10 +180,10 @@ Read-only task:
 ## Pull Request Title
 ${title}${mrDescription}
 
-First, read the merge request diff JSON from this file:
-${diffFilePath}
+First, read the merge request diff from all of these files:
+${diffFilesList}
 
-That file contains the GitLab Merge Request diff payload. Use it to identify changed files and diff line numbers.${previousReviewsSection}${debugPrompt}
+These files together contain the full paginated GitLab Merge Request unified diff. Read all of them before deciding whether a file or diff line exists.${diffLineNumberGuidance}${previousReviewsSection}${debugPrompt}
 
 Then, inspect any repository files you need for context, including changed files, imported files, relevant skills/*/SKILL.md files, and repository guideline files.${guidelineFilesSection}
 
@@ -152,7 +197,10 @@ Return only a JSON object with this structure:
   "reviews": [
     {
       "file_path": "string",
-      "new_line": number,
+      "diff_file": "mr-diff.page-N.diff",
+      "diff_line_code": "string",
+      "new_line"?: number,
+      "old_line"?: number,
       "suggestion": "string (English)"${translationsSpec}
     }
   ]
@@ -165,7 +213,11 @@ Notes:
 Rules:
 - Keep suggestion and all translations aligned in meaning
 - Only include actionable review findings
-- Every review item in "reviews" must map to an exact valid line in the provided MR diff.
+- Every review item in "reviews" must include "diff_file" and "diff_line_code".
+- "diff_file" must be one of the provided diff page file names, using the file name form such as "mr-diff.page-1.diff".
+- "diff_line_code" must be the exact original diff line text as it appears in that diff file, including the leading diff marker.
+- Every review item in "reviews" must include at least one of "new_line" or "old_line".
+- Every provided "new_line" or "old_line" value must map to an exact valid line in the provided MR diff.
 - Do not use absolute file line numbers in "reviews".
 - Do not guess, approximate, or infer a nearby line number for "reviews".
 - If a finding cannot be mapped to an exact valid diff line, keep it out of "reviews" and include it only in the comment's "## 💡 Other Suggestions" section.

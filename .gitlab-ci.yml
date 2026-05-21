@@ -37,6 +37,16 @@ test:biome:
   script:
     - bun run lint
 
+test:unit:
+  extends:
+    - .prepare
+  stage: test
+  only:
+    - main
+    - merge_requests
+  script:
+    - bun run test
+
 release:
   extends:
     - .prepare

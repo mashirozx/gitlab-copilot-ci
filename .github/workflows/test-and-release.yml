@@ -11,8 +11,8 @@ on:
       - main
 
 jobs:
-  test:
-    name: Lint and Test
+  biome:
+    name: Biome
     runs-on: ubuntu-latest
 
     steps:
@@ -26,12 +26,32 @@ jobs:
       - name: 📥 Install dependencies
         run: bun install
 
-      - name: ✅ Lint
+      - name: ✅ Biome check
         run: bun run lint
+
+  unit-test:
+    name: Unit Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: ✅ Run unit tests
+        run: bun run test
 
   build:
     name: Build for ${{ matrix.target }}
-    needs: test
+    needs:
+      - biome
+      - unit-test
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:

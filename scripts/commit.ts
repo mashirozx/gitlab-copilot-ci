@@ -193,6 +193,11 @@ const runChecks = () => {
     command: "bun",
     args: ["run", "tsgo"],
   });
+  runCommandOrExit({
+    label: "tests",
+    command: "bun",
+    args: ["run", "test"],
+  });
 
   consola.info("Staging all changes...");
   execSync("git add .", { stdio: "inherit" });
