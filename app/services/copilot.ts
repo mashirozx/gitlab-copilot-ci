@@ -12,12 +12,12 @@ import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
 
 export const runCopilotReview = async ({
-  diffFilePath,
+  diffFilePaths,
   title,
   description,
   previousReviews,
 }: {
-  diffFilePath: string;
+  diffFilePaths: string[];
   title: string;
   description?: string | null;
   previousReviews?: StoredReview[];
@@ -25,7 +25,7 @@ export const runCopilotReview = async ({
   const langs = argv["lang"];
 
   const prompt = buildCopilotPrompt({
-    diffFilePath,
+    diffFilePaths,
     title,
     description,
     previousReviews,

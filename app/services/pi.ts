@@ -139,19 +139,19 @@ const getAgentEndEvent = ({
 };
 
 export const runPiReview = async ({
-  diffFilePath,
+  diffFilePaths,
   title,
   description,
   previousReviews,
 }: {
-  diffFilePath: string;
+  diffFilePaths: string[];
   title: string;
   description?: string | null;
   previousReviews?: StoredReview[];
 }): Promise<ReviewResponse> => {
   const langs = argv["lang"];
   const prompt = buildCopilotPrompt({
-    diffFilePath,
+    diffFilePaths,
     title,
     description,
     previousReviews,

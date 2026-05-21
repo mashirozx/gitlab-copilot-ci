@@ -3,6 +3,7 @@ import { Temporal } from "temporal-polyfill";
 import { migrations } from "../migrations/index";
 import type { ReviewItem, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
+import { getReviewPreferredLine } from "../utils/review-helpers";
 import { logger } from "./logger";
 import createSchemaMigrationsSql from "./sql/create_schema_migrations.sql" with {
   type: "text",
@@ -99,7 +100,15 @@ export class DatabaseService {
       return;
     }
 
-    const id = `${mrIid}-${review.file_path}-${review.new_line}-${Temporal.Now.instant().epochMilliseconds}`;
+    const line = getReviewPreferredLine({ review });
+    if (review.new_line === undefined || line === null) {
+      logger.warn(
+        `[Database] Skipping review persistence for ${review.file_path} because database storage currently requires new_line`,
+      );
+      return;
+    }
+
+    const id = `${mrIid}-${review.file_path}-${line}-${Temporal.Now.instant().epochMilliseconds}`;
     this.database
       .query(upsertReviewSql)
       .run(

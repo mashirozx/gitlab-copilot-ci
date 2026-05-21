@@ -178,6 +178,9 @@ bun run biome
 
 # Type check
 bun run tsgo
+
+# Unit tests
+bun run test
 ```
 
 ## License

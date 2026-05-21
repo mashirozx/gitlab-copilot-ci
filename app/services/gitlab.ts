@@ -1,15 +1,23 @@
 import { Gitlab } from "@gitbeaker/rest";
 import type {
+  CleanupPreviousDiscussionsResult,
+  MergeRequestDiffPage,
+  MergeRequestDiffsResult,
   MergeRequestDiscussion,
   MergeRequestPositionContext,
   MergeRequestSummaryNote,
   ReviewItem,
+  ReviewTrackingData,
   TrackedDiscussion,
 } from "../types/entities";
 import { argv } from "../utils/argv";
+import { getReviewPreferredLine } from "../utils/review-helpers";
 import { logger } from "./logger";
 
 export class GitLabService {
+  private readonly diffPageSize = 20;
+  private readonly maxGitDiffPage =
+    argv["max-git-diff-page"] ?? Number.POSITIVE_INFINITY;
   private readonly client: Gitlab;
   private readonly projectId = argv["project-id"];
   private readonly mrIid = parseInt(argv["mr-iid"], 10);
@@ -28,8 +36,50 @@ export class GitLabService {
   getMergeRequest = async () =>
     this.client.MergeRequests.show(this.projectId, this.mrIid);
 
-  getMergeRequestDiffs = async () =>
-    this.client.MergeRequests.allDiffs(this.projectId, this.mrIid);
+  getMergeRequestDiffs = async (): Promise<MergeRequestDiffsResult> => {
+    const pages: MergeRequestDiffPage[] = [];
+    const errors: string[] = [];
+
+    // GitLab paginates merge request diffs by page/per_page. With perPage fixed
+    // at 20 here, a max page limit of N means at most N * 20 diff entries are
+    // handed to the LLM.
+    for (let page = 1; page <= this.maxGitDiffPage; page += 1) {
+      const diffs = await this.client.MergeRequests.allDiffs(
+        this.projectId,
+        this.mrIid,
+        {
+          page,
+          perPage: this.diffPageSize,
+        },
+      );
+
+      if (diffs.length === 0) {
+        break;
+      }
+
+      pages.push({ page, diffs });
+
+      if (diffs.length < this.diffPageSize) {
+        break;
+      }
+
+      if (page === this.maxGitDiffPage) {
+        const message = `[GitLab] Reached --max-git-diff-page=${this.maxGitDiffPage}. Later diff pages were skipped. With per_page=${this.diffPageSize}, only the first ${this.maxGitDiffPage * this.diffPageSize} diff entries were eligible for review input.`;
+        logger.warn(message);
+        errors.push(message);
+      }
+    }
+
+    if (pages.length === 0) {
+      pages.push({ page: 1, diffs: [] });
+    }
+
+    return {
+      changes: pages.flatMap((page) => page.diffs),
+      pages,
+      errors,
+    };
+  };
 
   getExistingSummaryNote = async (): Promise<
     MergeRequestSummaryNote | undefined
@@ -58,9 +108,7 @@ export class GitLabService {
     }
 
     try {
-      const parsed = JSON.parse(dataMatch[1] ?? "null") as {
-        discussions?: TrackedDiscussion[];
-      };
+      const parsed = JSON.parse(dataMatch[1] ?? "null") as ReviewTrackingData;
 
       return parsed.discussions ?? [];
     } catch {
@@ -78,11 +126,7 @@ export class GitLabService {
     trackedDiscussions,
   }: {
     trackedDiscussions: TrackedDiscussion[];
-  }): Promise<{
-    processedDiscussions: TrackedDiscussion[];
-    remainingDiscussions: TrackedDiscussion[];
-    errors: string[];
-  }> => {
+  }): Promise<CleanupPreviousDiscussionsResult> => {
     const discussions = (await this.client.MergeRequestDiscussions.all(
       this.projectId,
       this.mrIid,
@@ -153,6 +197,12 @@ export class GitLabService {
     review: ReviewItem;
     mergeRequest: MergeRequestPositionContext;
   }): Promise<TrackedDiscussion> => {
+    if (review.new_line === undefined && review.old_line === undefined) {
+      throw new Error(
+        "Review must include at least one of new_line or old_line",
+      );
+    }
+
     const marker = `<!-- ${this.reviewMarker} -->`;
     const translationLines = this.langs
       .map((lang) => review.translations?.[lang])
@@ -181,12 +231,17 @@ export class GitLabService {
       positionType: "text" as const,
       newPath: review.file_path,
       oldPath: review.file_path,
-      newLine: String(review.new_line),
     };
 
-    const position = review.old_line
-      ? { ...positionBase, oldLine: String(review.old_line) }
-      : positionBase;
+    const position = {
+      ...positionBase,
+      ...(review.new_line !== undefined
+        ? { newLine: String(review.new_line) }
+        : {}),
+      ...(review.old_line !== undefined
+        ? { oldLine: String(review.old_line) }
+        : {}),
+    };
 
     const discussion = await this.client.MergeRequestDiscussions.create(
       this.projectId,
@@ -198,7 +253,7 @@ export class GitLabService {
     return {
       id: discussion.id,
       file: review.file_path,
-      line: review.new_line,
+      line: getReviewPreferredLine({ review }) ?? 0,
     };
   };
 
