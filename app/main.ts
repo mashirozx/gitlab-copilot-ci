@@ -151,11 +151,11 @@ const main = async () => {
       } catch (e) {
         const msg = `Failed to post comment for ${item.file_path}:${item.new_line}: ${e instanceof Error ? e.message : String(e)}`;
         logger.error(msg);
-        logger.error(e);
         logger.debug(
           "Failed with payload :",
           JSON.stringify({ item, mr }, null, 2),
         );
+        logger.error(e);
         errors.push(msg);
       }
     }

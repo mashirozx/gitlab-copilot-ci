@@ -4,12 +4,8 @@ import { buildCopilotPrompt } from "../prompts";
 import type { ReviewResponse, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
-import {
-  extractMarkedJsonText,
-  formatJsonLineForConsole,
-  parseJson,
-  tryParseJson,
-} from "../utils/json";
+import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
+import { createPiConsoleFormatter } from "../utils/pi-console";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
 
@@ -33,16 +29,18 @@ type PiJsonEvent = {
 
 const flushPiConsoleBuffer = ({
   buffer,
+  consoleFormatter,
   write,
 }: {
   buffer: string;
+  consoleFormatter: ReturnType<typeof createPiConsoleFormatter>;
   write: (text: string) => void;
 }): string => {
   const lines = buffer.split(/\r?\n/);
   const trailing = lines.pop() ?? "";
 
   for (const line of lines) {
-    write(formatJsonLineForConsole({ line }));
+    write(consoleFormatter.formatLine({ line }));
   }
 
   return trailing;
@@ -164,6 +162,7 @@ export const runPiReview = async ({
   logger.info("[Pi] Calling pi binary...");
 
   return new Promise((resolve) => {
+    const consoleFormatter = createPiConsoleFormatter();
     const startTime = getNowEpochMilliseconds();
     let stdout = "";
     let stderr = "";
@@ -232,6 +231,7 @@ export const runPiReview = async ({
       stdoutConsoleBuffer += text;
       stdoutConsoleBuffer = flushPiConsoleBuffer({
         buffer: stdoutConsoleBuffer,
+        consoleFormatter,
         write: (formattedText) => process.stdout.write(formattedText),
       });
     });
@@ -242,6 +242,7 @@ export const runPiReview = async ({
       stderrConsoleBuffer += text;
       stderrConsoleBuffer = flushPiConsoleBuffer({
         buffer: stderrConsoleBuffer,
+        consoleFormatter,
         write: (formattedText) => process.stderr.write(formattedText),
       });
     });
@@ -253,7 +254,7 @@ export const runPiReview = async ({
     child.on("close", (code) => {
       if (stdoutConsoleBuffer) {
         process.stdout.write(
-          formatJsonLineForConsole({
+          consoleFormatter.formatLine({
             line: stdoutConsoleBuffer,
           }),
         );
@@ -261,7 +262,7 @@ export const runPiReview = async ({
 
       if (stderrConsoleBuffer) {
         process.stderr.write(
-          formatJsonLineForConsole({
+          consoleFormatter.formatLine({
             line: stderrConsoleBuffer,
           }),
         );
