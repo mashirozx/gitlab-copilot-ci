@@ -48,59 +48,6 @@ const flushPiConsoleBuffer = ({
   return trailing;
 };
 
-const inferPiProvider = ({
-  model,
-  env,
-}: {
-  model?: string;
-  env: NodeJS.ProcessEnv;
-}): string | null => {
-  if (!model) {
-    return null;
-  }
-
-  const normalizedModel = model.trim().toLowerCase();
-
-  if (normalizedModel.startsWith("gemini-") && env.GEMINI_API_KEY) {
-    return "google";
-  }
-
-  return null;
-};
-
-const normalizeEffortForPi = ({
-  effort,
-}: {
-  effort?: string;
-}): string | null => {
-  if (!effort) {
-    return null;
-  }
-
-  const normalized = effort.trim().toLowerCase();
-
-  if (normalized === "none") {
-    return "off";
-  }
-
-  if (normalized === "max") {
-    return "xhigh";
-  }
-
-  if (
-    normalized === "off" ||
-    normalized === "minimal" ||
-    normalized === "low" ||
-    normalized === "medium" ||
-    normalized === "high" ||
-    normalized === "xhigh"
-  ) {
-    return normalized;
-  }
-
-  return null;
-};
-
 const extractAssistantText = ({
   messages,
 }: {
@@ -233,32 +180,8 @@ export const runPiReview = async ({
       },
     });
 
-    const provider =
-      argv["provider"] ??
-      inferPiProvider({
-        model: argv["model"],
-        env,
-      });
-    const thinking = normalizeEffortForPi({
-      effort: argv["effort"],
-    });
-
-    if (argv["effort"] && !thinking) {
-      logger.warn(
-        `[Pi] Ignoring unsupported --effort value: ${argv["effort"]}`,
-      );
-    }
-
-    if (provider) {
-      piArgs.push("--provider", provider);
-    }
-
     if (argv["model"]) {
       piArgs.push("--model", argv["model"]);
-    }
-
-    if (thinking) {
-      piArgs.push("--thinking", thinking);
     }
 
     const extraAgentArgs = parseAgentArgs({
@@ -268,9 +191,7 @@ export const runPiReview = async ({
 
     piArgs.push(prompt);
 
-    logger.info(
-      `[Pi] Using provider: ${provider ?? "default"} (GEMINI_API_KEY ${env.GEMINI_API_KEY ? "present" : "missing"})`,
-    );
+    logger.info(`[Pi] Using model: ${argv["model"] ?? "default"}`);
 
     const agentBin = argv["agent-bin"] ?? process.env.PI_BIN ?? "pi";
 
