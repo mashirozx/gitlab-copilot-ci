@@ -15,9 +15,9 @@ export const argv = yargs(hideBin(process.argv))
     default: process.env.GITLAB_TOKEN,
   })
   .option("gitlab-url", {
-    describe: "GitLab API URL",
+    describe: "GitLab server URL",
     type: "string",
-    default: process.env.GITLAB_API_URL,
+    default: process.env.CI_SERVER_URL,
   })
   .option("agent-bin", {
     describe: "Agent CLI binary name or path",

@@ -58,7 +58,7 @@ Options:
   --agent                        Agent provider to use for code review
                                  (choices: github-copilot, pi; default: github-copilot)
   --gitlab-token                 GitLab API token (default: GITLAB_TOKEN)
-  --gitlab-url                   GitLab API URL (default: GITLAB_API_URL)
+  --gitlab-url                   GitLab server URL (default: CI_SERVER_URL)
   --agent-bin                    Agent CLI binary name or path
                                  (default: AGENT_BIN when set, else service default)
   --agent-args                   Optional extra CLI args appended to selected agent invocation
@@ -98,7 +98,7 @@ Options:
 
 Must provide:
 - `--gitlab-token` (or `GITLAB_TOKEN` env var)
-- `--gitlab-url` (or `GITLAB_API_URL` env var)
+- `--gitlab-url` (or `CI_SERVER_URL` env var)
 - `--project-id` (or `CI_PROJECT_ID` env var)
 - `--mr-iid` (or `CI_MERGE_REQUEST_IID` env var)
 
@@ -124,7 +124,7 @@ code-review:
     - ./dist/gitlab-copilot-ci-linux-x64
   env:
     GITLAB_TOKEN: $CI_JOB_TOKEN
-    GITLAB_API_URL: $CI_SERVER_URL
+    CI_SERVER_URL: $CI_SERVER_URL
 ```
 
 ### Translation Example
@@ -132,7 +132,7 @@ code-review:
 ```bash
 ./dist/gitlab-copilot-ci-linux-x64 \
   --gitlab-token YOUR_TOKEN \
-  --gitlab-url https://gitlab.com/api/v4 \
+  --gitlab-url https://gitlab.com \
   --project-id 123 \
   --mr-iid 456 \
   --lang=zh-CN \
@@ -147,7 +147,7 @@ Results will include translated sections in addition to English.
 ./dist/gitlab-copilot-ci-linux-x64 \
   --log /var/log/ci \
   --gitlab-token YOUR_TOKEN \
-  --gitlab-url https://gitlab.com/api/v4 \
+  --gitlab-url https://gitlab.com \
   --project-id 123 \
   --mr-iid 456
 ```
@@ -162,7 +162,7 @@ Log files are created as: `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log`
 ./dist/gitlab-copilot-ci-linux-x64 \
   --db=/var/lib/copilot-reviews.db \
   --gitlab-token YOUR_TOKEN \
-  --gitlab-url https://gitlab.com/api/v4 \
+  --gitlab-url https://gitlab.com \
   --project-id 123 \
   --mr-iid 456
 ```
