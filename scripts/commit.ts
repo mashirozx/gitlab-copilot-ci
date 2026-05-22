@@ -314,10 +314,15 @@ const main = async ({
   });
 
   const commitMessage = `${type}: ${emoji} ${message}`;
+  const separatorIndex = commitMessage.indexOf(":");
+  const previewMessage =
+    separatorIndex >= 0
+      ? `${colorize("yellowBright", commitMessage.slice(0, separatorIndex))}${commitMessage.slice(separatorIndex)}`
+      : commitMessage;
 
   consola.log("");
   consola.info("Commit message:");
-  consola.log(`  ${colorize("yellowBright", commitMessage)}`);
+  consola.log(`  ${previewMessage}`);
   consola.log("");
 
   const confirmed = await safePrompt<boolean>("Confirm?", {
