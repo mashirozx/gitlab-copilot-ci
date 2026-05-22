@@ -3,44 +3,47 @@ import { hideBin } from "yargs/helpers";
 import { getFormattedVersion } from "./version";
 
 export const argv = yargs(hideBin(process.argv))
-  .option("llm-service", {
-    describe: "LLM service provider to use for code review",
+  .option("agent", {
+    describe: "Agent provider to use for code review",
     type: "string",
     choices: ["github-copilot", "pi"] as const,
     default: "github-copilot",
   })
   .option("gitlab-token", {
-    alias: "gt",
     describe: "GitLab API token",
     type: "string",
     default: process.env.GITLAB_TOKEN,
   })
   .option("gitlab-url", {
-    alias: "gu",
     describe: "GitLab API URL",
     type: "string",
     default: process.env.GITLAB_API_URL,
   })
-  .option("copilot-bin", {
-    describe: "GitHub Copilot CLI binary name or path",
+  .option("agent-bin", {
+    describe: "Agent CLI binary name or path",
     type: "string",
-    default: process.env.COPILOT_BIN ?? "copilot",
+    default: process.env.AGENT_BIN,
   })
-  .option("pi-bin", {
-    describe: "Pi CLI binary name or path",
+  .option("agent-args", {
+    describe:
+      "Optional extra CLI args appended to the selected agent binary invocation",
     type: "string",
-    default: process.env.PI_BIN ?? "pi",
   })
-  .option("pi-provider", {
-    describe: "Pi model provider name",
+  .option("provider", {
+    describe: "Agent provider name passed through to the selected agent",
     type: "string",
     default: process.env.PI_PROVIDER,
   })
-  .option("llm-model", {
-    alias: "copilot-model",
-    describe: "LLM model name",
+  .option("model", {
+    describe: "Model name",
     type: "string",
     default: "gpt-5.4",
+  })
+  .option("effort", {
+    alias: "thinking",
+    describe:
+      "Optional reasoning level. For Pi: off|minimal|low|medium|high|xhigh. For Copilot: none|low|medium|high|xhigh|max.",
+    type: "string",
   })
   .option("copilot-github-token", {
     describe:
@@ -52,13 +55,11 @@ export const argv = yargs(hideBin(process.argv))
       process.env.GITHUB_TOKEN,
   })
   .option("project-id", {
-    alias: "p",
     describe: "GitLab project ID",
     type: "string",
     default: process.env.CI_PROJECT_ID,
   })
   .option("mr-iid", {
-    alias: "m",
     describe: "GitLab merge request IID",
     type: "string",
     default: process.env.CI_MERGE_REQUEST_IID,

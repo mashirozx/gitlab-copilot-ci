@@ -4,13 +4,47 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
 import { buildCopilotPrompt } from "../prompts";
+import type { ReviewResponseEntity } from "../types/review.types";
+import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson } from "../utils/json";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
-import type { ReviewResponseEntity } from "./review.types";
+
+const normalizeEffortForCopilot = ({
+  effort,
+}: {
+  effort?: string;
+}): string | null => {
+  if (!effort) {
+    return null;
+  }
+
+  const normalized = effort.trim().toLowerCase();
+
+  if (normalized === "off") {
+    return "none";
+  }
+
+  if (normalized === "minimal") {
+    return "low";
+  }
+
+  if (
+    normalized === "none" ||
+    normalized === "low" ||
+    normalized === "medium" ||
+    normalized === "high" ||
+    normalized === "xhigh" ||
+    normalized === "max"
+  ) {
+    return normalized;
+  }
+
+  return null;
+};
 
 export const runCopilotReview = async ({
   diffFilePaths,
@@ -65,24 +99,44 @@ export const runCopilotReview = async ({
       env.GITHUB_TOKEN = argv["copilot-github-token"];
     }
 
-    const child = spawn(
-      argv["copilot-bin"],
-      [
-        "--model",
-        argv["llm-model"],
-        "--allow-tool=read_file",
-        "--allow-tool=list_directory",
-        "--allow-tool=search_files",
-        "--allow-tool=grep",
-        `--add-dir=${process.cwd()}`,
-        "--no-ask-user",
-        "--log-level",
-        "info",
-        "-p",
-        prompt,
-      ],
-      { env, stdio: "pipe" },
-    );
+    const reasoningEffort = normalizeEffortForCopilot({
+      effort: argv["effort"],
+    });
+
+    if (argv["effort"] && !reasoningEffort) {
+      logger.warn(
+        `[Copilot] Ignoring unsupported --effort value: ${argv["effort"]}`,
+      );
+    }
+
+    const presetArgs = [
+      "--model",
+      argv["model"],
+      "--allow-tool=read_file",
+      "--allow-tool=list_directory",
+      "--allow-tool=search_files",
+      "--allow-tool=grep",
+      `--add-dir=${process.cwd()}`,
+      "--no-ask-user",
+      "--log-level",
+      "info",
+    ];
+    const extraAgentArgs = parseAgentArgs({
+      rawArgs: argv["agent-args"],
+    });
+    const copilotArgs = [...presetArgs, ...extraAgentArgs, "-p", prompt];
+
+    if (reasoningEffort) {
+      copilotArgs.unshift(reasoningEffort);
+      copilotArgs.unshift("--reasoning-effort");
+    }
+
+    const agentBin = argv["agent-bin"] ?? process.env.COPILOT_BIN ?? "copilot";
+
+    const child = spawn(agentBin, copilotArgs, {
+      env,
+      stdio: "pipe",
+    });
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
@@ -231,7 +285,7 @@ export const getContextInfo = async (
         context?: ReviewResponseEntity["context"];
       } = {};
 
-      result.model = argv["llm-model"];
+      result.model = argv["model"];
       logger.info("[Copilot] Using model from arguments:", result.model);
 
       const compactionMatches = logContent.match(

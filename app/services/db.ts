@@ -1,11 +1,11 @@
 import { Database } from "bun:sqlite";
 import { Temporal } from "temporal-polyfill";
 import { migrations } from "../migrations/index";
+import type { ReviewItemEntity } from "../types/review.types";
 import { argv } from "../utils/argv";
 import { getReviewPreferredLine } from "../utils/review-helpers";
 import type { StoredReviewEntity } from "./db.types";
 import { logger } from "./logger";
-import type { ReviewItemEntity } from "./review.types";
 import createSchemaMigrationsSql from "./sql/create_schema_migrations.sql" with {
   type: "text",
 };

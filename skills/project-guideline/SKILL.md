@@ -56,7 +56,7 @@ The app source is split into focused modules under `app/`:
 
 | File | Purpose |
 |------|---------|
-| `app/main.ts` | Entry point — orchestrates the review workflow, writes one temporary `mr-diff.page-<n>.diff` file per paginated GitLab diff page, retries failed inline posts with positions recomputed from diff-file references, and dispatches review generation to the provider selected by `--llm-service` |
+| `app/main.ts` | Entry point — orchestrates the review workflow, writes one temporary `mr-diff.page-<n>.diff` file per paginated GitLab diff page, retries failed inline posts with positions recomputed from diff-file references, and dispatches review generation to the provider selected by `--agent` |
 | `app/constants.ts` | Shared app-wide constants, including the JSON marker prefix required in prompt instructions and provider CLI output parsing |
 | `app/utils/cli-env.ts` | Shared CLI environment helpers, including color-preserving defaults used by both Copilot and Pi child processes |
 | `app/utils/json.ts` | Shared JSON helpers for extracting marker-prefixed payloads and safe parsing |
@@ -64,7 +64,7 @@ The app source is split into focused modules under `app/`:
 | `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
 | `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
 | `pi-tst.ts` | Manual Pi spawn repro script for local debugging of stdout/stderr behavior; run with `GEMINI_API_KEY=... bun run ./pi-tst.ts` and add `--bad-key` to force an auth failure path |
-| `app/services/review.types.ts` | Review payload and LLM response entities used across prompt building, providers, and review-position recomputation (`ReviewItemEntity`, `ReviewResponseEntity`) |
+| `app/types/review.types.ts` | Review payload and LLM response entities used across prompt building, providers, and review-position recomputation (`ReviewItemEntity`, `ReviewResponseEntity`) |
 | `app/services/db.types.ts` | SQLite review storage entity (`StoredReviewEntity`) |
 | `app/services/gitlab.types.ts` | GitLab-facing entities and internal GitLab workflow data types (`TrackedDiscussionEntity`, MR context/note/discussion entities, and cleanup/diff result data types). Individual MR diff items still use gitbeaker's upstream `MergeRequestDiffSchema`. |
 | `app/types/sql.d.ts` | Ambient module declaration for `.sql` file imports |
@@ -74,19 +74,19 @@ The app source is split into focused modules under `app/`:
 | `app/utils/review-summary.ts` | Pure summary markdown builders for performance/error sections and final MR summary note composition |
 | `app/migrations/0001_initial.sql` | Initial schema: `reviews` and `schema_migrations` tables |
 | `app/migrations/index.ts` | Migration registry and loader |
-| `app/services/argv.ts` | CLI argument parsing via yargs, including provider selection with `--llm-service` |
+| `app/utils/argv.ts` | CLI argument parsing via yargs, including provider selection with `--agent` |
 | `app/services/logger.ts` | Consola-based logger with file reporter and module-scope `--log` initialization; uses Temporal for timestamps |
 | `app/services/db.ts` | `DatabaseService` that owns the optional SQLite connection, migration runner, review reads/writes, and close lifecycle; uses Temporal for `created_at` and imports its runtime SQL statements from `app/services/sql/*.sql` |
 | `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
 | `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) using shared CLI env, JSON extraction/parsing, and elapsed-time helpers |
-| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-console.ts`, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponseEntity` contract |
+| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--agent=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-console.ts`, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponseEntity` contract |
 | `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, paginated `/diffs` retrieval, summary-note lookup/removal, discussion cleanup, and comment creation, including inline review positions that may use `new_line`, `old_line`, or both |
 
 Rules:
 - No default exports in `app/` (enforced by biome, except `app/types/sql.d.ts`)
 - Use named imports throughout
 - Service imports from within `app/` use `./services/xxx`
-- Type imports should come from local service type modules (`./services/review.types`, `./services/db.types`, `./services/gitlab.types`) rather than a central type hub
+- Type imports should come from domain modules (`./types/review.types`, `./services/db.types`, `./services/gitlab.types`) rather than a single central type hub
 - Naming convention: storage-related or external data structure types use `*Entity`; internal workflow structures use `*DataType`
 - Pure parser/formatter/lookup logic that does not own side effects should live under `app/utils/`, not `app/main.ts`
 
@@ -108,14 +108,15 @@ Rules:
 
 ### CLI Arguments and Environment Variables
 
-**app/main.ts** (via `app/services/argv.ts`) accepts:
-- `--llm-service`: LLM service provider for review generation. Choices: `github-copilot`, `pi`. Default: `github-copilot`.
+**app/main.ts** (via `app/utils/argv.ts`) accepts:
+- `--agent`: Agent provider for review generation. Choices: `github-copilot`, `pi`. Default: `github-copilot`.
 - `--gitlab-token` / `GITLAB_TOKEN`: GitLab API authentication
 - `--gitlab-url` / `GITLAB_API_URL`: GitLab API base URL (e.g., `https://gitlab.com/api/v4`)
-- `--copilot-bin`: Path to GitHub Copilot CLI binary (default: `copilot`)
-- `--pi-bin`: Path to Pi CLI binary (default: `pi`, or `PI_BIN` when set)
-- `--pi-provider`: Pi provider name passed through to `pi --provider` (optional, defaults to `PI_PROVIDER` when set)
-- `--llm-model` / `--copilot-model`: Shared LLM model name option. `--llm-model` is the canonical flag and `--copilot-model` is a backward-compatible alias. Default: `gpt-5.4`.
+- `--agent-bin`: Path to the selected agent CLI binary (optional). Defaults to `AGENT_BIN` when set. Runtime fallback remains agent-specific (`COPILOT_BIN`/`copilot` for GitHub Copilot, `PI_BIN`/`pi` for Pi) when not provided.
+- `--agent-args`: Optional extra CLI arguments appended to the selected agent invocation after built-in preset options and before the final prompt argument.
+- `--provider`: Shared provider name passed through to the selected agent (currently used in the Pi path as `pi --provider`) (optional, defaults to `PI_PROVIDER` when set)
+- `--model`: Shared model name option. Default: `gpt-5.4`.
+- `--effort` / `--thinking`: Optional reasoning level. `--effort` is canonical and `--thinking` is a backward-compatible alias. Pi supports `off|minimal|low|medium|high|xhigh` natively via `pi --thinking`; Copilot supports a similar flag via `--reasoning-effort` (`none|low|medium|high|xhigh|max`). Runtime maps cross-provider values when needed: `off -> none`, `minimal -> low`, `none -> off`, `max -> xhigh`.
 - `--copilot-github-token`: GitHub token for Copilot authentication (from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`)
 - `--project-id` / `CI_PROJECT_ID`: GitLab project ID
 - `--mr-iid` / `CI_MERGE_REQUEST_IID`: Merge request IID
@@ -137,12 +138,14 @@ Rules:
 
 ### Pi Provider Runtime
 
-When `--llm-service=pi` is selected:
+When `--agent=pi` is selected:
 
 - The app starts Pi with `--mode json --no-session --tools read,grep,find,ls`
-- It forwards optional `--pi-provider` as `pi --provider <name>`
-- If `--pi-provider` is omitted and `--llm-model` starts with `gemini-` while `GEMINI_API_KEY` is present, the app infers `--provider google`
-- It forwards `--llm-model` as `pi --model <pattern>`
+- It forwards optional `--provider` as `pi --provider <name>`
+- If `--provider` is omitted and `--model` starts with `gemini-` while `GEMINI_API_KEY` is present, the app infers `--provider google`
+- It forwards `--model` as `pi --model <pattern>`
+- It forwards optional `--effort` (or alias `--thinking`) as `pi --thinking <level>` with compatibility mapping for values shared from Copilot style (`none -> off`, `max -> xhigh`)
+- It appends optional parsed `--agent-args` tokens after preset Pi CLI options and before the final prompt argument
 - It passes the full review prompt as the final CLI argument
 - It spawns Pi with stdin ignored (`stdio: ["ignore", "pipe", "pipe"]`) so the CLI does not hang waiting for EOF on stdin
 - Pi's raw JSONL stream is preserved for logging and parsing, but console output is reformatted into concise event summaries during local runs
@@ -584,7 +587,7 @@ To speed up dependency installation:
 ### Type Checking
 
 - Run `bun tsgo` to check TypeScript errors
-- Type definitions are colocated by domain in `app/services/review.types.ts`, `app/services/db.types.ts`, and `app/services/gitlab.types.ts`
+- Type definitions are colocated by domain in `app/types/review.types.ts`, `app/services/db.types.ts`, and `app/services/gitlab.types.ts`
 - SQL module types in `app/types/sql.d.ts` (ambient declaration)
 
 ### For LLM Maintainers

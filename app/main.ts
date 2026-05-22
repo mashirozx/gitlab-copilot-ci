@@ -79,11 +79,11 @@ const main = async () => {
       }
     }
 
-    logger.info(`[LLM] Using service: ${argv["llm-service"]}`);
+    logger.info(`[LLM] Using service: ${argv["agent"]}`);
 
     // B. Ask the configured LLM CLI to review the diff and read repo files as needed
     const reviewRunner =
-      argv["llm-service"] === "pi" ? runPiReview : runCopilotReview;
+      argv["agent"] === "pi" ? runPiReview : runCopilotReview;
     const response = await reviewRunner({
       diffFilePaths,
       title: mr.title,
