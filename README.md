@@ -71,7 +71,7 @@ Options:
   --mr-iid                       GitLab merge request IID (default: CI_MERGE_REQUEST_IID)
   --html-marker-prefix           Prefix used for markers that identify CLI-generated GitLab MR reviews/comments
                                  Generated markers: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data
-                                 Default: copilot. Prefix must be lowercase letters or digits so markers stay in xxx-xxx-xxx format
+                                 Default: copilot. Prefix must use lowercase kebab-case, for example xiaomi-mimo-code-review
   -d, --debug                    Debug mode: generate mock reviews only (default: false)
   --log                          Enable log file writing
                                  - --log: write to current directory

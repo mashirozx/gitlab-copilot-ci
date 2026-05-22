@@ -123,7 +123,7 @@ Rules:
 - `--max-git-diff-page`: Maximum number of paginated GitLab MR diff pages to fetch. Default: unlimited. The runtime currently requests `per_page=20`, so a limit of `N` pages means at most the first `20 * N` diff entries are provided to review generation.
 - `--lang`: Additional output language(s) for translations (repeatable, e.g. `--lang=zh-CN --lang=ja`). English is always included. Results in summary/inline comments are displayed in the order specified. Default: `[]` (English only).
 - `--version` / `-v`: Show version information and exit immediately. Prints: `${name} ${version} (${platform}-${arch}) - ${commit-hash}`
-- `--html-marker-prefix`: Prefix used to generate HTML markers for inline reviews, summary note detection, and tracking data. Generated values are `<prefix>-review-marker`, `<prefix>-summary-marker`, and `<prefix>-review-data`. Default: `copilot`. Validation enforces lowercase letters/digits only so generated markers remain in `xxx-xxx-xxx` format.
+- `--html-marker-prefix`: Prefix used to generate HTML markers for inline reviews, summary note detection, and tracking data. Generated values are `<prefix>-review-marker`, `<prefix>-summary-marker`, and `<prefix>-review-data`. Default: `copilot`. Validation accepts lowercase kebab-case prefixes such as `xiaomi-mimo-code-review`.
 - `--debug`: Test mode (generates mock reviews instead of real analysis)
 - **`--db`**: Path to SQLite database for review history (optional)
 - **`--log`**: Enable log file writing (independent of `--debug`). Standard parser pattern for a flag that may appear with or without a value:

@@ -1,5 +1,6 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix.ts";
 import { getFormattedVersion } from "./version";
 
 export const argv = yargs(hideBin(process.argv))
@@ -76,26 +77,10 @@ export const argv = yargs(hideBin(process.argv))
       "Prefix used to build HTML markers that identify CLI-generated GitLab MR comments: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data",
     type: "string",
     default: "copilot",
-    coerce: (arg: string | undefined) => {
-      const prefix = arg ?? "copilot";
-      const markerPattern = /^[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/;
-      const reviewMarker = `${prefix}-review-marker`;
-      const summaryMarker = `${prefix}-summary-marker`;
-      const reviewDataTag = `${prefix}-review-data`;
-
-      if (
-        !/^[a-z0-9]+$/.test(prefix) ||
-        !markerPattern.test(reviewMarker) ||
-        !markerPattern.test(summaryMarker) ||
-        !markerPattern.test(reviewDataTag)
-      ) {
-        throw new Error(
-          "--html-marker-prefix must be lowercase letters or numbers only so generated markers match xxx-xxx-xxx format",
-        );
-      }
-
-      return prefix;
-    },
+    coerce: (arg: string | undefined) =>
+      normalizeHtmlMarkerPrefix({
+        prefix: arg,
+      }),
   })
   .option("debug", {
     alias: "d",
