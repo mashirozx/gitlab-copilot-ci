@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
 import { Temporal } from "temporal-polyfill";
 import { migrations } from "../migrations/index";
-import type { ReviewItem, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
 import { getReviewPreferredLine } from "../utils/review-helpers";
+import type { StoredReviewEntity } from "./db.types";
 import { logger } from "./logger";
+import type { ReviewItemEntity } from "./review.types";
 import createSchemaMigrationsSql from "./sql/create_schema_migrations.sql" with {
   type: "text",
 };
@@ -77,13 +78,17 @@ export class DatabaseService {
 
   isEnabled = (): boolean => this.database !== null;
 
-  getStoredReviewsForMR = ({ mrIid }: { mrIid: string }): StoredReview[] => {
+  getStoredReviewsForMR = ({
+    mrIid,
+  }: {
+    mrIid: string;
+  }): StoredReviewEntity[] => {
     if (!this.database) {
       return [];
     }
 
     return this.database
-      .query<StoredReview, [string]>(selectReviewsForMrSql)
+      .query<StoredReviewEntity, [string]>(selectReviewsForMrSql)
       .all(mrIid);
   };
 
@@ -93,7 +98,7 @@ export class DatabaseService {
     sourceSnippet,
   }: {
     mrIid: string;
-    review: ReviewItem;
+    review: ReviewItemEntity;
     sourceSnippet: string;
   }): void => {
     if (!this.database) {

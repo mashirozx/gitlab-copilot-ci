@@ -1,5 +1,5 @@
 import { REVIEW_RESPONSE_JSON_MARKER } from "./constants";
-import type { StoredReview } from "./types/entities";
+import type { StoredReviewEntity } from "./services/db.types";
 
 const buildTranslationsSpec = (langs: string[]): string => {
   if (langs.length === 0) return "";
@@ -81,7 +81,7 @@ export const buildCopilotPrompt = ({
   diffFilePaths: string[];
   title: string;
   description?: string | null;
-  previousReviews?: StoredReview[];
+  previousReviews?: StoredReviewEntity[];
   langs: string[];
   debugMode: boolean;
 }): string => {

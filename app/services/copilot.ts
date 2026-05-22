@@ -4,12 +4,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
 import { buildCopilotPrompt } from "../prompts";
-import type { ReviewResponse, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson } from "../utils/json";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
+import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
+import type { ReviewResponseEntity } from "./review.types";
 
 export const runCopilotReview = async ({
   diffFilePaths,
@@ -20,8 +21,8 @@ export const runCopilotReview = async ({
   diffFilePaths: string[];
   title: string;
   description?: string | null;
-  previousReviews?: StoredReview[];
-}): Promise<ReviewResponse> => {
+  previousReviews?: StoredReviewEntity[];
+}): Promise<ReviewResponseEntity> => {
   const langs = argv["lang"];
 
   const prompt = buildCopilotPrompt({
@@ -140,7 +141,7 @@ export const runCopilotReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        const result = parseJson<ReviewResponse>({ text: jsonText });
+        const result = parseJson<ReviewResponseEntity>({ text: jsonText });
         result.duration = duration;
 
         getContextInfo(env)
@@ -202,7 +203,7 @@ export const getContextInfo = async (
   _env: NodeJS.ProcessEnv,
 ): Promise<{
   model?: string;
-  context?: ReviewResponse["context"];
+  context?: ReviewResponseEntity["context"];
 }> => {
   return new Promise((resolve) => {
     logger.info("[Copilot] Fetching context information from logs...");
@@ -227,7 +228,7 @@ export const getContextInfo = async (
 
       const result: {
         model?: string;
-        context?: ReviewResponse["context"];
+        context?: ReviewResponseEntity["context"];
       } = {};
 
       result.model = argv["llm-model"];

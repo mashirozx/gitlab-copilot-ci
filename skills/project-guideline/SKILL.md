@@ -38,7 +38,7 @@ keywords:
 
 ### Review vs. Summary
 
-- **Review** (inline): One comment on a specific diff position. Each review is a `ReviewItem` with `file_path`, `suggestion`, optional `new_line`, optional `old_line`, optional `diff_file`, optional `diff_line_code`, and optional `translations: Record<string, string>` for additional languages. New review output is expected to include `diff_file` and `diff_line_code`, and at least one of `new_line` or `old_line` must be present.
+- **Review** (inline): One comment on a specific diff position. Each review is a `ReviewItemEntity` with `file_path`, `suggestion`, optional `new_line`, optional `old_line`, optional `diff_file`, optional `diff_line_code`, and optional `translations: Record<string, string>` for additional languages. New review output is expected to include `diff_file` and `diff_line_code`, and at least one of `new_line` or `old_line` must be present.
 - **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. It also includes a `## 💡 Other Suggestions` section for valid findings that should stay out of inline review comments because they cannot be mapped safely to an exact current diff line. Marked with HTML comment `<!-- copilot-summary-marker -->`.
 
 ### Related Terms
@@ -64,7 +64,9 @@ The app source is split into focused modules under `app/`:
 | `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
 | `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
 | `pi-tst.ts` | Manual Pi spawn repro script for local debugging of stdout/stderr behavior; run with `GEMINI_API_KEY=... bun run ./pi-tst.ts` and add `--bad-key` to force an auth failure path |
-| `app/types/entities.ts` | Shared TypeScript types (`ReviewItem`, `StoredReview`, `ReviewResponse`, and GitLab review-tracking, paginated diff wrapper/result, and MR helper types). Individual MR diff items use gitbeaker's upstream `MergeRequestDiffSchema`. |
+| `app/services/review.types.ts` | Review payload and LLM response entities used across prompt building, providers, and review-position recomputation (`ReviewItemEntity`, `ReviewResponseEntity`) |
+| `app/services/db.types.ts` | SQLite review storage entity (`StoredReviewEntity`) |
+| `app/services/gitlab.types.ts` | GitLab-facing entities and internal GitLab workflow data types (`TrackedDiscussionEntity`, MR context/note/discussion entities, and cleanup/diff result data types). Individual MR diff items still use gitbeaker's upstream `MergeRequestDiffSchema`. |
 | `app/types/sql.d.ts` | Ambient module declaration for `.sql` file imports |
 | `app/prompts.ts` | Prompt template builder (`buildCopilotPrompt`) with multilingual support, a dedicated unified-diff line-number guidance block, support for `new_line`/`old_line` review positions plus `diff_file`/`diff_line_code` references, explicit instructions to read all paginated `mr-diff.page-*.diff` files, and a markdown-only `## 💡 Other Suggestions` summary section |
 | `app/utils/diff-files.ts` | Diff-page helpers for building line-addressable unified diff files, including always-on `# gitlab-meta ...` comment lines plus standard extended diff headers for file metadata such as mode changes and renames, and recomputing GitLab review positions from `diff_file` / `diff_line_code` references |
@@ -77,14 +79,15 @@ The app source is split into focused modules under `app/`:
 | `app/services/db.ts` | `DatabaseService` that owns the optional SQLite connection, migration runner, review reads/writes, and close lifecycle; uses Temporal for `created_at` and imports its runtime SQL statements from `app/services/sql/*.sql` |
 | `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
 | `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) using shared CLI env, JSON extraction/parsing, and elapsed-time helpers |
-| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-console.ts`, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponse` contract |
+| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--llm-service=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-console.ts`, and uses shared CLI env, JSON helpers, and elapsed-time helpers before parsing the `agent_end` event back into the shared `ReviewResponseEntity` contract |
 | `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, paginated `/diffs` retrieval, summary-note lookup/removal, discussion cleanup, and comment creation, including inline review positions that may use `new_line`, `old_line`, or both |
 
 Rules:
 - No default exports in `app/` (enforced by biome, except `app/types/sql.d.ts`)
 - Use named imports throughout
 - Service imports from within `app/` use `./services/xxx`
-- Type imports use `./types/entities` or `../types/entities`, including GitLab-specific helper types shared between `main.ts` and `services/gitlab.ts`
+- Type imports should come from local service type modules (`./services/review.types`, `./services/db.types`, `./services/gitlab.types`) rather than a central type hub
+- Naming convention: storage-related or external data structure types use `*Entity`; internal workflow structures use `*DataType`
 - Pure parser/formatter/lookup logic that does not own side effects should live under `app/utils/`, not `app/main.ts`
 
 ---
@@ -148,7 +151,7 @@ When `--llm-service=pi` is selected:
 - It parses Pi's JSONL stdout stream and waits for the `agent_end` event to extract the assistant's final text response
 - The assistant response must still contain the shared `REVIEW_RESPONSE_JSON_MARKER` line so the app can parse the embedded review JSON
 - Pi provider/auth failures can arrive entirely on stdout inside JSON events; stderr may remain empty even when the run fails
-- If Pi ends with an assistant-side provider error instead of review JSON, `app/services/pi.ts` surfaces that provider error message directly in `ReviewResponse.errors`
+- If Pi ends with an assistant-side provider error instead of review JSON, `app/services/pi.ts` surfaces that provider error message directly in `ReviewResponseEntity.errors`
 
 ### Inline Review Positions
 
@@ -282,7 +285,7 @@ databaseService.initialize({ errors });
 **Before**: Used `database.exec()` (deprecated in Bun)
 **Now**: Uses `database.run()` (scalar statements) and `database.query().run()` for parameterized queries
 
-- `databaseService.getStoredReviewsForMR()`: Returns `StoredReview[]` with English-only suggestions
+- `databaseService.getStoredReviewsForMR()`: Returns `StoredReviewEntity[]` with English-only suggestions
 - `databaseService.storeReview()`: Inserts review with English suggestion stored in `suggestion` column (no secondary translations)
 - `databaseService.close()`: Closes the optional SQLite connection during shutdown and reports close failures into the shared error list
 - Review ID: `{mrIid}-{file_path}-{new_line}-{epochMilliseconds}`
@@ -337,7 +340,7 @@ const db = initializeDatabase(dbPath);
 **Before**: Used `database.exec()` (deprecated in Bun)
 **Now**: Uses `database.run()` (scalar statements) and `database.query().run()` for parameterized queries
 
-- `getStoredReviewsForMR()`: Returns `StoredReview[]` with English-only suggestions
+- `getStoredReviewsForMR()`: Returns `StoredReviewEntity[]` with English-only suggestions
 - `storeReview()`: Inserts review with English suggestion stored in `suggestion` column (no secondary translations)
 - Review ID: `{mrIid}-{file_path}-{new_line}-{epochMilliseconds}`
 
@@ -347,7 +350,7 @@ With `--lang=zh-CN --lang=ja` option:
 
 1. **Copilot Prompt**
    - Asks Copilot to provide translations for each review in the requested languages
-   - Returns `ReviewItem` with `translations: Record<string, string>` field
+  - Returns `ReviewItemEntity` with `translations: Record<string, string>` field
    - Example: `{ suggestion: "use const instead of let", translations: { "zh-CN": "使用 const 而不是 let", "ja": "letではなくconstを使用します" } }`
 
 2. **Inline Comments**
@@ -383,15 +386,15 @@ With `--lang=zh-CN --lang=ja` option:
      ```
 
 4. **Database Storage**
-   - `StoredReview` stores **English suggestion only** (no translations)
+  - `StoredReviewEntity` stores **English suggestion only** (no translations)
    - Translations are transient (used in current review, not persisted)
    - Future LLM reviewers see only the English suggestion when loading previous reviews
 
 ### Types
 
-**ReviewItem** (request payload from Copilot):
+**ReviewItemEntity** (request payload from Copilot):
 ```typescript
-type ReviewItem = {
+type ReviewItemEntity = {
   file_path: string;
   new_line: number;
   old_line?: number;
@@ -400,9 +403,9 @@ type ReviewItem = {
 };
 ```
 
-**StoredReview** (database record):
+**StoredReviewEntity** (database record):
 ```typescript
-type StoredReview = {
+type StoredReviewEntity = {
   id: string;
   file_path: string;
   new_line: number;
@@ -413,13 +416,13 @@ type StoredReview = {
   created_at: number;         // milliseconds
 };
 ```
-Note: `StoredReview` does **not** include `translations` — only English suggestions are persisted.
+Note: `StoredReviewEntity` does **not** include `translations` — only English suggestions are persisted.
 
-**ReviewResponse** (Copilot output):
+**ReviewResponseEntity** (Copilot output):
 ```typescript
-type ReviewResponse = {
+type ReviewResponseEntity = {
   comment: string;            // Markdown summary (multilingual if --lang used)
-  reviews: ReviewItem[];      // Each may have translations
+  reviews: ReviewItemEntity[];      // Each may have translations
   errors?: string[];
   context?: { total_length?: number; used_length?: number; usage_percentage?: number; };
   duration?: number;          // milliseconds
@@ -581,7 +584,7 @@ To speed up dependency installation:
 ### Type Checking
 
 - Run `bun tsgo` to check TypeScript errors
-- All type definitions centralized in `app/types/entities.ts`
+- Type definitions are colocated by domain in `app/services/review.types.ts`, `app/services/db.types.ts`, and `app/services/gitlab.types.ts`
 - SQL module types in `app/types/sql.d.ts` (ambient declaration)
 
 ### For LLM Maintainers
@@ -614,7 +617,8 @@ This keeps the skill in sync with the codebase so future LLMs have accurate cont
 - `app/migrations/` — Database migration files (SQL and registry)
 - `app/services/db.ts` — Database initialization with migration runner
 - `app/services/logger.ts` — Logging with Temporal timestamps
-- `app/types/` — TypeScript type definitions and SQL module declaration
+- `app/services/*.types.ts` — Domain-local TypeScript entities and data types
+- `app/types/sql.d.ts` — SQL module declaration
 - `scripts/ci/ensure-release.ts` — Ensure the versioned GitLab release exists before the build stage
 - `scripts/ci/build-and-publish.ts` — Per-platform build, rename, upload, and link the release asset
 - `.gitlab-ci.yml` — CI/CD pipeline definition
