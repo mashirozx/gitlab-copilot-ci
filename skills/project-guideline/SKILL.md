@@ -39,11 +39,12 @@ keywords:
 ### Review vs. Summary
 
 - **Review** (inline): One comment on a specific diff position. Each review is a `ReviewItemEntity` with `file_path`, `suggestion`, optional `new_line`, optional `old_line`, optional `diff_file`, optional `diff_line_code`, and optional `translations: Record<string, string>` for additional languages. New review output is expected to include `diff_file` and `diff_line_code`, and at least one of `new_line` or `old_line` must be present.
-- **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. It also includes a `## 💡 Other Suggestions` section for valid findings that should stay out of inline review comments because they cannot be mapped safely to an exact current diff line. Marked with HTML comment `<!-- copilot-summary-marker -->`.
+- **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. It also includes a `## 💡 Other Suggestions` section for valid findings that should stay out of inline review comments because they cannot be mapped safely to an exact current diff line. Marked with HTML comment `<!-- <prefix>-summary-marker -->`, where `<prefix>` comes from `--html-marker-prefix` (default: `copilot`).
 
 ### Related Terms
 - **Thread/Discussion**: GitLab's term for a conversation thread on a diff line. Each review comment starts a discussion.
-- **Review tracking**: Information embedded in the summary comment's HTML (`<!-- copilot-review-data:... -->`) to track which discussions were created by Copilot.
+- **Review tracking**: Information embedded in the summary comment's HTML (`<!-- <prefix>-review-data:... -->`) to track which discussions were created by the bot.
+- **Marker purpose**: The generated marker trio (`<prefix>-review-marker`, `<prefix>-summary-marker`, `<prefix>-review-data`) is the identity mechanism for comments created by this CLI on GitLab MRs, enabling safe lookup, cleanup, and summary replacement without touching unrelated user comments.
 - **Discussion note deletion**: Inline review notes inside a merge-request discussion must be deleted through `MergeRequestDiscussions.removeNote(...)`, not `MergeRequestNotes.remove(...)`.
 - **Tracking retention**: When a run replaces the summary comment, it must carry forward any previously tracked discussions that could not be cleaned up in the current run, plus newly created discussions from the current run.
 - **Preserve behavior docs during refactors**: When moving logic between files, keep critical inline documentation with the owning code path, especially GitLab MR discussion position rules that explain `startSha = baseSha` and when `oldLine` must be omitted.
@@ -123,9 +124,7 @@ Rules:
 - `--max-git-diff-page`: Maximum number of paginated GitLab MR diff pages to fetch. Default: unlimited. The runtime currently requests `per_page=20`, so a limit of `N` pages means at most the first `20 * N` diff entries are provided to review generation.
 - `--lang`: Additional output language(s) for translations (repeatable, e.g. `--lang=zh-CN --lang=ja`). English is always included. Results in summary/inline comments are displayed in the order specified. Default: `[]` (English only).
 - `--version` / `-v`: Show version information and exit immediately. Prints: `${name} ${version} (${platform}-${arch}) - ${commit-hash}`
-- `--review-marker`: HTML comment marker for inline reviews (default: `copilot-review-marker`)
-- `--summary-marker`: HTML comment marker for summary (default: `copilot-summary-marker`)
-- `--review-data-tag`: HTML tag for tracking review discussions (default: `copilot-review-data`)
+- `--html-marker-prefix`: Prefix used to generate HTML markers for inline reviews, summary note detection, and tracking data. Generated values are `<prefix>-review-marker`, `<prefix>-summary-marker`, and `<prefix>-review-data`. Default: `copilot`. Validation enforces lowercase letters/digits only so generated markers remain in `xxx-xxx-xxx` format.
 - `--debug`: Test mode (generates mock reviews instead of real analysis)
 - **`--db`**: Path to SQLite database for review history (optional)
 - **`--log`**: Enable log file writing (independent of `--debug`). Standard parser pattern for a flag that may appear with or without a value:

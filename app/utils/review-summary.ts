@@ -70,8 +70,12 @@ export const buildSummaryNote = ({
   trackingJson: string;
   errors: string[];
 }): string => {
-  let summaryBody = `<!-- ${argv["summary-marker"]} -->
-<!-- ${argv["review-data-tag"]}:${trackingJson} -->
+  const markerPrefix = argv["html-marker-prefix"];
+  const summaryMarker = `${markerPrefix}-summary-marker`;
+  const reviewDataTag = `${markerPrefix}-review-data`;
+
+  let summaryBody = `<!-- ${summaryMarker} -->
+<!-- ${reviewDataTag}:${trackingJson} -->
 ${response.comment}`;
 
   summaryBody += buildPerformanceMetricsSection({

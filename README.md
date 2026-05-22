@@ -75,9 +75,9 @@ Options:
                                  (default: COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN)
   --project-id                   GitLab project ID (default: CI_PROJECT_ID)
   --mr-iid                       GitLab merge request IID (default: CI_MERGE_REQUEST_IID)
-  --review-marker                HTML comment marker for review comments (default: copilot-review-marker)
-  --summary-marker               HTML comment marker for summary comment (default: copilot-summary-marker)
-  --review-data-tag              HTML tag for review data tracking (default: copilot-review-data)
+  --html-marker-prefix           Prefix used for markers that identify CLI-generated GitLab MR reviews/comments
+                                 Generated markers: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data
+                                 Default: copilot. Prefix must be lowercase letters or digits so markers stay in xxx-xxx-xxx format
   -d, --debug                    Debug mode: generate mock reviews only (default: false)
   --log                          Enable log file writing
                                  - --log: write to current directory
