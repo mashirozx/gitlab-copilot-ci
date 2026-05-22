@@ -111,7 +111,7 @@ Rules:
 **app/main.ts** (via `app/utils/argv.ts`) accepts:
 - `--agent`: Agent provider for review generation. Choices: `github-copilot`, `pi`. Default: `github-copilot`.
 - `--gitlab-token` / `GITLAB_TOKEN`: GitLab API authentication
-- `--gitlab-url` / `GITLAB_API_URL`: GitLab API base URL (e.g., `https://gitlab.com/api/v4`)
+- `--gitlab-url` / `CI_SERVER_URL`: GitLab server URL (e.g., `https://gitlab.com`)
 - `--agent-bin`: Path to the selected agent CLI binary (optional). Defaults to `AGENT_BIN` when set. Runtime fallback remains agent-specific (`COPILOT_BIN`/`copilot` for GitHub Copilot, `PI_BIN`/`pi` for Pi) when not provided.
 - `--agent-args`: Optional extra CLI arguments appended to the selected agent invocation after built-in preset options and before the final prompt argument.
 - `--provider`: Shared provider name passed through to the selected agent (currently used in the Pi path as `pi --provider`) (optional, defaults to `PI_PROVIDER` when set)
@@ -214,21 +214,21 @@ When `--log` flag is enabled (independent of `--debug`):
   # Enable logging to cwd (flag with no value)
    ./dist/gitlab-copilot-ci --log \
      --gitlab-token YOUR_TOKEN \
-     --gitlab-url https://gitlab.com/api/v4 \
+     --gitlab-url https://gitlab.com \
      --project-id 123 \
      --mr-iid 456
 
    # Enable logging to a specific directory
    ./dist/gitlab-copilot-ci --log /var/log/ci \
      --gitlab-token YOUR_TOKEN \
-     --gitlab-url https://gitlab.com/api/v4 \
+     --gitlab-url https://gitlab.com \
      --project-id 123 \
      --mr-iid 456
 
    # Repeated values are allowed; only the first explicit path is used
    ./dist/gitlab-copilot-ci --log /var/log/ci --log /tmp/ignored \
      --gitlab-token YOUR_TOKEN \
-     --gitlab-url https://gitlab.com/api/v4 \
+     --gitlab-url https://gitlab.com \
      --project-id 123 \
      --mr-iid 456
 
