@@ -22,9 +22,10 @@ export class GitLabService {
   private readonly projectId = argv["project-id"];
   private readonly mrIid = parseInt(argv["mr-iid"], 10);
   private readonly langs = argv["lang"];
-  private readonly reviewMarker = argv["review-marker"];
-  private readonly summaryMarker = argv["summary-marker"];
-  private readonly reviewDataTag = argv["review-data-tag"];
+  private readonly htmlMarkerPrefix = argv["html-marker-prefix"];
+  private readonly reviewMarker = `${this.htmlMarkerPrefix}-review-marker`;
+  private readonly summaryMarker = `${this.htmlMarkerPrefix}-summary-marker`;
+  private readonly reviewDataTag = `${this.htmlMarkerPrefix}-review-data`;
 
   constructor() {
     this.client = new Gitlab({

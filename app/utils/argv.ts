@@ -80,20 +80,32 @@ export const argv = yargs(hideBin(process.argv))
       return arg;
     },
   })
-  .option("review-marker", {
-    describe: "HTML comment marker for review comments",
+  .option("html-marker-prefix", {
+    alias: "html-marker-preffix",
+    describe:
+      "Prefix used to build HTML markers that identify CLI-generated GitLab MR comments: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data",
     type: "string",
-    default: "copilot-review-marker",
-  })
-  .option("summary-marker", {
-    describe: "HTML comment marker for summary comment",
-    type: "string",
-    default: "copilot-summary-marker",
-  })
-  .option("review-data-tag", {
-    describe: "HTML comment tag for review data tracking",
-    type: "string",
-    default: "copilot-review-data",
+    default: "copilot",
+    coerce: (arg: string | undefined) => {
+      const prefix = arg ?? "copilot";
+      const markerPattern = /^[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/;
+      const reviewMarker = `${prefix}-review-marker`;
+      const summaryMarker = `${prefix}-summary-marker`;
+      const reviewDataTag = `${prefix}-review-data`;
+
+      if (
+        !/^[a-z0-9]+$/.test(prefix) ||
+        !markerPattern.test(reviewMarker) ||
+        !markerPattern.test(summaryMarker) ||
+        !markerPattern.test(reviewDataTag)
+      ) {
+        throw new Error(
+          "--html-marker-prefix must be lowercase letters or numbers only so generated markers match xxx-xxx-xxx format",
+        );
+      }
+
+      return prefix;
+    },
   })
   .option("debug", {
     alias: "d",
