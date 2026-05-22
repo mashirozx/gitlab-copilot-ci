@@ -1,4 +1,4 @@
-import type { ReviewResponseEntity } from "../services/review.types";
+import type { ReviewResponseEntity } from "../types/review.types";
 import { argv } from "./argv";
 
 export const formatDurationAsHms = ({

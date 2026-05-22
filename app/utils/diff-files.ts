@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import type { MergeRequestDiffSchema } from "@gitbeaker/rest";
 import { colorize } from "consola/utils";
-import type { ReviewItemEntity } from "../services/review.types";
+import type { ReviewItemEntity } from "../types/review.types";
 
 const getDiffHeaderPaths = ({
   diff,

@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
 import { buildCopilotPrompt } from "../prompts";
+import type { ReviewResponseEntity } from "../types/review.types";
+import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
@@ -8,7 +10,6 @@ import { createPiConsoleFormatter } from "../utils/pi-console";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
-import type { ReviewResponseEntity } from "./review.types";
 
 type PiTextContent = {
   type?: string;
@@ -62,6 +63,39 @@ const inferPiProvider = ({
 
   if (normalizedModel.startsWith("gemini-") && env.GEMINI_API_KEY) {
     return "google";
+  }
+
+  return null;
+};
+
+const normalizeEffortForPi = ({
+  effort,
+}: {
+  effort?: string;
+}): string | null => {
+  if (!effort) {
+    return null;
+  }
+
+  const normalized = effort.trim().toLowerCase();
+
+  if (normalized === "none") {
+    return "off";
+  }
+
+  if (normalized === "max") {
+    return "xhigh";
+  }
+
+  if (
+    normalized === "off" ||
+    normalized === "minimal" ||
+    normalized === "low" ||
+    normalized === "medium" ||
+    normalized === "high" ||
+    normalized === "xhigh"
+  ) {
+    return normalized;
   }
 
   return null;
@@ -200,19 +234,37 @@ export const runPiReview = async ({
     });
 
     const provider =
-      argv["pi-provider"] ??
+      argv["provider"] ??
       inferPiProvider({
-        model: argv["llm-model"],
+        model: argv["model"],
         env,
       });
+    const thinking = normalizeEffortForPi({
+      effort: argv["effort"],
+    });
+
+    if (argv["effort"] && !thinking) {
+      logger.warn(
+        `[Pi] Ignoring unsupported --effort value: ${argv["effort"]}`,
+      );
+    }
 
     if (provider) {
       piArgs.push("--provider", provider);
     }
 
-    if (argv["llm-model"]) {
-      piArgs.push("--model", argv["llm-model"]);
+    if (argv["model"]) {
+      piArgs.push("--model", argv["model"]);
     }
+
+    if (thinking) {
+      piArgs.push("--thinking", thinking);
+    }
+
+    const extraAgentArgs = parseAgentArgs({
+      rawArgs: argv["agent-args"],
+    });
+    piArgs.push(...extraAgentArgs);
 
     piArgs.push(prompt);
 
@@ -220,7 +272,9 @@ export const runPiReview = async ({
       `[Pi] Using provider: ${provider ?? "default"} (GEMINI_API_KEY ${env.GEMINI_API_KEY ? "present" : "missing"})`,
     );
 
-    const child = spawn(argv["pi-bin"], piArgs, {
+    const agentBin = argv["agent-bin"] ?? process.env.PI_BIN ?? "pi";
+
+    const child = spawn(agentBin, piArgs, {
       cwd: process.cwd(),
       env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -328,7 +382,7 @@ export const runPiReview = async ({
           [...(agentEndEvent.messages ?? [])]
             .reverse()
             .find((message) => message.role === "assistant")?.model ??
-          argv["llm-model"];
+          argv["model"];
 
         resolve({
           ...result,

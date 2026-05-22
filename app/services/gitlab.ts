@@ -1,4 +1,5 @@
 import { Gitlab } from "@gitbeaker/rest";
+import type { ReviewItemEntity } from "../types/review.types";
 import { argv } from "../utils/argv";
 import { getReviewPreferredLine } from "../utils/review-helpers";
 import type {
@@ -12,7 +13,6 @@ import type {
   TrackedDiscussionEntity,
 } from "./gitlab.types";
 import { logger } from "./logger";
-import type { ReviewItemEntity } from "./review.types";
 
 export class GitLabService {
   private readonly diffPageSize = 20;

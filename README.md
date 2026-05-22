@@ -55,20 +55,26 @@ The binary can be used as a CI step in GitLab CI/CD pipelines.
 
 ```
 Options:
-  --llm-service                  LLM service provider to use for code review
+  --agent                        Agent provider to use for code review
                                  (choices: github-copilot, pi; default: github-copilot)
-  --gitlab-token, --gt           GitLab API token (default: GITLAB_TOKEN)
-  --gitlab-url, --gu             GitLab API URL (default: GITLAB_API_URL)
-  --copilot-bin                  GitHub Copilot CLI binary name or path (default: copilot)
-  --pi-bin                       Pi CLI binary name or path (default: PI_BIN or pi)
-  --pi-provider                  Pi provider name passed to --provider
+  --gitlab-token                 GitLab API token (default: GITLAB_TOKEN)
+  --gitlab-url                   GitLab API URL (default: GITLAB_API_URL)
+  --agent-bin                    Agent CLI binary name or path
+                                 (default: AGENT_BIN when set, else service default)
+  --agent-args                   Optional extra CLI args appended to selected agent invocation
+                                 (parsed as shell-like tokens)
+  --provider                     Shared provider name passed through to selected agent
                                  (default: PI_PROVIDER when set)
-  --llm-model                    LLM model name (default: gpt-5.4)
-  --copilot-model                Alias for --llm-model
+  --model                        Model name (default: gpt-5.4)
+  --effort                       Optional reasoning level
+                                 - Pi: off, minimal, low, medium, high, xhigh
+                                 - Copilot: none, low, medium, high, xhigh, max
+                                 - cross-provider mapping: off->none, minimal->low, none->off, max->xhigh
+  --thinking                     Alias for --effort
   --copilot-github-token         GitHub token for Copilot authentication
                                  (default: COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN)
-  --project-id, -p               GitLab project ID (default: CI_PROJECT_ID)
-  --mr-iid, -m                   GitLab merge request IID (default: CI_MERGE_REQUEST_IID)
+  --project-id                   GitLab project ID (default: CI_PROJECT_ID)
+  --mr-iid                       GitLab merge request IID (default: CI_MERGE_REQUEST_IID)
   --review-marker                HTML comment marker for review comments (default: copilot-review-marker)
   --summary-marker               HTML comment marker for summary comment (default: copilot-summary-marker)
   --review-data-tag              HTML tag for review data tracking (default: copilot-review-data)
