@@ -14,7 +14,7 @@ keywords:
 
 ## Project Overview
 
-**gitlab-copilot-ci** is a Bun-based shell application compiled into a binary for automated code review. The binary integrates with GitLab CI systems to perform code reviews using a selectable LLM CLI provider (currently GitHub Copilot or Pi) and post results back to merge requests.
+**gitlab-copilot-ci** is a Bun-based shell application compiled into a binary for automated code review. The binary integrates with GitLab CI systems to perform code reviews using a selectable LLM CLI provider (currently `github-copilot-cli` or Pi) and post results back to merge requests.
 
 ### Two Runtime Environments
 
@@ -61,6 +61,7 @@ The app source is split into focused modules under `app/`:
 | `app/constants.ts` | Shared app-wide constants, including the JSON marker prefix required in prompt instructions and provider CLI output parsing |
 | `app/utils/cli-env.ts` | Shared CLI environment helpers, including color-preserving defaults used by both Copilot and Pi child processes |
 | `app/utils/json.ts` | Shared JSON helpers for extracting marker-prefixed payloads and safe parsing |
+| `app/utils/model-name-parser.ts` | Shared model-string parser that splits `provider/model:effort` or similar merged model syntax on the final `:` for agent-specific handling |
 | `app/utils/pi-console.ts` | Pi-specific console event formatter that turns Pi JSON stream events into concise, human-readable console output without changing raw log capture |
 | `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
 | `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
@@ -75,7 +76,7 @@ The app source is split into focused modules under `app/`:
 | `app/utils/review-summary.ts` | Pure summary markdown builders for performance/error sections and final MR summary note composition |
 | `app/migrations/0001_initial.sql` | Initial schema: `reviews` and `schema_migrations` tables |
 | `app/migrations/index.ts` | Migration registry and loader |
-| `app/utils/argv.ts` | CLI argument parsing via yargs, including provider selection with `--agent` |
+| `app/utils/argv.ts` | CLI argument parsing via yargs, including agent selection with `--agent` and shared model syntax parsing |
 | `app/services/logger.ts` | Consola-based logger with file reporter and module-scope `--log` initialization; uses Temporal for timestamps |
 | `app/services/db.ts` | `DatabaseService` that owns the optional SQLite connection, migration runner, review reads/writes, and close lifecycle; uses Temporal for `created_at` and imports its runtime SQL statements from `app/services/sql/*.sql` |
 | `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
@@ -110,14 +111,12 @@ Rules:
 ### CLI Arguments and Environment Variables
 
 **app/main.ts** (via `app/utils/argv.ts`) accepts:
-- `--agent`: Agent provider for review generation. Choices: `github-copilot`, `pi`. Default: `github-copilot`.
+- `--agent`: Agent provider for review generation. Choices: `github-copilot-cli`, `pi`. Default: `github-copilot-cli`.
 - `--gitlab-token` / `GITLAB_TOKEN`: GitLab API authentication
 - `--gitlab-url` / `CI_SERVER_URL`: GitLab server URL (e.g., `https://gitlab.com`)
-- `--agent-bin`: Path to the selected agent CLI binary (optional). Defaults to `AGENT_BIN` when set. Runtime fallback remains agent-specific (`COPILOT_BIN`/`copilot` for GitHub Copilot, `PI_BIN`/`pi` for Pi) when not provided.
+- `--agent-bin`: Path to the selected agent CLI binary (optional). Defaults to `AGENT_BIN` when set. Runtime fallback remains agent-specific (`COPILOT_BIN`/`copilot` for GitHub Copilot CLI, `PI_BIN`/`pi` for Pi) when not provided.
 - `--agent-args`: Optional extra CLI arguments appended to the selected agent invocation after built-in preset options and before the final prompt argument.
-- `--provider`: Shared provider name passed through to the selected agent (currently used in the Pi path as `pi --provider`) (optional, defaults to `PI_PROVIDER` when set)
-- `--model`: Shared model name option. Default: `gpt-5.4`.
-- `--effort` / `--thinking`: Optional reasoning level. `--effort` is canonical and `--thinking` is a backward-compatible alias. Pi supports `off|minimal|low|medium|high|xhigh` natively via `pi --thinking`; Copilot supports a similar flag via `--reasoning-effort` (`none|low|medium|high|xhigh|max`). Runtime maps cross-provider values when needed: `off -> none`, `minimal -> low`, `none -> off`, `max -> xhigh`.
+- `--model`: Shared model string option. Default: `gpt-5.4`. Supports provider prefixes like `openai/gpt-4o` and effort shorthand like `sonnet:high`. Pi receives the model string unchanged. `github-copilot-cli` parses the final `:effort` suffix and forwards it via Copilot CLI `--effort`.
 - `--copilot-github-token`: GitHub token for Copilot authentication (from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`)
 - `--project-id` / `CI_PROJECT_ID`: GitLab project ID
 - `--mr-iid` / `CI_MERGE_REQUEST_IID`: Merge request IID
@@ -140,10 +139,7 @@ Rules:
 When `--agent=pi` is selected:
 
 - The app starts Pi with `--mode json --no-session --tools read,grep,find,ls`
-- It forwards optional `--provider` as `pi --provider <name>`
-- If `--provider` is omitted and `--model` starts with `gemini-` while `GEMINI_API_KEY` is present, the app infers `--provider google`
-- It forwards `--model` as `pi --model <pattern>`
-- It forwards optional `--effort` (or alias `--thinking`) as `pi --thinking <level>` with compatibility mapping for values shared from Copilot style (`none -> off`, `max -> xhigh`)
+- It forwards `--model` exactly as provided, so provider prefixes and shorthand effort suffixes remain compatible with Pi's model syntax
 - It appends optional parsed `--agent-args` tokens after preset Pi CLI options and before the final prompt argument
 - It passes the full review prompt as the final CLI argument
 - It spawns Pi with stdin ignored (`stdio: ["ignore", "pipe", "pipe"]`) so the CLI does not hang waiting for EOF on stdin
@@ -154,6 +150,15 @@ When `--agent=pi` is selected:
 - The assistant response must still contain the shared `REVIEW_RESPONSE_JSON_MARKER` line so the app can parse the embedded review JSON
 - Pi provider/auth failures can arrive entirely on stdout inside JSON events; stderr may remain empty even when the run fails
 - If Pi ends with an assistant-side provider error instead of review JSON, `app/services/pi.ts` surfaces that provider error message directly in `ReviewResponseEntity.errors`
+
+### GitHub Copilot CLI Runtime
+
+When `--agent=github-copilot-cli` is selected:
+
+- The app starts GitHub Copilot CLI with the shared tool allowlist and prompt flow used by the review workflow
+- It forwards `--model` as `copilot --model <pattern>` and preserves provider prefixes like `openai/gpt-4o`
+- If the final model segment is an effort shorthand such as `sonnet:high`, the prefix becomes the model value and the suffix is translated to `copilot --effort <level>`
+- The older `--provider` CLI option is not used for this runtime
 
 ### Inline Review Positions
 

@@ -56,21 +56,15 @@ The binary can be used as a CI step in GitLab CI/CD pipelines.
 ```
 Options:
   --agent                        Agent provider to use for code review
-                                 (choices: github-copilot, pi; default: github-copilot)
+                                 (choices: github-copilot-cli, pi; default: github-copilot-cli)
   --gitlab-token                 GitLab API token (default: GITLAB_TOKEN)
   --gitlab-url                   GitLab server URL (default: CI_SERVER_URL)
   --agent-bin                    Agent CLI binary name or path
                                  (default: AGENT_BIN when set, else service default)
   --agent-args                   Optional extra CLI args appended to selected agent invocation
                                  (parsed as shell-like tokens)
-  --provider                     Shared provider name passed through to selected agent
-                                 (default: PI_PROVIDER when set)
   --model                        Model name (default: gpt-5.4)
-  --effort                       Optional reasoning level
-                                 - Pi: off, minimal, low, medium, high, xhigh
-                                 - Copilot: none, low, medium, high, xhigh, max
-                                 - cross-provider mapping: off->none, minimal->low, none->off, max->xhigh
-  --thinking                     Alias for --effort
+                                 Supports provider prefixes like openai/gpt-4o and effort suffixes like sonnet:high
   --copilot-github-token         GitHub token for Copilot authentication
                                  (default: COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN)
   --project-id                   GitLab project ID (default: CI_PROJECT_ID)
@@ -140,6 +134,20 @@ code-review:
 ```
 
 Results will include translated sections in addition to English.
+
+### Model Syntax
+
+The `--model` argument accepts the same model strings used by Pi, including provider prefixes and effort shorthand:
+
+```bash
+# Provider-prefixed model, passed through as-is for both agents
+./dist/gitlab-copilot-ci-linux-x64 --model openai/gpt-4o
+
+# Effort shorthand, converted to Copilot CLI's --effort option
+./dist/gitlab-copilot-ci-linux-x64 --model sonnet:high
+```
+
+For `github-copilot-cli`, the suffix after the final `:` is treated as the effort level and forwarded to the Copilot CLI `--effort` flag. For `pi`, the model string is passed through unchanged.
 
 ### Logging Example
 

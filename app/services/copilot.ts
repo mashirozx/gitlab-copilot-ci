@@ -9,42 +9,10 @@ import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson } from "../utils/json";
+import { parseModelSpec } from "../utils/model-name-parser";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
-
-const normalizeEffortForCopilot = ({
-  effort,
-}: {
-  effort?: string;
-}): string | null => {
-  if (!effort) {
-    return null;
-  }
-
-  const normalized = effort.trim().toLowerCase();
-
-  if (normalized === "off") {
-    return "none";
-  }
-
-  if (normalized === "minimal") {
-    return "low";
-  }
-
-  if (
-    normalized === "none" ||
-    normalized === "low" ||
-    normalized === "medium" ||
-    normalized === "high" ||
-    normalized === "xhigh" ||
-    normalized === "max"
-  ) {
-    return normalized;
-  }
-
-  return null;
-};
 
 export const runCopilotReview = async ({
   diffFilePaths,
@@ -99,19 +67,26 @@ export const runCopilotReview = async ({
       env.GITHUB_TOKEN = argv["copilot-github-token"];
     }
 
-    const reasoningEffort = normalizeEffortForCopilot({
-      effort: argv["effort"],
+    const modelSpec = parseModelSpec({
+      model: argv["model"],
     });
-
-    if (argv["effort"] && !reasoningEffort) {
-      logger.warn(
-        `[Copilot] Ignoring unsupported --effort value: ${argv["effort"]}`,
-      );
-    }
+    const reasoningEffort =
+      modelSpec.effort === "off"
+        ? "none"
+        : modelSpec.effort === "minimal"
+          ? "low"
+          : modelSpec.effort === "none" ||
+              modelSpec.effort === "low" ||
+              modelSpec.effort === "medium" ||
+              modelSpec.effort === "high" ||
+              modelSpec.effort === "xhigh" ||
+              modelSpec.effort === "max"
+            ? modelSpec.effort
+            : null;
 
     const presetArgs = [
       "--model",
-      argv["model"],
+      modelSpec.model ?? argv["model"],
       "--allow-tool=read_file",
       "--allow-tool=list_directory",
       "--allow-tool=search_files",
@@ -128,7 +103,7 @@ export const runCopilotReview = async ({
 
     if (reasoningEffort) {
       copilotArgs.unshift(reasoningEffort);
-      copilotArgs.unshift("--reasoning-effort");
+      copilotArgs.unshift("--effort");
     }
 
     const agentBin = argv["agent-bin"] ?? process.env.COPILOT_BIN ?? "copilot";

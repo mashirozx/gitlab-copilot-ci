@@ -6,8 +6,8 @@ export const argv = yargs(hideBin(process.argv))
   .option("agent", {
     describe: "Agent provider to use for code review",
     type: "string",
-    choices: ["github-copilot", "pi"] as const,
-    default: "github-copilot",
+    choices: ["github-copilot-cli", "pi"] as const,
+    default: "github-copilot-cli",
   })
   .option("gitlab-token", {
     describe: "GitLab API token",
@@ -29,21 +29,11 @@ export const argv = yargs(hideBin(process.argv))
       "Optional extra CLI args appended to the selected agent binary invocation",
     type: "string",
   })
-  .option("provider", {
-    describe: "Agent provider name passed through to the selected agent",
-    type: "string",
-    default: process.env.PI_PROVIDER,
-  })
   .option("model", {
-    describe: "Model name",
+    describe:
+      "Model name. Supports provider prefixes like openai/gpt-4o and effort suffixes like sonnet:high.",
     type: "string",
     default: "gpt-5.4",
-  })
-  .option("effort", {
-    alias: "thinking",
-    describe:
-      "Optional reasoning level. For Pi: off|minimal|low|medium|high|xhigh. For Copilot: none|low|medium|high|xhigh|max.",
-    type: "string",
   })
   .option("copilot-github-token", {
     describe:
