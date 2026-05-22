@@ -1,4 +1,4 @@
-import type { ReviewResponse } from "../types/entities";
+import type { ReviewResponseEntity } from "../services/review.types";
 import { argv } from "./argv";
 
 export const formatDurationAsHms = ({
@@ -17,7 +17,7 @@ export const formatDurationAsHms = ({
 export const buildPerformanceMetricsSection = ({
   response,
 }: {
-  response: ReviewResponse;
+  response: ReviewResponseEntity;
 }): string => {
   if (!response.duration && !response.model && !response.context) {
     return "";
@@ -66,7 +66,7 @@ export const buildSummaryNote = ({
   trackingJson,
   errors,
 }: {
-  response: ReviewResponse;
+  response: ReviewResponseEntity;
   trackingJson: string;
   errors: string[];
 }): string => {

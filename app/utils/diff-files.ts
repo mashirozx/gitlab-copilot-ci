@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import type { MergeRequestDiffSchema } from "@gitbeaker/rest";
 import { colorize } from "consola/utils";
-import type { ReviewItem } from "../types/entities";
+import type { ReviewItemEntity } from "../services/review.types";
 
 const getDiffHeaderPaths = ({
   diff,
@@ -168,10 +168,10 @@ export const recomputeReviewPositionFromDiffReference = ({
   diffFilePaths,
   matchState,
 }: {
-  review: ReviewItem;
+  review: ReviewItemEntity;
   diffFilePaths: string[];
   matchState?: Map<string, number>;
-}): ReviewItem | null => {
+}): ReviewItemEntity | null => {
   if (!review.diff_line_code) {
     return null;
   }

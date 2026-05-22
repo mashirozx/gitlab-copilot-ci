@@ -1,18 +1,18 @@
 import { Gitlab } from "@gitbeaker/rest";
-import type {
-  CleanupPreviousDiscussionsResult,
-  MergeRequestDiffPage,
-  MergeRequestDiffsResult,
-  MergeRequestDiscussion,
-  MergeRequestPositionContext,
-  MergeRequestSummaryNote,
-  ReviewItem,
-  ReviewTrackingData,
-  TrackedDiscussion,
-} from "../types/entities";
 import { argv } from "../utils/argv";
 import { getReviewPreferredLine } from "../utils/review-helpers";
+import type {
+  CleanupPreviousDiscussionsDataType,
+  MergeRequestDiffPageDataType,
+  MergeRequestDiffsResultDataType,
+  MergeRequestDiscussionEntity,
+  MergeRequestPositionContextEntity,
+  MergeRequestSummaryNoteEntity,
+  ReviewTrackingEntity,
+  TrackedDiscussionEntity,
+} from "./gitlab.types";
 import { logger } from "./logger";
+import type { ReviewItemEntity } from "./review.types";
 
 export class GitLabService {
   private readonly diffPageSize = 20;
@@ -36,8 +36,8 @@ export class GitLabService {
   getMergeRequest = async () =>
     this.client.MergeRequests.show(this.projectId, this.mrIid);
 
-  getMergeRequestDiffs = async (): Promise<MergeRequestDiffsResult> => {
-    const pages: MergeRequestDiffPage[] = [];
+  getMergeRequestDiffs = async (): Promise<MergeRequestDiffsResultDataType> => {
+    const pages: MergeRequestDiffPageDataType[] = [];
     const errors: string[] = [];
 
     // GitLab paginates merge request diffs by page/per_page. With perPage fixed
@@ -82,12 +82,12 @@ export class GitLabService {
   };
 
   getExistingSummaryNote = async (): Promise<
-    MergeRequestSummaryNote | undefined
+    MergeRequestSummaryNoteEntity | undefined
   > => {
     const mrNotes = (await this.client.MergeRequestNotes.all(
       this.projectId,
       this.mrIid,
-    )) as MergeRequestSummaryNote[];
+    )) as MergeRequestSummaryNoteEntity[];
 
     return mrNotes.find((note) =>
       note.body.includes(`<!-- ${this.summaryMarker} -->`),
@@ -98,7 +98,7 @@ export class GitLabService {
     noteBody,
   }: {
     noteBody: string;
-  }): TrackedDiscussion[] => {
+  }): TrackedDiscussionEntity[] => {
     const dataMatch = noteBody.match(
       new RegExp(`<!-- ${this.reviewDataTag}:(.*?) -->`),
     );
@@ -108,7 +108,7 @@ export class GitLabService {
     }
 
     try {
-      const parsed = JSON.parse(dataMatch[1] ?? "null") as ReviewTrackingData;
+      const parsed = JSON.parse(dataMatch[1] ?? "null") as ReviewTrackingEntity;
 
       return parsed.discussions ?? [];
     } catch {
@@ -125,15 +125,15 @@ export class GitLabService {
   cleanupPreviousDiscussions = async ({
     trackedDiscussions,
   }: {
-    trackedDiscussions: TrackedDiscussion[];
-  }): Promise<CleanupPreviousDiscussionsResult> => {
+    trackedDiscussions: TrackedDiscussionEntity[];
+  }): Promise<CleanupPreviousDiscussionsDataType> => {
     const discussions = (await this.client.MergeRequestDiscussions.all(
       this.projectId,
       this.mrIid,
-    )) as MergeRequestDiscussion[];
+    )) as MergeRequestDiscussionEntity[];
 
-    const processedDiscussions: TrackedDiscussion[] = [];
-    const remainingDiscussions: TrackedDiscussion[] = [];
+    const processedDiscussions: TrackedDiscussionEntity[] = [];
+    const remainingDiscussions: TrackedDiscussionEntity[] = [];
     const errors: string[] = [];
 
     for (const tracked of trackedDiscussions) {
@@ -194,9 +194,9 @@ export class GitLabService {
     review,
     mergeRequest,
   }: {
-    review: ReviewItem;
-    mergeRequest: MergeRequestPositionContext;
-  }): Promise<TrackedDiscussion> => {
+    review: ReviewItemEntity;
+    mergeRequest: MergeRequestPositionContextEntity;
+  }): Promise<TrackedDiscussionEntity> => {
     if (review.new_line === undefined && review.old_line === undefined) {
       throw new Error(
         "Review must include at least one of new_line or old_line",

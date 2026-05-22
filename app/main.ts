@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCopilotReview } from "./services/copilot";
 import { databaseService } from "./services/db";
+import type { StoredReviewEntity } from "./services/db.types";
 import { gitlabService } from "./services/gitlab";
+import type { TrackedDiscussionEntity } from "./services/gitlab.types";
 import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
-import type { StoredReview, TrackedDiscussion } from "./types/entities";
 import { argv } from "./utils/argv";
 import {
   buildDiffPageFileContent,
@@ -61,7 +62,7 @@ const main = async () => {
     );
 
     // Load previous reviews from database if available
-    let previousReviews: StoredReview[] = [];
+    let previousReviews: StoredReviewEntity[] = [];
     if (databaseService.isEnabled()) {
       try {
         previousReviews = databaseService.getStoredReviewsForMR({
@@ -125,7 +126,7 @@ const main = async () => {
     // C. Find existing summary comment and extract previous discussion IDs from it
     const existingSummaryNote = await gitlabService.getExistingSummaryNote();
 
-    let previousDiscussions: TrackedDiscussion[] = [];
+    let previousDiscussions: TrackedDiscussionEntity[] = [];
     if (existingSummaryNote) {
       previousDiscussions = gitlabService.getTrackedDiscussionsFromSummary({
         noteBody: existingSummaryNote.body,
@@ -157,7 +158,7 @@ const main = async () => {
     }
 
     // E. Post inline review comments, tracking created discussion IDs
-    const createdDiscussions: TrackedDiscussion[] = [];
+    const createdDiscussions: TrackedDiscussionEntity[] = [];
     const diffLineMatchState = new Map<string, number>();
     for (const item of reviews) {
       try {

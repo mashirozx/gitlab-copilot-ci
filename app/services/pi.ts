@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
 import { buildCopilotPrompt } from "../prompts";
-import type { ReviewResponse, StoredReview } from "../types/entities";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
 import { createPiConsoleFormatter } from "../utils/pi-console";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
+import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
+import type { ReviewResponseEntity } from "./review.types";
 
 type PiTextContent = {
   type?: string;
@@ -147,8 +148,8 @@ export const runPiReview = async ({
   diffFilePaths: string[];
   title: string;
   description?: string | null;
-  previousReviews?: StoredReview[];
-}): Promise<ReviewResponse> => {
+  previousReviews?: StoredReviewEntity[];
+}): Promise<ReviewResponseEntity> => {
   const langs = argv["lang"];
   const prompt = buildCopilotPrompt({
     diffFilePaths,
@@ -322,7 +323,7 @@ export const runPiReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        const result = parseJson<ReviewResponse>({ text: jsonText });
+        const result = parseJson<ReviewResponseEntity>({ text: jsonText });
         const model =
           [...(agentEndEvent.messages ?? [])]
             .reverse()
