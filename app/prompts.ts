@@ -26,12 +26,10 @@ const buildTranslationsSectionInstructions = (langs: string[]): string => {
     .map(
       (lang) => `
 
----
-
-Then add a translated section for language "${lang}" using the same section structure, written entirely in ${lang}. Place it after the divider above. Use a heading like:
+For "summary.translations["${lang}"]", return a complete markdown block using the same section structure, written entirely in ${lang}. Use a heading like:
 # 📝 [translated equivalent of "${reviewSummaryTitleTemplate}"] (${lang})
 Translate the title text too, not only the body sections.
-Include translated equivalents of "## 📋 Pull Request Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
+Include translated equivalents of "## 📋 Walkthrough", "## 🚧 Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
 The Other Suggestions section may be a bullet list, numbered list, or short paragraph, but it must stay in the comment markdown rather than the reviews JSON array.
 If no suggestions, write the localized equivalent of "✨ No issues found!".`,
@@ -186,7 +184,7 @@ ${review.source_snippet}
   const translatedRankFlagInstructions =
     langs.length > 0 ? buildTranslatedRankFlagInstructions() : "";
 
-  const summaryTemplate = `MUST use this exact template:\n\n# 📝 ${reviewSummaryTitleTemplate}\n\n## 📋 Pull Request Changes\n[English description of what the PR changes]\n\n## 🔍 Review Summary\nFound X suggestion(s) from GitHub Copilot:\n\n[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: None.${translationsSections}`;
+  const summaryTemplate = `MUST use this exact template:\n\n# 📝 ${reviewSummaryTitleTemplate}\n\n## 📋 Walkthrough\n[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]\n\n## 🚧 Changes\n[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]\n\n[Example structure for one step:]\n**Step title**\n\n| Layer / File(s) | Summary |\n| --- | --- |\n| **module/method name/desc**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |\n\n[Repeat for additional steps when needed.]\n\n## 🔍 Review Summary\nFound X suggestion(s) from changes:\n\n[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: ✨ I have no feedback to provide.`;
 
   const instructionEntryFilesSection =
     instructionFiles.length > 0
@@ -296,6 +294,11 @@ ${translatedRankFlagInstructions}
 - The summary may include additional valid findings in "## 💡 Other Suggestions" even when they are not suitable for inline review comments.
 ${ignoredRankInstruction}
 ${translationsNote}
+${translationsSections}
+- Before emitting the final response, construct the full JSON payload with local Node.js and serialize it with Node's JSON.stringify(). Prefer this over hand-writing JSON text.
+- If the Node.js step throws any syntax, reference, or serialization error, fix the payload immediately and rerun the same Node.js JSON.stringify() step until it succeeds.
+- Only after Node.js successfully prints valid minified JSON may you wrap it with the start/end markers and return it.
+- A valid workflow is: build the full payload as a JavaScript object in Node.js, run JSON.stringify(payload), inspect any thrown error, correct the object, and rerun until JSON.stringify(payload) succeeds.
 - Output the JSON on a single line, minified (no newlines)
 - Wrap the JSON like this: ${REVIEW_RESPONSE_JSON_START_MARKER}{...}${REVIEW_RESPONSE_JSON_END_MARKER}
 - First output the start marker, then the minified JSON object, then the end marker, all on one line

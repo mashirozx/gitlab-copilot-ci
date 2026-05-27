@@ -303,7 +303,16 @@ describe("getAgentDisplayLabel", () => {
   test("formats the Pi Coding Agent display label with version", () => {
     const label = getAgentDisplayLabel({
       agent: "pi",
-      getCommandOutput: () => "0.75.5\n",
+      getCommandOutput: () => "\n0.75.5\n",
+    });
+
+    expect(label).toBe("Pi Coding Agent 0.75.5");
+  });
+
+  test("parses the Pi version when it is printed to stderr", () => {
+    const label = getAgentDisplayLabel({
+      agent: "pi",
+      getCommandOutput: () => "\n0.75.5\n",
     });
 
     expect(label).toBe("Pi Coding Agent 0.75.5");
@@ -319,7 +328,7 @@ describe("getAgentDisplayLabel", () => {
         getCommandOutput: ({ command, args }) => {
           expect(command).toBe("/custom/bin/pi");
           expect(args).toEqual(["--version"]);
-          return "0.75.5\n";
+          return "\n0.75.5\n";
         },
       });
 

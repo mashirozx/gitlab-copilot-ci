@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import type {
   ReviewResponseEntity,
   ReviewSummaryEntity,
@@ -82,11 +82,20 @@ export const formatDurationAsHms = ({
 
 export const getAgentDisplayLabel = ({
   agent = argv["agent"] as "github-copilot-cli" | "pi",
-  getCommandOutput = ({ command, args }: { command: string; args: string[] }) =>
-    execFileSync(command, args, {
+  getCommandOutput = ({
+    command,
+    args,
+  }: {
+    command: string;
+    args: string[];
+  }) => {
+    const result = spawnSync(command, args, {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  },
 }: {
   agent?: "github-copilot-cli" | "pi";
   getCommandOutput?: ({

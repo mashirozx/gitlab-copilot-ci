@@ -22,6 +22,7 @@ describe("createPiMessageFormatter", () => {
       }),
     });
 
+    expect(output).toContain("Message:");
     expect(output).toContain("Thinking through the diff.");
   });
 
@@ -107,6 +108,200 @@ describe("createPiMessageFormatter", () => {
     expect(output).toContain(
       "I acknowledge and will follow the LLM rules defined in `AGENTS.md` and other project guideline files.",
     );
+  });
+
+  test("does not render thinking_delta partials as assistant text", () => {
+    const formatter = createPiMessageFormatter();
+
+    const output = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "thinking_delta",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "thinking",
+                thinking: "Now I have all the information needed.",
+              },
+              {
+                type: "text",
+                text: "[COPILOT_JSON",
+              },
+            ],
+          },
+        },
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "Now I have all the information needed.",
+            },
+            {
+              type: "text",
+              text: "[COPILOT_JSON",
+            },
+          ],
+        },
+      }),
+    });
+
+    expect(output).toBe("");
+  });
+
+  test("buffers text_delta events and flushes them as one message block", () => {
+    const formatter = createPiMessageFormatter();
+
+    const startOutput = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_start",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "I",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    const firstDeltaOutput = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: "I",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "I",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    const secondDeltaOutput = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: " acknowledge and will follow",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "I acknowledge and will follow",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    const flushOutput = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "toolcall_start",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "I acknowledge and will follow",
+              },
+              {
+                type: "toolCall",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    expect(startOutput).toBe("");
+    expect(firstDeltaOutput).toBe("");
+    expect(secondDeltaOutput).toBe("");
+    expect(flushOutput).toContain("\u001b[35m●\u001b[0m Message:");
+    expect(flushOutput).toContain("I acknowledge and will follow");
+  });
+
+  test("renders multiline buffered text as a guided message block", () => {
+    const formatter = createPiMessageFormatter();
+
+    formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_start",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "First",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: "First line\nSecond line",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "First line\nSecond line",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    const output = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_end",
+          content: "First line\nSecond line",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "First line\nSecond line",
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    expect(output).toContain("Message:");
+    expect(output).toContain("First line");
+    expect(output).toContain("Second line");
+    expect(output).toContain("│");
+    expect(output).toContain("└");
   });
 
   test("renders usage from singular assistant message_end payloads", () => {
@@ -240,6 +435,29 @@ describe("createPiMessageFormatter", () => {
               {
                 type: "text",
                 text: '[COPILOT_JSON_START]{"summary":{"content":"ok"},"reviews":[]}[COPILOT_JSON_END]',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(output).toBe("");
+  });
+
+  test("does not print partial JSON marker fragments", () => {
+    const formatter = createPiMessageFormatter();
+
+    const output = formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_delta",
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "[COPILOT_JSON",
               },
             ],
           },
