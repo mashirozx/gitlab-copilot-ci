@@ -2,6 +2,10 @@ import { Gitlab } from "@gitbeaker/rest";
 import type { ReviewItemEntity } from "../types/review.types";
 import { argv } from "../utils/argv";
 import { getReviewPreferredLine } from "../utils/review-helpers";
+import {
+  buildReviewDiscussionBody,
+  getDisplayLanguages,
+} from "../utils/review-output";
 import type {
   CleanupPreviousDiscussionsDataType,
   MergeRequestDiffPageDataType,
@@ -21,7 +25,11 @@ export class GitLabService {
   private readonly client: Gitlab;
   private readonly projectId = argv["project-id"];
   private readonly mrIid = parseInt(argv["mr-iid"], 10);
-  private readonly langs = argv["lang"];
+  private readonly displayLanguages = getDisplayLanguages({
+    langs: argv["lang"],
+    collapsedLangs: argv["collapsed-lang"],
+  });
+  private readonly collapsedLanguages = argv["collapsed-lang"];
   private readonly htmlMarkerPrefix = argv["html-marker-prefix"];
   private readonly reviewMarker = `${this.htmlMarkerPrefix}-review-marker`;
   private readonly summaryMarker = `${this.htmlMarkerPrefix}-summary-marker`;
@@ -193,9 +201,11 @@ export class GitLabService {
 
   createReviewDiscussion = async ({
     review,
+    model,
     mergeRequest,
   }: {
     review: ReviewItemEntity;
+    model?: string;
     mergeRequest: MergeRequestPositionContextEntity;
   }): Promise<TrackedDiscussionEntity> => {
     if (review.new_line === undefined && review.old_line === undefined) {
@@ -205,12 +215,13 @@ export class GitLabService {
     }
 
     const marker = `<!-- ${this.reviewMarker} -->`;
-    const translationLines = this.langs
-      .map((lang) => review.translations?.[lang])
-      .filter((translation): translation is string => !!translation)
-      .map((translation) => `\n\n${translation}`)
-      .join("");
-    const commentBody = `${marker}\n\n${review.suggestion}${translationLines}`;
+    const commentBody = buildReviewDiscussionBody({
+      marker,
+      review,
+      model,
+      displayLanguages: this.displayLanguages,
+      collapsedLanguages: this.collapsedLanguages,
+    });
 
     /**
      * IMPORTANT: Position object for GitLab MR discussions.

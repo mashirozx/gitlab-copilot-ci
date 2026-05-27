@@ -1,5 +1,71 @@
-import type { ReviewResponseEntity } from "../types/review.types";
+import { execFileSync } from "node:child_process";
+import type {
+  ReviewResponseEntity,
+  ReviewSummaryEntity,
+} from "../types/review.types";
 import { argv } from "./argv";
+import {
+  buildDetailsBlock,
+  getDisplayLanguages,
+  isEnglishLanguage,
+} from "./review-output";
+
+const getSummaryContentForLanguage = ({
+  summary,
+  language,
+}: {
+  summary: ReviewSummaryEntity;
+  language: string;
+}): string | null => {
+  if (isEnglishLanguage({ language })) {
+    return summary.content.trim().length > 0 ? summary.content : null;
+  }
+
+  const translationEntry = Object.entries(summary.translations ?? {}).find(
+    ([lang]) => lang.trim().toLowerCase() === language.trim().toLowerCase(),
+  );
+  const translation = translationEntry?.[1];
+
+  return translation && translation.trim().length > 0 ? translation : null;
+};
+
+export const renderSummaryComment = ({
+  summary,
+  displayLanguages,
+  collapsedLanguages,
+}: {
+  summary: ReviewSummaryEntity;
+  displayLanguages: string[];
+  collapsedLanguages: string[];
+}): string => {
+  const collapsedLanguageSet = new Set(
+    collapsedLanguages.map((language) => language.trim().toLowerCase()),
+  );
+
+  return displayLanguages
+    .flatMap((language) => {
+      const block = getSummaryContentForLanguage({
+        summary,
+        language,
+      });
+
+      if (!block) {
+        return [];
+      }
+
+      if (!collapsedLanguageSet.has(language.trim().toLowerCase())) {
+        return [block];
+      }
+
+      return [
+        buildDetailsBlock({
+          summary: language,
+          content: block,
+        }),
+      ];
+    })
+    .join("\n\n---\n\n");
+};
 
 export const formatDurationAsHms = ({
   durationMs,
@@ -14,35 +80,126 @@ export const formatDurationAsHms = ({
   return [h && `${h}h`, m && `${m}m`, `${s}s`].filter(Boolean).join(" ");
 };
 
+export const getAgentDisplayLabel = ({
+  agent = argv["agent"] as "github-copilot-cli" | "pi",
+  getCommandOutput = ({ command, args }: { command: string; args: string[] }) =>
+    execFileSync(command, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }),
+}: {
+  agent?: "github-copilot-cli" | "pi";
+  getCommandOutput?: ({
+    command,
+    args,
+  }: {
+    command: string;
+    args: string[];
+  }) => string;
+}): string => {
+  const agentMeta =
+    agent === "pi"
+      ? {
+          label: "Pi Coding Agent",
+          command: argv["agent-bin"] ?? process.env.PI_BIN ?? "pi",
+          versionArgs: ["--version"],
+        }
+      : {
+          label: "GitHub Copilot CLI",
+          command: argv["agent-bin"] ?? process.env.COPILOT_BIN ?? "copilot",
+          versionArgs: ["-v"],
+        };
+
+  try {
+    const rawOutput = getCommandOutput({
+      command: agentMeta.command,
+      args: agentMeta.versionArgs,
+    })
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+
+    if (!rawOutput) {
+      return agentMeta.label;
+    }
+
+    const versionMatch = rawOutput.match(/(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)/i);
+
+    if (!versionMatch) {
+      return agentMeta.label;
+    }
+
+    return `${agentMeta.label} ${versionMatch[1]}`;
+  } catch {
+    return agentMeta.label;
+  }
+};
+
 export const buildPerformanceMetricsSection = ({
   response,
+  agentDisplay = getAgentDisplayLabel({}),
 }: {
   response: ReviewResponseEntity;
+  agentDisplay?: string;
 }): string => {
-  if (!response.duration && !response.model && !response.context) {
+  if (
+    !response.duration &&
+    !response.model &&
+    !response.context &&
+    !response.usage &&
+    !agentDisplay
+  ) {
     return "";
   }
 
-  let section = "\n\n---\n\n## 📊 Model Usage & Performance\n";
+  let section = "\n\n---\n\n## 📊 Model Usage & Performance Matrix\n";
 
   if (response.model) {
     section += `- 🤖 **Model**: ${response.model}\n`;
+  }
+
+  if (agentDisplay) {
+    section += `- 🧰 **Agent**: ${agentDisplay}\n`;
   }
 
   if (response.duration) {
     section += `- ⏱️ **Time taken**: ${formatDurationAsHms({ durationMs: response.duration })} (${response.duration}ms)\n`;
   }
 
-  if (response.context?.total_length) {
+  if (response.context?.total_length !== undefined) {
     section += `- 🌕 **Context window**: ${response.context.total_length}\n`;
   }
 
-  if (response.context?.used_length) {
+  if (response.context?.used_length !== undefined) {
     section += `- 🌑 **Context used**: ${response.context.used_length}\n`;
   }
 
-  if (response.context?.usage_percentage) {
+  if (response.context?.usage_percentage !== undefined) {
     section += `- 🌓 **Context usage**: ${response.context.usage_percentage}%\n`;
+  }
+
+  if (response.usage?.input !== undefined) {
+    section += `- 📥 **Input tokens**: ${response.usage.input}\n`;
+  }
+
+  if (response.usage?.output !== undefined) {
+    section += `- 📤 **Output tokens**: ${response.usage.output}\n`;
+  }
+
+  if (response.usage?.cacheRead !== undefined) {
+    section += `- 📚 **Cache read tokens**: ${response.usage.cacheRead}\n`;
+  }
+
+  if (response.usage?.cacheWrite !== undefined) {
+    section += `- ✍️ **Cache write tokens**: ${response.usage.cacheWrite}\n`;
+  }
+
+  if (response.usage?.totalTokens !== undefined) {
+    section += `- 🔢 **Total tokens**: ${response.usage.totalTokens}\n`;
+  }
+
+  if (response.usage?.cost?.total !== undefined) {
+    section += `- 💸 **Total cost**: ${response.usage.cost.total}\n`;
   }
 
   return section;
@@ -58,7 +215,10 @@ export const buildErrorsSummarySection = ({
   }
 
   const errorLines = errors.map((err) => `- ${err}`).join("\n");
-  return `\n\n<details>\n<summary>⚠️ Errors</summary>\n\n${errorLines}\n\n</details>`;
+  return `\n\n${buildDetailsBlock({
+    summary: "⚠️ Errors",
+    content: errorLines,
+  })}`;
 };
 
 export const buildSummaryNote = ({
@@ -73,10 +233,18 @@ export const buildSummaryNote = ({
   const markerPrefix = argv["html-marker-prefix"];
   const summaryMarker = `${markerPrefix}-summary-marker`;
   const reviewDataTag = `${markerPrefix}-review-data`;
+  const displayLanguages = getDisplayLanguages({
+    langs: argv["lang"],
+    collapsedLangs: argv["collapsed-lang"],
+  });
 
   let summaryBody = `<!-- ${summaryMarker} -->
 <!-- ${reviewDataTag}:${trackingJson} -->
-${response.comment}`;
+${renderSummaryComment({
+  summary: response.summary,
+  displayLanguages,
+  collapsedLanguages: argv["collapsed-lang"],
+})}`;
 
   summaryBody += buildPerformanceMetricsSection({
     response,

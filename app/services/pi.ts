@@ -1,15 +1,26 @@
 import { spawn } from "node:child_process";
-import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
-import { buildCopilotPrompt } from "../prompts";
+import {
+  REVIEW_RESPONSE_JSON_END_MARKER,
+  REVIEW_RESPONSE_JSON_START_MARKER,
+} from "../constants";
 import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
-import { createPiConsoleFormatter } from "../utils/pi-console";
+import { createPiMessageFormatter } from "../utils/pi-message-formatter";
+import {
+  extractPiUsageFromOutput,
+  getPiUsage,
+} from "../utils/pi-usage-collector";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
-import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
+
+const getAllowedTools = (): string[] => {
+  return ["read", "grep", "find", "ls", "bash", ...argv["tools"]].filter(
+    (toolName, index, tools) => tools.indexOf(toolName) === index,
+  );
+};
 
 type PiTextContent = {
   type?: string;
@@ -27,6 +38,7 @@ type PiMessage = {
 type PiJsonEvent = {
   type?: string;
   messages?: PiMessage[];
+  usage?: ReviewResponseEntity["usage"];
 };
 
 const flushPiConsoleBuffer = ({
@@ -35,7 +47,7 @@ const flushPiConsoleBuffer = ({
   write,
 }: {
   buffer: string;
-  consoleFormatter: ReturnType<typeof createPiConsoleFormatter>;
+  consoleFormatter: ReturnType<typeof createPiMessageFormatter>;
   write: (text: string) => void;
 }): string => {
   const lines = buffer.split(/\r?\n/);
@@ -121,41 +133,26 @@ const getAgentEndEvent = ({
 };
 
 export const runPiReview = async ({
-  diffFilePaths,
-  title,
-  description,
-  previousReviews,
+  prompt,
 }: {
-  diffFilePaths: string[];
-  title: string;
-  description?: string | null;
-  previousReviews?: StoredReviewEntity[];
+  prompt: string;
 }): Promise<ReviewResponseEntity> => {
-  const langs = argv["lang"];
-  const prompt = buildCopilotPrompt({
-    diffFilePaths,
-    title,
-    description,
-    previousReviews,
-    langs,
-    debugMode: argv["debug"],
-  });
-
   logger.info("[Pi] Calling pi binary...");
 
   return new Promise((resolve) => {
-    const consoleFormatter = createPiConsoleFormatter();
+    const consoleFormatter = createPiMessageFormatter();
     const startTime = getNowEpochMilliseconds();
     let stdout = "";
     let stderr = "";
     let stdoutConsoleBuffer = "";
     let stderrConsoleBuffer = "";
+    const allowedTools = getAllowedTools();
     const piArgs = [
       "--mode",
       "json",
       "--no-session",
       "--tools",
-      "read,grep,find,ls",
+      allowedTools.join(","),
     ];
 
     const trackPiStd = () => {
@@ -257,7 +254,10 @@ export const runPiReview = async ({
         logger.error(errMsg);
         logger.info("[Pi] Full output:", stdout.trim() || stderr.trim());
         resolve({
-          comment: "",
+          summary: {
+            content: "",
+            translations: {},
+          },
           reviews: [],
           duration,
           errors: [errMsg],
@@ -273,20 +273,24 @@ export const runPiReview = async ({
       });
       const jsonText = extractMarkedJsonText({
         text: assistantText,
-        marker: REVIEW_RESPONSE_JSON_MARKER,
+        marker: REVIEW_RESPONSE_JSON_START_MARKER,
+        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
       });
 
       if (!jsonText) {
         const errMsg = assistantError
           ? `[Pi] Pi JSON mode returned an assistant error before review JSON was produced. Exit code: ${code}. Error: ${assistantError}`
-          : `[Pi] Pi JSON mode: no JSON found in assistant output (missing ${REVIEW_RESPONSE_JSON_MARKER} marker). Exit code: ${code}`;
+          : `[Pi] Pi JSON mode: no JSON found in assistant output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
         logger.error(errMsg);
         logger.info("[Pi] Assistant output:", assistantText);
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
         resolve({
-          comment: "",
+          summary: {
+            content: "",
+            translations: {},
+          },
           reviews: [],
           duration,
           errors: [errMsg],
@@ -299,16 +303,18 @@ export const runPiReview = async ({
           startTimeMs: startTime,
         });
         const result = parseJson<ReviewResponseEntity>({ text: jsonText });
-        const model =
-          [...(agentEndEvent.messages ?? [])]
-            .reverse()
-            .find((message) => message.role === "assistant")?.model ??
-          argv["model"];
+        const usage =
+          getPiUsage({
+            event: agentEndEvent,
+          }) ??
+          extractPiUsageFromOutput({
+            output: stdout,
+          });
 
         resolve({
           ...result,
           duration,
-          model,
+          usage,
         });
       } catch (error) {
         const errMsg = `[Pi] Pi JSON mode: failed to parse JSON response: ${error instanceof Error ? error.message : String(error)}`;
@@ -319,7 +325,10 @@ export const runPiReview = async ({
           startTimeMs: startTime,
         });
         resolve({
-          comment: "",
+          summary: {
+            content: "",
+            translations: {},
+          },
           reviews: [],
           duration,
           errors: [errMsg],
@@ -335,7 +344,10 @@ export const runPiReview = async ({
         startTimeMs: startTime,
       });
       resolve({
-        comment: "",
+        summary: {
+          content: "",
+          translations: {},
+        },
         reviews: [],
         duration,
         errors: [errMsg],

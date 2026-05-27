@@ -1,8 +1,8 @@
 {
   "editor.defaultFormatter": "biomejs.biome",
-  "[json]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  },
+  // "[json]": {
+  //   "editor.defaultFormatter": "biomejs.biome"
+  // },
   "[jsonc]": {
     "editor.defaultFormatter": "biomejs.biome"
   },
@@ -10,5 +10,8 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.biome": "explicit"
   },
-  "eslint.enable": false
+  "eslint.enable": false,
+  "chat.tools.terminal.autoApprove": {
+    "bun": true
+  }
 }

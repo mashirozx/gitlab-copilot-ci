@@ -1,7 +1,34 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import type { ReviewRankEntity } from "../types/review.types";
 import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix.ts";
 import { getFormattedVersion } from "./version";
+
+const normalizeRankList = ({
+  ranks,
+  optionName,
+}: {
+  ranks: string[] | undefined;
+  optionName: string;
+}): ReviewRankEntity[] => {
+  if (ranks === undefined) {
+    return [];
+  }
+
+  return ranks.map((rank) => {
+    const normalizedRank = rank.trim().toUpperCase();
+
+    if (
+      normalizedRank !== "HIGH" &&
+      normalizedRank !== "MEDIUM" &&
+      normalizedRank !== "LOW"
+    ) {
+      throw new Error(`${optionName} must contain only HIGH, MEDIUM, or LOW`);
+    }
+
+    return normalizedRank;
+  });
+};
 
 export const argv = yargs(hideBin(process.argv))
   .option("agent", {
@@ -113,12 +140,57 @@ export const argv = yargs(hideBin(process.argv))
     type: "string",
     default: process.env.COPILOT_DB,
   })
-  .option("lang", {
+  .option("instruction-files", {
     describe:
-      "Additional output language(s) for translations (e.g. --lang=zh-CN --lang=ja). English is always included. Results are displayed in the order specified.",
+      "Repository instruction entry file paths to pass through to the LLM review prompt. Repeatable, e.g. --instruction-files AGENTS.md --instruction-files .github/copilot.md.",
     type: "string",
     array: true,
     default: [] as string[],
+  })
+  .option("extra-prompts", {
+    describe:
+      "Extra prompt text to append to the generated LLM review prompt. If provided, the model must obey it.",
+    type: "string",
+  })
+  .option("should-teach-diff-compute", {
+    describe:
+      "Whether to include prompt instructions that teach the LLM how to compute diff line positions manually from unified diff hunks.",
+    type: "boolean",
+    default: false,
+  })
+  .option("tools", {
+    describe:
+      "Additional agent tool names to allow beyond the built-in defaults. Repeatable, e.g. --tools sh --tools read_file.",
+    type: "string",
+    array: true,
+    default: [] as string[],
+  })
+  .option("lang", {
+    describe:
+      "Display language(s) for review output (e.g. --lang=zh-CN --lang=ja --lang=english). If omitted, output defaults to English only.",
+    type: "string",
+    array: true,
+    default: [] as string[],
+  })
+  .option("collapsed-lang", {
+    alias: "c-lang",
+    describe:
+      "Display language(s) that should be wrapped in a GitLab <details> block for both inline reviews and the summary note.",
+    type: "string",
+    array: true,
+    default: [] as string[],
+  })
+  .option("ignored-rank", {
+    describe:
+      "Review rank(s) to hide from both inline reviews and the summary note. Allowed values: HIGH, MEDIUM, LOW.",
+    type: "string",
+    array: true,
+    default: [] as string[],
+    coerce: (arg: string[] | undefined) =>
+      normalizeRankList({
+        ranks: arg,
+        optionName: "--ignored-rank",
+      }),
   })
   .option("log-level", {
     describe:
