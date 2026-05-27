@@ -1,4 +1,6 @@
+import { basename } from "node:path";
 import { tryParseJson } from "./json";
+import { getPiUsage } from "./pi-usage-collector";
 
 type PiToolTextItem = {
   text?: string;
@@ -10,6 +12,22 @@ type PiToolResult = {
   message?: string;
   stdout?: string;
   stderr?: string;
+};
+
+type PiConsoleContentItem = {
+  type?: string;
+  text?: string;
+  thinking?: string;
+};
+
+type PiConsoleMessage = {
+  role?: string;
+  content?: string | PiConsoleContentItem[];
+  usage?: Record<string, unknown>;
+};
+
+type PiAssistantMessageEvent = {
+  partial?: PiConsoleMessage;
 };
 
 type PiConsoleEvent = {
@@ -28,6 +46,10 @@ type PiConsoleEvent = {
   reason?: string;
   aborted?: boolean;
   willRetry?: boolean;
+  usage?: Record<string, unknown>;
+  message?: PiConsoleMessage;
+  messages?: PiConsoleMessage[];
+  assistantMessageEvent?: PiAssistantMessageEvent;
 };
 
 type PendingToolCall = {
@@ -38,6 +60,7 @@ type PendingToolCall = {
 const ANSI = {
   reset: "\u001b[0m",
   dim: "\u001b[2m",
+  gray: "\u001b[90m",
   green: "\u001b[32m",
   red: "\u001b[31m",
   yellow: "\u001b[33m",
@@ -84,6 +107,10 @@ const toDisplayPath = ({
 
   if (value.startsWith(normalizedCwd)) {
     return ellipsize({ text: value.slice(normalizedCwd.length) });
+  }
+
+  if (value.startsWith("/")) {
+    return ellipsize({ text: basename(value) });
   }
 
   return ellipsize({ text: value });
@@ -209,6 +236,25 @@ const getPathArg = ({
   return null;
 };
 
+const isAbsolutePath = ({ value }: { value: string }): boolean => {
+  return value.startsWith("/");
+};
+
+const isPathInsideCwd = ({
+  value,
+  cwd,
+}: {
+  value: string;
+  cwd?: string;
+}): boolean => {
+  if (!cwd) {
+    return false;
+  }
+
+  const normalizedCwd = cwd.endsWith("/") ? cwd : `${cwd}/`;
+  return value === cwd || value.startsWith(normalizedCwd);
+};
+
 const getToolLabel = ({
   toolName,
   args,
@@ -222,7 +268,14 @@ const getToolLabel = ({
 
   if (name === "read") {
     const path = getPathArg({ args, keys: ["path"], cwd }) ?? "file";
-    return `Read ${path}`;
+    const rawPath = typeof args?.path === "string" ? args.path : undefined;
+    const pathColor =
+      rawPath &&
+      isAbsolutePath({ value: rawPath }) &&
+      !isPathInsideCwd({ value: rawPath, cwd })
+        ? ANSI.cyan
+        : ANSI.yellow;
+    return `Read ${colorize({ text: path, color: pathColor })}`;
   }
 
   if (name === "grep") {
@@ -315,6 +368,40 @@ const formatToolEvent = ({
   return `${bullet} ${label}\n${ANSI.dim}  └${ANSI.reset} ${detail}\n`;
 };
 
+const formatBlockWithGuides = ({
+  header,
+  lines,
+  bulletColor,
+  contentColor = ANSI.gray,
+}: {
+  header: string;
+  lines: string[];
+  bulletColor: string;
+  contentColor?: string;
+}): string => {
+  const nonEmptyLines = lines.flatMap((line) =>
+    line.split(/\r?\n/).map((part) => part.replace(/\r/g, "")),
+  );
+
+  if (nonEmptyLines.length === 0) {
+    return `${colorize({ text: "●", color: bulletColor })} ${header}\n`;
+  }
+
+  const formattedLines = nonEmptyLines.map((line, index) => {
+    const guide = index === nonEmptyLines.length - 1 ? "└" : "│";
+    return `${ANSI.gray}  ${guide}${ANSI.reset} ${colorize({
+      text: line,
+      color: contentColor,
+    })}`;
+  });
+
+  return [
+    `${colorize({ text: "●", color: bulletColor })} ${header}`,
+    ...formattedLines,
+    "",
+  ].join("\n");
+};
+
 const formatInfoLine = ({
   text,
   color = ANSI.cyan,
@@ -325,11 +412,248 @@ const formatInfoLine = ({
   return `${colorize({ text: "○", color })} ${ellipsize({ text })}\n`;
 };
 
-export const createPiConsoleFormatter = (): {
+const getEventMessages = ({
+  event,
+}: {
+  event: PiConsoleEvent;
+}): PiConsoleMessage[] => {
+  return [
+    ...(event.messages ?? []),
+    ...(event.assistantMessageEvent?.partial
+      ? [event.assistantMessageEvent.partial]
+      : []),
+    ...(event.message ? [event.message] : []),
+  ];
+};
+
+const getAssistantTextFromMessages = ({
+  messages,
+}: {
+  messages?: PiConsoleMessage[];
+}): string => {
+  const assistantMessage = [...(messages ?? [])]
+    .reverse()
+    .find((message) => message.role === "assistant");
+
+  if (!assistantMessage) {
+    return "";
+  }
+
+  if (typeof assistantMessage.content === "string") {
+    return assistantMessage.content;
+  }
+
+  return (assistantMessage.content ?? [])
+    .filter((item) => item.type === "text")
+    .map((item) => item.text ?? "")
+    .join("")
+    .trim();
+};
+
+const getAssistantThinkingFromMessages = ({
+  messages,
+}: {
+  messages?: PiConsoleMessage[];
+}): string => {
+  const assistantMessage = [...(messages ?? [])]
+    .reverse()
+    .find((message) => message.role === "assistant");
+
+  if (
+    !assistantMessage?.content ||
+    typeof assistantMessage.content === "string"
+  ) {
+    return "";
+  }
+
+  return assistantMessage.content
+    .flatMap((item) => {
+      const parts: string[] = [];
+
+      if (typeof item.thinking === "string") {
+        parts.push(item.thinking);
+      }
+
+      if (item.type === "thinking" && typeof item.text === "string") {
+        parts.push(item.text);
+      }
+
+      return parts;
+    })
+    .join("\n")
+    .trim();
+};
+
+const getAssistantTextDelta = ({
+  nextText,
+  previousText,
+}: {
+  nextText: string;
+  previousText: string;
+}): string => {
+  if (!nextText || nextText.includes("[COPILOT_JSON_START]")) {
+    return "";
+  }
+
+  if (!previousText) {
+    return nextText.trim();
+  }
+
+  if (nextText === previousText) {
+    return "";
+  }
+
+  if (nextText.startsWith(previousText)) {
+    return nextText.slice(previousText.length).trim();
+  }
+
+  return nextText.trim();
+};
+
+const formatAssistantText = ({ text }: { text: string }): string => {
+  const normalized = text.trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return `${colorize({ text: "◦", color: ANSI.cyan })} ${normalized}\n`;
+};
+
+const formatAssistantThinking = ({
+  thinking,
+}: {
+  thinking: string;
+}): string => {
+  return formatBlockWithGuides({
+    header: "Thinking:",
+    lines: thinking.split(/\r?\n/),
+    bulletColor: ANSI.yellow,
+    contentColor: ANSI.gray,
+  });
+};
+
+const formatUsage = ({
+  usage,
+}: {
+  usage: ReturnType<typeof getPiUsage>;
+}): string => {
+  if (!usage) {
+    return "";
+  }
+
+  const lines = [
+    usage.input !== undefined ? `Input tokens: ${usage.input}` : undefined,
+    usage.output !== undefined ? `Output tokens: ${usage.output}` : undefined,
+    usage.cacheRead !== undefined
+      ? `Cache read tokens: ${usage.cacheRead}`
+      : undefined,
+    usage.cacheWrite !== undefined
+      ? `Cache write tokens: ${usage.cacheWrite}`
+      : undefined,
+    usage.totalTokens !== undefined
+      ? `Total tokens: ${usage.totalTokens}`
+      : undefined,
+    usage.cost?.input !== undefined
+      ? `Input cost: ${usage.cost.input}`
+      : undefined,
+    usage.cost?.output !== undefined
+      ? `Output cost: ${usage.cost.output}`
+      : undefined,
+    usage.cost?.cacheRead !== undefined
+      ? `Cache read cost: ${usage.cost.cacheRead}`
+      : undefined,
+    usage.cost?.cacheWrite !== undefined
+      ? `Cache write cost: ${usage.cost.cacheWrite}`
+      : undefined,
+    usage.cost?.total !== undefined
+      ? `Total cost: ${usage.cost.total}`
+      : undefined,
+  ].filter((line): line is string => Boolean(line));
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return formatBlockWithGuides({
+    header: "Usage:",
+    lines,
+    bulletColor: ANSI.cyan,
+    contentColor: ANSI.gray,
+  });
+};
+
+const getBashCommandText = ({
+  args,
+}: {
+  args?: Record<string, unknown>;
+}): string => {
+  const command =
+    typeof args?.command === "string"
+      ? args.command
+      : typeof args?.cmd === "string"
+        ? args.cmd
+        : "bash";
+
+  const extraArgs = Array.isArray(args?.args)
+    ? args.args.filter((arg): arg is string => typeof arg === "string")
+    : [];
+
+  return [command, ...extraArgs].join(" ").trim();
+};
+
+const formatBashToolEvent = ({
+  args,
+  result,
+  isError,
+  fallback,
+}: {
+  args?: Record<string, unknown>;
+  result: unknown;
+  isError: boolean;
+  fallback?: string;
+}): string => {
+  const statusText = isError ? "[Fail]" : "[Success]";
+  const statusColor = isError ? ANSI.red : ANSI.green;
+  const message = isError
+    ? getErrorText({ result, fallback })
+    : getResultText({ result }) || "Completed";
+
+  return formatBlockWithGuides({
+    header: `${colorize({ text: "Bash Tool:", color: statusColor })}`,
+    lines: [
+      getBashCommandText({ args }),
+      `${colorize({ text: statusText, color: statusColor })} ${trimToSingleLine({ text: message })}`,
+    ],
+    bulletColor: statusColor,
+    contentColor: ANSI.gray,
+  });
+};
+
+export const createPiMessageFormatter = (): {
   formatLine: ({ line }: { line: string }) => string;
 } => {
   let cwd: string | undefined;
   const pendingToolCalls = new Map<string, PendingToolCall>();
+  let lastAssistantText = "";
+  let lastAssistantThinking = "";
+  let lastUsageFingerprint = "";
+
+  const getUsageOutput = ({ event }: { event: PiConsoleEvent }): string => {
+    const usage = getPiUsage({ event });
+
+    if (!usage) {
+      return "";
+    }
+
+    const nextFingerprint = JSON.stringify(usage);
+    if (nextFingerprint === lastUsageFingerprint) {
+      return "";
+    }
+
+    lastUsageFingerprint = nextFingerprint;
+    return formatUsage({ usage });
+  };
 
   const formatLine = ({ line }: { line: string }): string => {
     if (!line.trim()) {
@@ -354,7 +678,29 @@ export const createPiConsoleFormatter = (): {
     }
 
     if (event.type === "agent_end") {
-      return formatInfoLine({ text: "Agent finished" });
+      lastAssistantText = getAssistantTextFromMessages({
+        messages: getEventMessages({ event }),
+      });
+      lastAssistantThinking = getAssistantThinkingFromMessages({
+        messages: getEventMessages({ event }),
+      });
+      return `${formatInfoLine({ text: "Agent finished" })}${getUsageOutput({ event })}`;
+    }
+
+    if (event.type === "message_end") {
+      const thinking = getAssistantThinkingFromMessages({
+        messages: getEventMessages({ event }),
+      });
+      const usageOutput = getUsageOutput({ event });
+
+      if (!thinking || thinking === lastAssistantThinking) {
+        return usageOutput;
+      }
+
+      lastAssistantThinking = thinking;
+      return `${formatAssistantThinking({
+        thinking,
+      })}${usageOutput}`;
     }
 
     if (event.type === "compaction_start") {
@@ -424,6 +770,16 @@ export const createPiConsoleFormatter = (): {
 
       const toolName = pendingTool?.toolName ?? event.toolName;
       const args = pendingTool?.args ?? event.args;
+
+      if (toolName === "bash") {
+        return formatBashToolEvent({
+          args,
+          result: event.result,
+          isError: Boolean(event.isError),
+          fallback: event.finalError,
+        });
+      }
+
       const label = getToolLabel({ toolName, args, cwd });
       const detail = event.isError
         ? getErrorText({ result: event.result, fallback: event.finalError })
@@ -433,6 +789,21 @@ export const createPiConsoleFormatter = (): {
         label,
         detail,
         isError: Boolean(event.isError),
+      });
+    }
+
+    const assistantText = getAssistantTextFromMessages({
+      messages: getEventMessages({ event }),
+    });
+    const assistantTextDelta = getAssistantTextDelta({
+      nextText: assistantText,
+      previousText: lastAssistantText,
+    });
+
+    if (assistantTextDelta) {
+      lastAssistantText = assistantText;
+      return formatAssistantText({
+        text: assistantTextDelta,
       });
     }
 

@@ -2,8 +2,10 @@ import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { REVIEW_RESPONSE_JSON_MARKER } from "../constants";
-import { buildCopilotPrompt } from "../prompts";
+import {
+  REVIEW_RESPONSE_JSON_END_MARKER,
+  REVIEW_RESPONSE_JSON_START_MARKER,
+} from "../constants";
 import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
@@ -11,31 +13,24 @@ import { withCliColorEnv } from "../utils/cli-env";
 import { extractMarkedJsonText, parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
-import type { StoredReviewEntity } from "./db.types";
 import { logger, writeLogStream } from "./logger";
 
+const getAllowedTools = (): string[] => {
+  return [
+    "read_file",
+    "list_directory",
+    "search_files",
+    "grep",
+    "shell(node)",
+    ...argv["tools"],
+  ].filter((toolName, index, tools) => tools.indexOf(toolName) === index);
+};
+
 export const runCopilotReview = async ({
-  diffFilePaths,
-  title,
-  description,
-  previousReviews,
+  prompt,
 }: {
-  diffFilePaths: string[];
-  title: string;
-  description?: string | null;
-  previousReviews?: StoredReviewEntity[];
+  prompt: string;
 }): Promise<ReviewResponseEntity> => {
-  const langs = argv["lang"];
-
-  const prompt = buildCopilotPrompt({
-    diffFilePaths,
-    title,
-    description,
-    previousReviews,
-    langs,
-    debugMode: argv["debug"],
-  });
-
   logger.info("[Copilot] Calling copilot binary...");
 
   return new Promise((resolve) => {
@@ -70,6 +65,7 @@ export const runCopilotReview = async ({
     const modelSpec = parseModelSpec({
       model: argv["model"],
     });
+    const allowedTools = getAllowedTools();
     const reasoningEffort =
       modelSpec.effort === "off"
         ? "none"
@@ -87,10 +83,7 @@ export const runCopilotReview = async ({
     const presetArgs = [
       "--model",
       modelSpec.model ?? argv["model"],
-      "--allow-tool=read_file",
-      "--allow-tool=list_directory",
-      "--allow-tool=search_files",
-      "--allow-tool=grep",
+      ...allowedTools.map((toolName) => `--allow-tool=${toolName}`),
       `--add-dir=${process.cwd()}`,
       "--no-ask-user",
       "--log-level",
@@ -147,18 +140,22 @@ export const runCopilotReview = async ({
       const text = stdout.trim() || stderr.trim();
       const jsonText = extractMarkedJsonText({
         text,
-        marker: REVIEW_RESPONSE_JSON_MARKER,
+        marker: REVIEW_RESPONSE_JSON_START_MARKER,
+        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
       });
 
       if (!jsonText) {
-        const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing ${REVIEW_RESPONSE_JSON_MARKER} marker). Exit code: ${code}`;
+        const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
         logger.error(`[Copilot] ${errMsg}`);
         logger.info("[Copilot] Full output:", text);
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
         resolve({
-          comment: "",
+          summary: {
+            content: "",
+            translations: {},
+          },
           reviews: [],
           duration,
           errors: [errMsg],
@@ -175,7 +172,6 @@ export const runCopilotReview = async ({
 
         getContextInfo(env)
           .then((contextInfo) => {
-            result.model = contextInfo.model;
             result.context = contextInfo.context;
             logger.info(
               "[Copilot] Parsed result:",
@@ -203,7 +199,10 @@ export const runCopilotReview = async ({
           startTimeMs: startTime,
         });
         resolve({
-          comment: "",
+          summary: {
+            content: "",
+            translations: {},
+          },
           reviews: [],
           duration,
           errors: [errMsg],
@@ -219,7 +218,10 @@ export const runCopilotReview = async ({
         startTimeMs: startTime,
       });
       resolve({
-        comment: "",
+        summary: {
+          content: "",
+          translations: {},
+        },
         reviews: [],
         duration,
         errors: [errMsg],
@@ -256,12 +258,8 @@ export const getContextInfo = async (
       const logContent = readFileSync(latestLogFile, "utf-8");
 
       const result: {
-        model?: string;
         context?: ReviewResponseEntity["context"];
       } = {};
-
-      result.model = argv["model"];
-      logger.info("[Copilot] Using model from arguments:", result.model);
 
       const compactionMatches = logContent.match(
         /CompactionProcessor:\s+Utilization\s+([0-9.]+)%\s+\((\d+)\/(\d+)\s+tokens\)/g,

@@ -72,9 +72,9 @@ build:
         BUILD_SCRIPT: "build:linux-x64"
       - PLATFORM: "linux-arm64"
         BUILD_SCRIPT: "build:linux-arm64"
-      - PLATFORM: "win-x64"
-        BUILD_SCRIPT: "build:win-x64"
-      - PLATFORM: "win-arm64"
-        BUILD_SCRIPT: "build:win-arm64"
+      # - PLATFORM: "win-x64"
+      #   BUILD_SCRIPT: "build:win-x64"
+      # - PLATFORM: "win-arm64"
+      #   BUILD_SCRIPT: "build:win-arm64"
   script:
     - bun scripts/ci/build-and-publish.ts

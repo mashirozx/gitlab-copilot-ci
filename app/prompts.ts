@@ -1,5 +1,15 @@
-import { REVIEW_RESPONSE_JSON_MARKER } from "./constants";
+import {
+  REVIEW_RESPONSE_JSON_END_MARKER,
+  REVIEW_RESPONSE_JSON_START_MARKER,
+} from "./constants";
 import type { StoredReviewEntity } from "./services/db.types";
+import { argv } from "./utils/argv";
+import {
+  getPromptTranslationLangs,
+  getRankInlineMath,
+} from "./utils/review-output";
+
+export const REVIEW_SUMMARY_TITLE = `# 📝 Code Review Summary by \${LLM name}`;
 
 const buildTranslationsSpec = (langs: string[]): string => {
   if (langs.length === 0) return "";
@@ -10,6 +20,8 @@ const buildTranslationsSpec = (langs: string[]): string => {
 const buildTranslationsSectionInstructions = (langs: string[]): string => {
   if (langs.length === 0) return "";
 
+  const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE;
+
   return langs
     .map(
       (lang) => `
@@ -17,7 +29,8 @@ const buildTranslationsSectionInstructions = (langs: string[]): string => {
 ---
 
 Then add a translated section for language "${lang}" using the same section structure, written entirely in ${lang}. Place it after the divider above. Use a heading like:
-# 📝 Copilot Code Review (${lang})
+# 📝 [translated equivalent of "${reviewSummaryTitleTemplate}"] (${lang})
+Translate the title text too, not only the body sections.
 Include translated equivalents of "## 📋 Pull Request Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
 The Other Suggestions section may be a bullet list, numbered list, or short paragraph, but it must stay in the comment markdown rather than the reviews JSON array.
@@ -26,12 +39,21 @@ If no suggestions, write the localized equivalent of "✨ No issues found!".`,
     .join("");
 };
 
+const buildTranslatedRankFlagInstructions = (): string => {
+  return `- In every value in "summary.translations", keep the same LaTeX rank-badge template and color as the matching English flag, but translate only the rank word inside \\text{...} into that target language.
+  - HIGH example: ${getRankInlineMath({ rank: "HIGH", label: "[translated HIGH]" })}
+  - MEDIUM example: ${getRankInlineMath({ rank: "MEDIUM", label: "[translated MEDIUM]" })}
+  - LOW example: ${getRankInlineMath({ rank: "LOW", label: "[translated LOW]" })}`;
+};
+
 const buildDiffLineNumberGuidance = (): string => {
   return `
 
 ## How To Compute Correct Diff Line Numbers
 
 Use this procedure exactly before emitting any item in "reviews":
+
+- You may compute review positions with locally installed Node.js if that helps you derive exact diff positions. Prefer Node.js over Python or any other language runtime when you choose a local compute tool. Do not rely on non-Node external compute tools or vague estimation.
 
 1. Find the target file inside the provided mr-diff.page-*.diff files.
 2. Read that file's diff hunk headers. A header looks like @@ -oldStart,oldCount +newStart,newCount @@.
@@ -42,17 +64,18 @@ Use this procedure exactly before emitting any item in "reviews":
    - A line starting with a single space is context. It exists on both sides. After processing it, increment both oldLine and newLine.
    - A line starting with '-' is removed from the old file. That line maps to oldLine only. After processing it, increment oldLine only.
    - A line starting with '+' is added in the new file. That line maps to newLine only. After processing it, increment newLine only.
-5. Never count the hunk header itself as a code line.
-6. Never use a file's absolute line number unless you derived it from the diff hunk counters above.
-7. For a review item:
+5. If helpful, you may verify this counter walk with local Node.js code, but the final emitted positions must still match the provided diff text exactly.
+6. Never count the hunk header itself as a code line.
+7. Never use a file's absolute line number unless you derived it from the diff hunk counters above.
+8. For a review item:
    - set only "new_line" when the finding points at an added line
    - set only "old_line" when the finding points at a removed line
    - set both only when the finding truly refers to a valid paired old/new diff position
-8. At least one of "new_line" or "old_line" must be present.
-9. Also record the exact diff page file name in "diff_file" and the exact original diff line text in "diff_line_code".
-10. "diff_line_code" must be the full line exactly as it appears in the diff file, including its leading diff marker (\` \`, \`+\`, or \`-\`).
-11. If the same exact diff line text appears multiple times in the same diff file, keep citing the exact line text. The runtime will try later matches first for repeated citations, then wrap to earlier matches only if needed.
-12. If you cannot compute an exact valid diff position from the hunk, do not emit that finding in "reviews". Put it only in the comment's "## 💡 Other Suggestions" section.
+9. At least one of "new_line" or "old_line" must be present.
+10. Also record the exact diff page file name in "diff_file" and the exact original diff line text in "diff_line_code".
+11. "diff_line_code" must be the full line exactly as it appears in the diff file, including its leading diff marker (\` \`, \`+\`, or \`-\`).
+12. If the same exact diff line text appears multiple times in the same diff file, keep citing the exact line text. The runtime will try later matches first for repeated citations, then wrap to earlier matches only if needed.
+13. If you cannot compute an exact valid diff position from the hunk, do not emit that finding in "reviews". Put it only in the comment's "## 💡 Other Suggestions" section.
 
 Mini example:
 
@@ -75,16 +98,22 @@ export const buildCopilotPrompt = ({
   title,
   description,
   previousReviews,
-  langs,
   debugMode,
 }: {
   diffFilePaths: string[];
   title: string;
   description?: string | null;
   previousReviews?: StoredReviewEntity[];
-  langs: string[];
   debugMode: boolean;
 }): string => {
+  const langs = getPromptTranslationLangs({
+    langs: argv["lang"],
+    collapsedLangs: argv["collapsed-lang"],
+  });
+  const instructionFiles = argv["instruction-files"];
+  const extraPrompts = argv["extra-prompts"]?.trim();
+  const ignoredRanks = argv["ignored-rank"];
+  const shouldTeachDiffCompute = argv["should-teach-diff-compute"];
   const mrDescription = description?.trim()
     ? `\n\n## Pull Request Description\n${description.trim()}`
     : "";
@@ -132,7 +161,7 @@ ${review.source_snippet}
   2. Include the author or source at the end (e.g., "- Jane Austen" or "- Unknown")
   3. Avoid any political, religious, or sensitive topics
   4. **CRITICAL - Pick VALID file and line from the diff:**
-     - Follow the "How To Compute Correct Diff Line Numbers" section exactly
+      - ${shouldTeachDiffCompute ? 'Follow the "How To Compute Correct Diff Line Numbers" section exactly' : "Derive valid positions from the diff text. You may use local Node.js if needed, but do not guess or use non-Node external compute tools."}
       - Use only files and diff positions that exist in the provided mr-diff.page-*.diff files
   5. PREFIX each suggestion with "[MOCK] " at the beginning
   6. Must provide both "suggestion" and all requested translation fields with actual content (never empty).
@@ -142,7 +171,10 @@ ${review.source_snippet}
 
   const translationsSpec = buildTranslationsSpec(langs);
   const translationsSections = buildTranslationsSectionInstructions(langs);
-  const diffLineNumberGuidance = buildDiffLineNumberGuidance();
+  const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE;
+  const diffLineNumberGuidance = shouldTeachDiffCompute
+    ? buildDiffLineNumberGuidance()
+    : "";
   const diffFilesList = diffFilePaths
     .map((filePath) => `- ${filePath}`)
     .join("\n");
@@ -151,24 +183,42 @@ ${review.source_snippet}
     langs.length > 0
       ? `- For each review item, provide translations for: ${langs.join(", ")}`
       : "";
+  const translatedRankFlagInstructions =
+    langs.length > 0 ? buildTranslatedRankFlagInstructions() : "";
 
-  const commentTemplate = `MUST use this exact template:\n\n# 📝 Copilot Code Review\n\n## 📋 Pull Request Changes\n[English description of what the PR changes]\n\n## 🔍 Review Summary\nFound X suggestion(s) from GitHub Copilot:\n\n[List of inline-review suggestions in English only, format: "- **file:line**: suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: None.${translationsSections}`;
+  const summaryTemplate = `MUST use this exact template:\n\n# 📝 ${reviewSummaryTitleTemplate}\n\n## 📋 Pull Request Changes\n[English description of what the PR changes]\n\n## 🔍 Review Summary\nFound X suggestion(s) from GitHub Copilot:\n\n[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: None.${translationsSections}`;
+
+  const instructionEntryFilesSection =
+    instructionFiles.length > 0
+      ? `At minimum, look for these general instruction entry files:\n${instructionFiles
+          .map((filePath) => `- ${filePath}`)
+          .join("\n")}`
+      : `At minimum, look for these general instruction entry files:\n- AGENTS.md\n- CLAUDE.md\n- .instructions.md\n- copilot-instructions.md\n- .cursorrules\n- GEMINI.md`;
+
+  const ignoredRankInstruction =
+    ignoredRanks.length > 0
+      ? `- Filter out any findings ranked as: ${ignoredRanks.join(", ")}. Do not include those ranks in either "summary" or "reviews".`
+      : `- No review-rank filtering is active. HIGH, MEDIUM, and LOW findings may all be included.`;
 
   const guidelineFilesSection = `
 
 Before reviewing code, check for repository guidance files that define agent or review behavior.
 
-At minimum, look for these general instruction entry files if they exist:
-- AGENTS.md
-- CLAUDE.md
-- .instructions.md
-- copilot-instructions.md
-- .cursorrules
-- GEMINI.md
+${instructionEntryFilesSection}
 
 Also read any other clearly general repository-level LLM or agent guideline entry files you find.
 
 If any of these files define merge request or code review rules, you must follow those rules for this review. Treat repository-specific merge request review instructions as higher priority than generic review habits.`;
+
+  const extraPromptsSection = extraPrompts
+    ? `
+
+Additional required instructions:
+
+${extraPrompts}
+
+You must obey the additional required instructions above unless they conflict with higher-priority system or repository rules.`
+    : "";
 
   return `You are a senior code reviewer working in this repository.
 
@@ -186,14 +236,19 @@ ${diffFilesList}
 These files together contain the full paginated GitLab Merge Request unified diff. Read all of them before deciding whether a file or diff line exists.${diffLineNumberGuidance}${previousReviewsSection}${debugPrompt}
 
 Then, inspect any repository files you need for context, including changed files, imported files, relevant skills/*/SKILL.md files, and repository guideline files.${guidelineFilesSection}
+${extraPromptsSection}
 
 Analyze what this pull request changes and generate:
-1. A summary comment in markdown with content in English${langs.length > 0 ? ` and the following languages (in this order): ${langs.join(", ")}` : ""}
+1. A structured summary object whose "content" is always markdown in English${langs.length > 0 ? ` and whose "translations" object contains translated summary markdown blocks keyed by language: ${langs.join(", ")}` : ""}
 2. JSON array with one object per inline review comment
 
 Return only a JSON object with this structure:
 {
-  "comment": "${commentTemplate}",
+  "model": "string in format: \${model-name} (\${effort or thinking level})",
+  "summary": {
+    "content": "${summaryTemplate}",
+    "translations": { ${langs.map((lang) => `"${lang}": "string"`).join(", ")} }
+  },
   "reviews": [
     {
       "file_path": "string",
@@ -201,6 +256,7 @@ Return only a JSON object with this structure:
       "diff_line_code": "string",
       "new_line"?: number,
       "old_line"?: number,
+      "rank": "HIGH | MEDIUM | LOW",
       "suggestion": "string (English)"${translationsSpec}
     }
   ]
@@ -211,7 +267,22 @@ Notes:
 - Reviews marked with this will be automatically deleted if not resolved before next update
 
 Rules:
+- The top-level "model" field is required.
+- Format "model" exactly as: \${model-name} (\${effort or thinking level}). Examples: gpt-5.4 (high), claude-sonnet-4 (thinking).
+- If you choose any local scripted operation or compute tool during review, prefer Node.js over Python or other language runtimes.
+- In the title of "summary.content" and every value in "summary.translations", replace "\${LLM name}" with a human-readable LLM name, such as "GPT-5.4" or "MiMo-V2.5-Pro".
+- Always write "summary.content" and every review item's "suggestion" in English, regardless of --lang or --collapsed-lang.
+- Any non-English language requested by the runtime must be returned only inside the JSON translation fields.
 - Keep suggestion and all translations aligned in meaning
+- Every review item in "reviews" must include a rank of HIGH, MEDIUM, or LOW.
+- Do not embed the rank flag markup into "suggestion" or translation text. Keep the structured "rank" field separate.
+- In "summary.content" and every value in "summary.translations", every inline-review bullet must include the rank flag that matches the review item's rank before the review text.
+- Use these exact rank flags inside "summary.content":
+  - HIGH: ${getRankInlineMath({ rank: "HIGH" })}
+  - MEDIUM: ${getRankInlineMath({ rank: "MEDIUM" })}
+  - LOW: ${getRankInlineMath({ rank: "LOW" })}
+- In "summary.content", keep the rank words in English exactly as shown above.
+${translatedRankFlagInstructions}
 - Only include actionable review findings
 - Every review item in "reviews" must include "diff_file" and "diff_line_code".
 - "diff_file" must be one of the provided diff page file names, using the file name form such as "mr-diff.page-1.diff".
@@ -221,13 +292,15 @@ Rules:
 - Do not use absolute file line numbers in "reviews".
 - Do not guess, approximate, or infer a nearby line number for "reviews".
 - If a finding cannot be mapped to an exact valid diff line, keep it out of "reviews" and include it only in the comment's "## 💡 Other Suggestions" section.
-- The "## 💡 Other Suggestions" section is part of the comment markdown only. Do not create any separate JSON field for it.
-- The comment may include additional valid findings in "## 💡 Other Suggestions" even when they are not suitable for inline review comments.
+- The "## 💡 Other Suggestions" section must stay inside the markdown in "summary.content" and translated summary blocks, not as a separate JSON field.
+- The summary may include additional valid findings in "## 💡 Other Suggestions" even when they are not suitable for inline review comments.
+${ignoredRankInstruction}
 ${translationsNote}
 - Output the JSON on a single line, minified (no newlines)
-- Prefix the JSON line with: ${REVIEW_RESPONSE_JSON_MARKER}
-- Do not include any extra prose before or after the JSON line
-- Format the comment field as valid markdown ready to post as GitLab comment
+- Wrap the JSON like this: ${REVIEW_RESPONSE_JSON_START_MARKER}{...}${REVIEW_RESPONSE_JSON_END_MARKER}
+- First output the start marker, then the minified JSON object, then the end marker, all on one line
+- Do not include any extra prose before or after the wrapped JSON line
+- Format "summary.content" and each value in "summary.translations" as valid markdown ready to post as GitLab comment content
 - Follow the template structure exactly for consistency
 - Respect repository instruction files you found, especially any merge request review-specific rules`;
 };

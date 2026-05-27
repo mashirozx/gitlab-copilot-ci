@@ -1,6 +1,6 @@
 # gitlab-copilot-ci
 
-A GitLab CI tool for automated code review using GitHub Copilot CLI.
+A Bun-based GitLab CI review binary that analyzes merge request diffs with either GitHub Copilot CLI or Pi, posts inline GitLab discussions, and maintains a top-level summary note.
 
 ## Installation
 
@@ -49,7 +49,13 @@ After building, binaries are available at:
 
 ## Usage
 
-The binary can be used as a CI step in GitLab CI/CD pipelines.
+The binary is intended to run from the target repository root during a GitLab CI merge request pipeline.
+
+Each run can:
+- fetch paginated merge request diffs from GitLab
+- ask the configured agent to generate inline findings plus a summary
+- post inline discussions on valid diff positions
+- publish a summary note that includes review findings, optional translations, and model or agent timing metadata
 
 ### CLI Arguments
 
@@ -69,6 +75,8 @@ Options:
                                  (default: COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN)
   --project-id                   GitLab project ID (default: CI_PROJECT_ID)
   --mr-iid                       GitLab merge request IID (default: CI_MERGE_REQUEST_IID)
+  --max-git-diff-page            Maximum number of GitLab merge request diff pages to fetch
+                                 (positive integer; default: unlimited)
   --html-marker-prefix           Prefix used for markers that identify CLI-generated GitLab MR reviews/comments
                                  Generated markers: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data
                                  Default: copilot. Prefix must use lowercase kebab-case, for example xiaomi-mimo-code-review
@@ -81,9 +89,20 @@ Options:
                                  - Numeric: 0 (silent) to 5 (debug), -999 (silent), +999 (verbose)
                                  - Named: fatal, error, warn, log, info, debug, trace, verbose
   --db                           Path to SQLite database for review history (optional)
-  --lang                         Additional output language(s) for translations
-                                 (e.g., --lang=zh-CN --lang=ja), repeatable
-                                 English is always included
+  --instruction-files            Repository instruction entry file paths passed through to the review prompt
+                                 repeatable, e.g. --instruction-files AGENTS.md --instruction-files .github/copilot.md
+  --extra-prompts                Extra prompt text appended to the generated review prompt
+  --should-teach-diff-compute    Include prompt instructions for manual diff line-number computation
+                                 (default: false)
+  --tools                        Additional agent tools to allow beyond the built-in defaults
+                                 repeatable, e.g. --tools node --tools bash
+  --lang                         Display language(s) for review output
+                                 repeatable, e.g. --lang=zh-CN --lang=ja --lang=english
+                                 if omitted, output defaults to English only
+  --collapsed-lang, --c-lang     Display language(s) that should be wrapped in GitLab <details> blocks
+                                 these languages are still requested even when not repeated in --lang
+  --ignored-rank                 Review rank(s) to hide from inline reviews and the summary note
+                                 allowed values: HIGH, MEDIUM, LOW
   -v, --version                  Show version information and exit
   --help                         Show help message
 ```
@@ -96,35 +115,42 @@ Must provide:
 - `--project-id` (or `CI_PROJECT_ID` env var)
 - `--mr-iid` (or `CI_MERGE_REQUEST_IID` env var)
 
-### Example GitLab CI/CD configuration:
+### Example GitLab CI/CD Configuration
 
 ```yaml
 code-review:
   stage: review
   script:
-    - ./dist/gitlab-copilot-ci-linux-x64
-      --gitlab-token $CI_JOB_TOKEN
-      --gitlab-url $CI_SERVER_URL
-      --project-id $CI_PROJECT_ID
-      --mr-iid $CI_MERGE_REQUEST_IID
+    - ./gitlab-copilot-ci \
+        --gitlab-token "$CI_JOB_TOKEN" \
+        --gitlab-url "$CI_SERVER_URL" \
+        --project-id "$CI_PROJECT_ID" \
+        --mr-iid "$CI_MERGE_REQUEST_IID"
 ```
 
-Or with environment variables:
+Or with environment variables already present in the job:
 
 ```yaml
 code-review:
   stage: review
   script:
-    - ./dist/gitlab-copilot-ci-linux-x64
-  env:
-    GITLAB_TOKEN: $CI_JOB_TOKEN
-    CI_SERVER_URL: $CI_SERVER_URL
+    - ./gitlab-copilot-ci
 ```
+
+If GitLab does not provide `GITLAB_TOKEN`, export it explicitly before invoking the binary.
+
+### Summary Output
+
+The merge request summary note:
+- uses the title format `Code Review Summary by ${LLM name}`
+- lists inline findings with rank badges and diff-based file locations
+- can render requested languages directly or inside collapsed `<details>` sections
+- includes a metrics section with model, agent CLI version, elapsed time, and context usage when available
 
 ### Translation Example
 
 ```bash
-./dist/gitlab-copilot-ci-linux-x64 \
+./gitlab-copilot-ci \
   --gitlab-token YOUR_TOKEN \
   --gitlab-url https://gitlab.com \
   --project-id 123 \
@@ -133,7 +159,21 @@ code-review:
   --lang=ja
 ```
 
-Results will include translated sections in addition to English.
+If you pass any explicit language set, only the merged `--lang` and `--collapsed-lang` selection is displayed. English appears only when it is requested explicitly.
+
+### Collapsed Language Example
+
+```bash
+./gitlab-copilot-ci \
+  --gitlab-token YOUR_TOKEN \
+  --gitlab-url https://gitlab.com \
+  --project-id 123 \
+  --mr-iid 456 \
+  --lang=english \
+  --collapsed-lang=zh-CN
+```
+
+This keeps English expanded while rendering Chinese inside GitLab `<details>` blocks for both inline comments and the summary note.
 
 ### Model Syntax
 
@@ -141,10 +181,10 @@ The `--model` argument accepts the same model strings used by Pi, including prov
 
 ```bash
 # Provider-prefixed model, passed through as-is for both agents
-./dist/gitlab-copilot-ci-linux-x64 --model openai/gpt-4o
+./gitlab-copilot-ci --model openai/gpt-4o
 
 # Effort shorthand, converted to Copilot CLI's --effort option
-./dist/gitlab-copilot-ci-linux-x64 --model sonnet:high
+./gitlab-copilot-ci --model sonnet:high
 ```
 
 For `github-copilot-cli`, the suffix after the final `:` is treated as the effort level and forwarded to the Copilot CLI `--effort` flag. For `pi`, the model string is passed through unchanged.
@@ -152,7 +192,7 @@ For `github-copilot-cli`, the suffix after the final `:` is treated as the effor
 ### Logging Example
 
 ```bash
-./dist/gitlab-copilot-ci-linux-x64 \
+./gitlab-copilot-ci \
   --log /var/log/ci \
   --gitlab-token YOUR_TOKEN \
   --gitlab-url https://gitlab.com \
@@ -164,10 +204,35 @@ For `github-copilot-cli`, the suffix after the final `:` is treated as the effor
 
 Log files are created as: `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log`
 
+### Prompt Customization Example
+
+```bash
+./gitlab-copilot-ci \
+  --gitlab-token YOUR_TOKEN \
+  --gitlab-url https://gitlab.com \
+  --project-id 123 \
+  --mr-iid 456 \
+  --instruction-files AGENTS.md \
+  --instruction-files .github/copilot.md \
+  --extra-prompts "Prioritize security and data-loss risks." \
+  --should-teach-diff-compute
+```
+
+### Filtering Low-Priority Findings
+
+```bash
+./gitlab-copilot-ci \
+  --gitlab-token YOUR_TOKEN \
+  --gitlab-url https://gitlab.com \
+  --project-id 123 \
+  --mr-iid 456 \
+  --ignored-rank LOW
+```
+
 ### Review History with SQLite
 
 ```bash
-./dist/gitlab-copilot-ci-linux-x64 \
+./gitlab-copilot-ci \
   --db=/var/lib/copilot-reviews.db \
   --gitlab-token YOUR_TOKEN \
   --gitlab-url https://gitlab.com \

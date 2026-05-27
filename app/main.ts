@@ -3,6 +3,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildCopilotPrompt } from "./prompts";
 import { runCopilotReview } from "./services/copilot";
 import { databaseService } from "./services/db";
 import type { StoredReviewEntity } from "./services/db.types";
@@ -20,6 +21,11 @@ import {
   findDiffItemByFilePath,
   formatReviewLocation,
 } from "./utils/review-helpers";
+import {
+  filterReviewsByIgnoredRanks,
+  getPromptTranslationLangs,
+  normalizeReviewResponse,
+} from "./utils/review-output";
 import { buildSummaryNote } from "./utils/review-summary";
 import { getFormattedVersion } from "./utils/version";
 
@@ -84,13 +90,33 @@ const main = async () => {
     // B. Ask the configured LLM CLI to review the diff and read repo files as needed
     const reviewRunner =
       argv["agent"] === "pi" ? runPiReview : runCopilotReview;
-    const response = await reviewRunner({
+    const prompt = buildCopilotPrompt({
       diffFilePaths,
       title: mr.title,
       description: mr.description,
       previousReviews,
+      debugMode: argv["debug"],
     });
-    const reviews = Array.isArray(response.reviews) ? response.reviews : [];
+    const response = await reviewRunner({
+      prompt,
+    });
+    const normalizedResponse = normalizeReviewResponse({
+      response,
+      translationLangs: getPromptTranslationLangs({
+        langs: argv["lang"],
+        collapsedLangs: argv["collapsed-lang"],
+      }),
+    });
+    const reviews = filterReviewsByIgnoredRanks({
+      reviews: Array.isArray(normalizedResponse.reviews)
+        ? normalizedResponse.reviews
+        : [],
+      ignoredRanks: argv["ignored-rank"],
+    });
+    const filteredResponse = {
+      ...normalizedResponse,
+      reviews,
+    };
 
     // Persist reviews to database if available
     if (databaseService.isEnabled() && reviews.length > 0) {
@@ -118,10 +144,10 @@ const main = async () => {
       }
     }
 
-    if (response.errors) errors.push(...response.errors);
+    if (filteredResponse.errors) errors.push(...filteredResponse.errors);
 
     logger.success("Review results:");
-    logger.log(JSON.stringify(response, null, 2));
+    logger.log(JSON.stringify(filteredResponse, null, 2));
 
     // C. Find existing summary comment and extract previous discussion IDs from it
     const existingSummaryNote = await gitlabService.getExistingSummaryNote();
@@ -164,6 +190,7 @@ const main = async () => {
       try {
         const discussion = await gitlabService.createReviewDiscussion({
           review: item,
+          model: response.model,
           mergeRequest: mr,
         });
         createdDiscussions.push(discussion);
@@ -196,6 +223,7 @@ const main = async () => {
 
             const discussion = await gitlabService.createReviewDiscussion({
               review: recomputedReview,
+              model: response.model,
               mergeRequest: mr,
             });
             createdDiscussions.push(discussion);
@@ -227,7 +255,7 @@ const main = async () => {
       discussions: [...remainingPreviousDiscussions, ...createdDiscussions],
     });
     const summaryBody = buildSummaryNote({
-      response,
+      response: filteredResponse,
       trackingJson,
       errors,
     });
