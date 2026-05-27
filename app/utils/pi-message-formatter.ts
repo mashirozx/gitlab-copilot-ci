@@ -27,6 +27,9 @@ type PiConsoleMessage = {
 };
 
 type PiAssistantMessageEvent = {
+  type?: string;
+  delta?: string;
+  content?: string;
   partial?: PiConsoleMessage;
 };
 
@@ -61,6 +64,7 @@ const ANSI = {
   reset: "\u001b[0m",
   dim: "\u001b[2m",
   gray: "\u001b[90m",
+  magenta: "\u001b[35m",
   green: "\u001b[32m",
   red: "\u001b[31m",
   yellow: "\u001b[33m",
@@ -491,7 +495,7 @@ const getAssistantTextDelta = ({
   nextText: string;
   previousText: string;
 }): string => {
-  if (!nextText || nextText.includes("[COPILOT_JSON_START]")) {
+  if (!nextText || nextText.includes("[COPILOT_JSON")) {
     return "";
   }
 
@@ -510,14 +514,41 @@ const getAssistantTextDelta = ({
   return nextText.trim();
 };
 
+const normalizeAssistantText = ({ text }: { text: string }): string => {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+};
+
+const isTextAssistantEventType = ({ type }: { type?: string }): boolean => {
+  return /^text_/.test(type ?? "");
+};
+
+const shouldRenderAssistantText = ({
+  event,
+}: {
+  event: PiConsoleEvent;
+}): boolean => {
+  const partialEventType = event.assistantMessageEvent?.type;
+
+  if (!partialEventType) {
+    return true;
+  }
+
+  return !/^(thinking|toolcall|text)_/.test(partialEventType);
+};
+
 const formatAssistantText = ({ text }: { text: string }): string => {
-  const normalized = text.trim();
+  const normalized = normalizeAssistantText({ text });
 
   if (!normalized) {
     return "";
   }
 
-  return `${colorize({ text: "◦", color: ANSI.cyan })} ${normalized}\n`;
+  return formatBlockWithGuides({
+    header: "Message:",
+    lines: normalized.split(/\r?\n/),
+    bulletColor: ANSI.magenta,
+    contentColor: ANSI.gray,
+  });
 };
 
 const formatAssistantThinking = ({
@@ -638,6 +669,18 @@ export const createPiMessageFormatter = (): {
   let lastAssistantText = "";
   let lastAssistantThinking = "";
   let lastUsageFingerprint = "";
+  let pendingAssistantMessage = "";
+
+  const flushPendingAssistantMessage = (): string => {
+    if (pendingAssistantMessage.length === 0) {
+      return "";
+    }
+
+    const nextMessage = pendingAssistantMessage;
+    pendingAssistantMessage = "";
+    lastAssistantText = normalizeAssistantText({ text: nextMessage });
+    return formatAssistantText({ text: nextMessage });
+  };
 
   const getUsageOutput = ({ event }: { event: PiConsoleEvent }): string => {
     const usage = getPiUsage({ event });
@@ -665,16 +708,26 @@ export const createPiMessageFormatter = (): {
       return `${ellipsize({ text: trimToSingleLine({ text: line }) })}\n`;
     }
 
+    const partialEventType = event.assistantMessageEvent?.type;
+    const bufferedMessageOutput =
+      pendingAssistantMessage.length > 0 &&
+      ((!partialEventType &&
+        (event.type === "message_end" || event.type === "agent_end")) ||
+        (partialEventType !== undefined &&
+          !isTextAssistantEventType({ type: partialEventType })))
+        ? flushPendingAssistantMessage()
+        : "";
+
     if (event.type === "session") {
       cwd = event.cwd;
       const location = event.cwd
         ? ` in ${toDisplayPath({ value: event.cwd, cwd: event.cwd })}`
         : "";
-      return formatInfoLine({ text: `Pi session started${location}` });
+      return `${bufferedMessageOutput}${formatInfoLine({ text: `Pi session started${location}` })}`;
     }
 
     if (event.type === "agent_start") {
-      return formatInfoLine({ text: "Agent started" });
+      return `${bufferedMessageOutput}${formatInfoLine({ text: "Agent started" })}`;
     }
 
     if (event.type === "agent_end") {
@@ -684,7 +737,30 @@ export const createPiMessageFormatter = (): {
       lastAssistantThinking = getAssistantThinkingFromMessages({
         messages: getEventMessages({ event }),
       });
-      return `${formatInfoLine({ text: "Agent finished" })}${getUsageOutput({ event })}`;
+      return `${bufferedMessageOutput}${formatInfoLine({ text: "Agent finished" })}${getUsageOutput({ event })}`;
+    }
+
+    if (isTextAssistantEventType({ type: partialEventType })) {
+      if (partialEventType === "text_start") {
+        pendingAssistantMessage = "";
+        return bufferedMessageOutput;
+      }
+
+      if (
+        partialEventType === "text_delta" &&
+        typeof event.assistantMessageEvent?.delta === "string"
+      ) {
+        pendingAssistantMessage += event.assistantMessageEvent.delta;
+        return bufferedMessageOutput;
+      }
+
+      if (partialEventType === "text_end") {
+        if (typeof event.assistantMessageEvent?.content === "string") {
+          pendingAssistantMessage = event.assistantMessageEvent.content;
+        }
+
+        return `${bufferedMessageOutput}${flushPendingAssistantMessage()}`;
+      }
     }
 
     if (event.type === "message_end") {
@@ -694,20 +770,20 @@ export const createPiMessageFormatter = (): {
       const usageOutput = getUsageOutput({ event });
 
       if (!thinking || thinking === lastAssistantThinking) {
-        return usageOutput;
+        return `${bufferedMessageOutput}${usageOutput}`;
       }
 
       lastAssistantThinking = thinking;
-      return `${formatAssistantThinking({
+      return `${bufferedMessageOutput}${formatAssistantThinking({
         thinking,
       })}${usageOutput}`;
     }
 
     if (event.type === "compaction_start") {
-      return formatInfoLine({
+      return `${bufferedMessageOutput}${formatInfoLine({
         text: `Context compaction started${event.reason ? ` (${event.reason})` : ""}`,
         color: ANSI.yellow,
-      });
+      })}`;
     }
 
     if (event.type === "compaction_end") {
@@ -718,30 +794,30 @@ export const createPiMessageFormatter = (): {
           : "finished";
       const retryText = event.willRetry ? " and will retry" : "";
 
-      return formatInfoLine({
+      return `${bufferedMessageOutput}${formatInfoLine({
         text: `Context compaction ${status}${retryText}`,
         color: event.errorMessage ? ANSI.red : ANSI.yellow,
-      });
+      })}`;
     }
 
     if (event.type === "auto_retry_start") {
       const errorText = event.errorMessage
         ? `: ${ellipsize({ text: trimToSingleLine({ text: event.errorMessage }) })}`
         : "";
-      return formatInfoLine({
+      return `${bufferedMessageOutput}${formatInfoLine({
         text: `Retry ${event.attempt ?? "?"}/${event.maxAttempts ?? "?"} in ${event.delayMs ?? 0}ms${errorText}`,
         color: ANSI.yellow,
-      });
+      })}`;
     }
 
     if (event.type === "auto_retry_end") {
       const finalError = event.finalError
         ? `: ${ellipsize({ text: trimToSingleLine({ text: event.finalError }) })}`
         : "";
-      return formatInfoLine({
+      return `${bufferedMessageOutput}${formatInfoLine({
         text: `Retry ${event.attempt ?? "?"} ${event.finalError ? `failed${finalError}` : "succeeded"}`,
         color: event.finalError ? ANSI.red : ANSI.green,
-      });
+      })}`;
     }
 
     if (event.type === "tool_execution_start") {
@@ -752,11 +828,11 @@ export const createPiMessageFormatter = (): {
         });
       }
 
-      return "";
+      return bufferedMessageOutput;
     }
 
     if (event.type === "tool_execution_update") {
-      return "";
+      return bufferedMessageOutput;
     }
 
     if (event.type === "tool_execution_end") {
@@ -785,29 +861,31 @@ export const createPiMessageFormatter = (): {
         ? getErrorText({ result: event.result, fallback: event.finalError })
         : getToolDetail({ toolName, result: event.result });
 
-      return formatToolEvent({
+      return `${bufferedMessageOutput}${formatToolEvent({
         label,
         detail,
         isError: Boolean(event.isError),
-      });
+      })}`;
     }
 
-    const assistantText = getAssistantTextFromMessages({
-      messages: getEventMessages({ event }),
-    });
-    const assistantTextDelta = getAssistantTextDelta({
-      nextText: assistantText,
-      previousText: lastAssistantText,
-    });
-
-    if (assistantTextDelta) {
-      lastAssistantText = assistantText;
-      return formatAssistantText({
-        text: assistantTextDelta,
+    if (shouldRenderAssistantText({ event })) {
+      const assistantText = getAssistantTextFromMessages({
+        messages: getEventMessages({ event }),
       });
+      const assistantTextDelta = getAssistantTextDelta({
+        nextText: assistantText,
+        previousText: lastAssistantText,
+      });
+
+      if (assistantTextDelta) {
+        lastAssistantText = assistantText;
+        return `${bufferedMessageOutput}${formatAssistantText({
+          text: assistantTextDelta,
+        })}`;
+      }
     }
 
-    return "";
+    return bufferedMessageOutput;
   };
 
   return {
