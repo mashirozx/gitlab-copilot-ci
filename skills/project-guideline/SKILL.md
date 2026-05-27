@@ -29,7 +29,7 @@ keywords:
 - **Context**: This project's own CI (`.gitlab-ci.yml`)
 - **Purpose**: Build the binary for multiple platforms, validate builds, and create releases
 - **Configuration**: Uses GitLab CI environment variables and scripts
-- **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`
+- **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`
 - **Artifacts**: Versioned binaries (e.g., `gitlab-copilot-ci-1.0.0-darwin-arm64`)
 
 ---
@@ -578,25 +578,36 @@ In `scripts/ci/ensure-release.ts`, before the build stage:
 
 1. Read version from `package.json`
 2. Check whether `v{version}` already exists
-3. If it exists, continue
-4. If it does not exist, create the release first
+3. Write `release.env` as a GitLab dotenv artifact with `RELEASE_EXISTS`, `RELEASE_VERSION`, and `RELEASE_TAG`
+4. If it exists, later build and publish jobs exit early without creating or uploading anything
+5. If it does not exist, later jobs continue through build and publish
 
-### Per-Platform Build and Publish
+### Per-Platform Build Preparation
 
 In `scripts/ci/build-and-publish.ts`, each build job:
 
 1. Reads `PLATFORM` and `BUILD_SCRIPT` from the CI matrix
-2. Checks whether the target versioned asset already exists on the release
-3. If the asset exists, skip the build entirely
-4. If the asset does not exist, run the platform build script
-5. Rename the build output to the versioned release filename
-6. Upload the renamed binary to the generic package registry and add a release asset link through the GitLab `/releases/:tag_name/assets/links` API
+2. Reads the shared `RELEASE_EXISTS` flag from the `release.env` dotenv artifact
+3. If the release already exists, skip the build entirely
+4. If the release does not exist, run the platform build script
+5. Rename the build output to the versioned release filename and keep it in `dist/` as a GitLab artifact for the final publish job
+
+### Final Release Publish
+
+In `scripts/ci/publish-release.ts`, after all matrix builds succeed:
+
+1. Reads the shared `RELEASE_EXISTS` flag and exits early when the release already exists
+2. Collects all versioned binaries from `dist/`
+3. Uploads each binary to the GitLab generic package registry
+4. Builds a changelog from the GitLab repository commits API through the existing `@gitbeaker/rest` client between the previous release commit and `CI_COMMIT_SHA`, excluding release-commit messages like `chore: 🔖 release v1.0.5`, so the publish job does not require a local `git` binary in the runner image
+5. Creates the GitLab release once, with the changelog as the release description and the uploaded package URLs attached as release asset links
 
 ### Build Artifacts
 
-- The build jobs now upload directly to the GitLab release/package registry
-- No cross-job GitLab artifact handoff is required for release publishing
-- The renamed binary still exists locally in `dist/` during the job, but it is not the primary handoff mechanism
+- The `release:check` job publishes `release.env` as a GitLab dotenv artifact so later jobs can reuse the release-existence decision without re-querying GitLab
+- Build jobs publish only their own versioned binary from `dist/` as a GitLab job artifact, using the `RELEASE_VERSION` and `PLATFORM` variables to avoid archiving unrelated files
+- CI no longer preserves `dist/` via `GIT_CLEAN_FLAGS`, so stale binaries from earlier jobs do not accumulate into oversized artifact archives
+- The final `release:publish` job downloads those artifacts, uploads them to the generic package registry, and then creates the release with asset links
 
 ### CI Build Cache
 
@@ -665,8 +676,9 @@ This keeps the skill in sync with the codebase so future LLMs have accurate cont
 - `app/services/logger.ts` — Logging with Temporal timestamps
 - `app/services/*.types.ts` — Domain-local TypeScript entities and data types
 - `app/types/sql.d.ts` — SQL module declaration
-- `scripts/ci/ensure-release.ts` — Ensure the versioned GitLab release exists before the build stage
-- `scripts/ci/build-and-publish.ts` — Per-platform build, rename, upload, and link the release asset
+- `scripts/ci/ensure-release.ts` — Check whether the versioned GitLab release already exists and publish the result via `release.env`
+- `scripts/ci/build-and-publish.ts` — Per-platform build and rename step that prepares versioned binaries as CI artifacts
+- `scripts/ci/publish-release.ts` — Upload built binaries, generate the release changelog from the GitLab repository commits API via `@gitbeaker/rest`, and create the GitLab release with asset links without shelling out to `git`; when CI falls back to `CI_JOB_TOKEN`, raw package/release fetch calls must send `JOB-TOKEN` instead of `PRIVATE-TOKEN`
 - `.gitlab-ci.yml` — CI/CD pipeline definition
 - `package.json` — Version, dependencies, build scripts
 - `biome.jsonc` — Linter and formatter configuration (no-default-export rule excludes `app/types/sql.d.ts`)
