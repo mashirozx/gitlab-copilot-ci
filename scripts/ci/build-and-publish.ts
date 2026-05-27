@@ -3,20 +3,25 @@
 import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-const packageJson = JSON.parse(
-  readFileSync("./package.json", {
-    encoding: "utf-8",
-  }),
-);
-const version = packageJson.version as string;
+const getPackageVersion = (): string => {
+  const packageJson = JSON.parse(
+    readFileSync("./package.json", {
+      encoding: "utf-8",
+    }),
+  ) as {
+    version: string;
+  };
 
-const apiUrl = process.env.CI_API_V4_URL || "";
-const projectId = process.env.CI_PROJECT_ID || "";
-const jobToken =
-  process.env.GITLAB_REPO_PRIVATE_TOKEN ||
-  process.env.GITLAB_TOKEN ||
-  process.env.CI_JOB_TOKEN ||
-  "";
+  return packageJson.version;
+};
+
+const version = getPackageVersion();
+
+if (process.env.RELEASE_EXISTS === "true") {
+  console.log(`Release v${version} already exists. Skipping build job.`);
+  process.exit(0);
+}
+
 const platform = process.env.PLATFORM || "";
 const buildScript = process.env.BUILD_SCRIPT || "";
 
@@ -33,45 +38,6 @@ const releaseBinaryName = isWindowsPlatform
 const buildBinaryName = isWindowsPlatform
   ? `gitlab-copilot-ci-${platform}.exe`
   : `gitlab-copilot-ci-${platform}`;
-
-const releaseUrl = `${apiUrl}/projects/${projectId}/releases/v${version}`;
-
-type ReleaseLink = {
-  name?: string;
-  url?: string;
-};
-
-type ReleaseInfo = {
-  assets?: {
-    links?: ReleaseLink[];
-  };
-};
-
-const releaseResponse = await fetch(releaseUrl, {
-  headers: {
-    "PRIVATE-TOKEN": jobToken,
-  },
-});
-
-if (!releaseResponse.ok) {
-  console.error(
-    `Release v${version} does not exist or could not be loaded: ${releaseResponse.status}`,
-  );
-  process.exit(1);
-}
-
-const release = (await releaseResponse.json()) as ReleaseInfo;
-const existingLink = (release.assets?.links ?? []).find(
-  (link) =>
-    link.name === releaseBinaryName || link.url?.includes(releaseBinaryName),
-);
-
-if (existingLink) {
-  console.log(
-    `Release asset ${releaseBinaryName} already exists. Skipping build for ${platform}.`,
-  );
-  process.exit(0);
-}
 
 console.log(`Building ${platform}...`);
 const buildResult = Bun.spawnSync({
@@ -103,45 +69,4 @@ if (existsSync(releasePath)) {
 
 renameSync(sourcePath, releasePath);
 
-console.log(`Uploading ${releaseBinaryName}...`);
-
-const uploadUrl = `${apiUrl}/projects/${projectId}/packages/generic/gitlab-copilot-ci/${version}/${releaseBinaryName}`;
-const uploadResponse = await fetch(uploadUrl, {
-  method: "PUT",
-  headers: {
-    "PRIVATE-TOKEN": jobToken,
-  },
-  body: Bun.file(releasePath),
-});
-
-if (!uploadResponse.ok) {
-  console.error(
-    `Failed to upload ${releaseBinaryName}: ${uploadResponse.status}`,
-  );
-  process.exit(1);
-}
-
-const linkResponse = await fetch(
-  `${apiUrl}/projects/${projectId}/releases/v${version}/assets/links`,
-  {
-    method: "POST",
-    headers: {
-      "PRIVATE-TOKEN": jobToken,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      name: releaseBinaryName,
-      url: uploadUrl,
-      link_type: "package",
-    }),
-  },
-);
-
-if (!linkResponse.ok) {
-  console.error(
-    `Failed to add release link for ${releaseBinaryName}: ${linkResponse.status}`,
-  );
-  process.exit(1);
-}
-
-console.log(`Uploaded ${releaseBinaryName} successfully.`);
+console.log(`Prepared ${releaseBinaryName} for release publishing.`);
