@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeReviewResponse } from "./review-output";
+
+process.env.GITLAB_TOKEN ??= "test-gitlab-token";
+process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
+process.env.CI_PROJECT_ID ??= "1";
+process.env.CI_MERGE_REQUEST_IID ??= "1";
+
+const { normalizeReviewResponse } = await import("./review-output");
 
 describe("normalizeReviewResponse", () => {
   test("keeps keyed summary translations unchanged", () => {

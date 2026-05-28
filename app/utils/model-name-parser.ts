@@ -43,3 +43,46 @@ export const parseModelSpec = ({
     effort,
   };
 };
+
+const stripProviderPrefix = ({
+  model,
+}: {
+  model: string | undefined;
+}): string | undefined => {
+  const trimmedModel = model?.trim();
+
+  if (!trimmedModel) {
+    return undefined;
+  }
+
+  const separatorIndex = trimmedModel.lastIndexOf("/");
+
+  return separatorIndex >= 0
+    ? trimmedModel.slice(separatorIndex + 1).trim() || undefined
+    : trimmedModel;
+};
+
+export const getPromptModelSpec = ({
+  model,
+}: {
+  model?: string;
+}): {
+  model?: string;
+  effort?: string;
+  configuredModel?: string;
+} => {
+  const parsedModelSpec = parseModelSpec({ model });
+  const promptModel = stripProviderPrefix({ model: parsedModelSpec.model });
+
+  if (!promptModel) {
+    return {};
+  }
+
+  return {
+    model: promptModel,
+    effort: parsedModelSpec.effort,
+    configuredModel: parsedModelSpec.effort
+      ? `${promptModel}:${parsedModelSpec.effort}`
+      : promptModel,
+  };
+};

@@ -4,6 +4,7 @@ import type {
   ReviewSummaryEntity,
 } from "../types/review.types";
 import { argv } from "./argv";
+import { modelDisplayName } from "./model-display.ts";
 import {
   buildDetailsBlock,
   getDisplayLanguages,
@@ -153,7 +154,7 @@ export const buildPerformanceMetricsSection = ({
 }): string => {
   if (
     !response.duration &&
-    !response.model &&
+    !modelDisplayName &&
     !response.context &&
     !response.usage &&
     !agentDisplay
@@ -163,8 +164,8 @@ export const buildPerformanceMetricsSection = ({
 
   let section = "\n\n---\n\n## 📊 Model Usage & Performance Matrix\n";
 
-  if (response.model) {
-    section += `- 🤖 **Model**: ${response.model}\n`;
+  if (modelDisplayName) {
+    section += `- 🤖 **Model**: ${modelDisplayName}\n`;
   }
 
   if (agentDisplay) {

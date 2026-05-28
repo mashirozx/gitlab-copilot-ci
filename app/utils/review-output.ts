@@ -3,6 +3,7 @@ import type {
   ReviewRankEntity,
   ReviewResponseEntity,
 } from "../types/review.types";
+import { modelDisplayName } from "./model-display.ts";
 
 const ENGLISH_LANGUAGE_KEY = "english";
 
@@ -229,13 +230,11 @@ const getRenderedReviewMessages = ({
 export const buildReviewDiscussionBody = ({
   marker,
   review,
-  model,
   displayLanguages,
   collapsedLanguages,
 }: {
   marker: string;
   review: ReviewItemEntity;
-  model?: string;
   displayLanguages: string[];
   collapsedLanguages: string[];
 }): string => {
@@ -288,7 +287,7 @@ export const buildReviewDiscussionBody = ({
       getRankInlineMath({
         rank: normalizeReviewRank({ rank: review.rank }),
       }),
-      model?.trim(),
+      modelDisplayName,
     ]
       .filter((part) => part && part.length > 0)
       .join(" "),

@@ -42,5 +42,4 @@ export type ReviewResponseEntity = {
   };
   usage?: ReviewUsageEntity;
   duration?: number;
-  model?: string;
 };
