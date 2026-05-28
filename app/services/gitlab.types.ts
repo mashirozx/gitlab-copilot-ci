@@ -1,25 +1,20 @@
 import type { MergeRequestDiffSchema } from "@gitbeaker/rest";
 
-export type TrackedDiscussionEntity = {
-  id: string;
-  file: string;
-  line: number;
+export type ReviewHistoryContentEntity = {
+  suggestion: string;
+  file_path: string;
+  old_line: number | null;
+  new_line: number | null;
 };
 
-export type MergeRequestSummaryNoteEntity = {
-  body: string;
-  id: number;
+export type ReviewHistoryDiscussionEntity = {
+  discussion_id: string;
+  note_id: string;
+  content: ReviewHistoryContentEntity;
 };
 
-export type MergeRequestDiscussionEntity = {
-  id: string;
-  resolved?: boolean;
-  outdated?: boolean;
-  notes?: {
-    id: number;
-    body?: string;
-    system?: boolean;
-  }[];
+export type ReviewHistoryRunEntity = {
+  discussions: ReviewHistoryDiscussionEntity[];
 };
 
 export type MergeRequestPositionContextEntity = {
@@ -37,15 +32,5 @@ export type MergeRequestDiffPageDataType = {
 export type MergeRequestDiffsResultDataType = {
   changes: MergeRequestDiffSchema[];
   pages: MergeRequestDiffPageDataType[];
-  errors: string[];
-};
-
-export type ReviewTrackingEntity = {
-  discussions?: TrackedDiscussionEntity[];
-};
-
-export type CleanupPreviousDiscussionsDataType = {
-  processedDiscussions: TrackedDiscussionEntity[];
-  remainingDiscussions: TrackedDiscussionEntity[];
   errors: string[];
 };

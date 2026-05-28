@@ -1,12 +1,15 @@
 import { spawnSync } from "node:child_process";
+import type { ReviewHistoryRunEntity } from "../services/gitlab.types";
 import type {
   ReviewResponseEntity,
   ReviewSummaryEntity,
 } from "../types/review.types";
 import { argv } from "./argv";
+import { env } from "./env";
 import { modelDisplayName } from "./model-display.ts";
 import {
   buildDetailsBlock,
+  formatCollapsedLanguageHeader,
   getDisplayLanguages,
   isEnglishLanguage,
 } from "./review-output";
@@ -60,7 +63,7 @@ export const renderSummaryComment = ({
 
       return [
         buildDetailsBlock({
-          summary: language,
+          summary: formatCollapsedLanguageHeader({ language }),
           content: block,
         }),
       ];
@@ -111,12 +114,12 @@ export const getAgentDisplayLabel = ({
     agent === "pi"
       ? {
           label: "Pi Coding Agent",
-          command: argv["agent-bin"] ?? process.env.PI_BIN ?? "pi",
+          command: argv["agent-bin"] ?? env.PI_BIN ?? "pi",
           versionArgs: ["--version"],
         }
       : {
           label: "GitHub Copilot CLI",
-          command: argv["agent-bin"] ?? process.env.COPILOT_BIN ?? "copilot",
+          command: argv["agent-bin"] ?? env.COPILOT_BIN ?? "copilot",
           versionArgs: ["-v"],
         };
 
@@ -231,25 +234,55 @@ export const buildErrorsSummarySection = ({
   })}`;
 };
 
+export const trimReviewHistoryRuns = ({
+  reviewHistory,
+  maxHistoryLength = argv["max-history-length"],
+}: {
+  reviewHistory: ReviewHistoryRunEntity[];
+  maxHistoryLength?: number;
+}): ReviewHistoryRunEntity[] => {
+  if (
+    maxHistoryLength === undefined ||
+    reviewHistory.length <= maxHistoryLength
+  ) {
+    return reviewHistory;
+  }
+
+  return reviewHistory.slice(-maxHistoryLength);
+};
+
+export const encodeReviewHistory = ({
+  reviewHistory,
+}: {
+  reviewHistory: ReviewHistoryRunEntity[];
+}): string => {
+  return Buffer.from(JSON.stringify(reviewHistory), "utf8").toString("base64");
+};
+
 export const buildSummaryNote = ({
   response,
-  trackingJson,
+  reviewHistory,
   errors,
 }: {
   response: ReviewResponseEntity;
-  trackingJson: string;
+  reviewHistory: ReviewHistoryRunEntity[];
   errors: string[];
 }): string => {
   const markerPrefix = argv["html-marker-prefix"];
   const summaryMarker = `${markerPrefix}-summary-marker`;
-  const reviewDataTag = `${markerPrefix}-review-data`;
+  const reviewDataStartTag = `${markerPrefix}-review-data-start`;
+  const reviewDataEndTag = `${markerPrefix}-review-data-end`;
   const displayLanguages = getDisplayLanguages({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
   });
+  const encodedReviewHistory = encodeReviewHistory({
+    reviewHistory: trimReviewHistoryRuns({
+      reviewHistory,
+    }),
+  });
 
   let summaryBody = `<!-- ${summaryMarker} -->
-<!-- ${reviewDataTag}:${trackingJson} -->
 ${renderSummaryComment({
   summary: response.summary,
   displayLanguages,
@@ -262,6 +295,7 @@ ${renderSummaryComment({
   summaryBody += buildErrorsSummarySection({
     errors,
   });
+  summaryBody += `\n\n<!-- ${reviewDataStartTag} -->\n<!--\n${encodedReviewHistory}\n-->\n<!-- ${reviewDataEndTag} -->`;
 
   return summaryBody;
 };

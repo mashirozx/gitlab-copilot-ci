@@ -1,6 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import type { ReviewRankEntity } from "../types/review.types";
+import { env } from "./env";
 import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix.ts";
 import { getFormattedVersion } from "./version";
 
@@ -40,17 +41,17 @@ export const argv = yargs(hideBin(process.argv))
   .option("gitlab-token", {
     describe: "GitLab API token",
     type: "string",
-    default: process.env.GITLAB_TOKEN,
+    default: env.GITLAB_TOKEN,
   })
   .option("gitlab-url", {
     describe: "GitLab server URL",
     type: "string",
-    default: process.env.CI_SERVER_URL,
+    default: env.CI_SERVER_URL,
   })
   .option("agent-bin", {
     describe: "Agent CLI binary name or path",
     type: "string",
-    default: process.env.AGENT_BIN,
+    default: env.AGENT_BIN,
   })
   .option("agent-args", {
     describe:
@@ -67,20 +68,17 @@ export const argv = yargs(hideBin(process.argv))
     describe:
       "Optional GitHub token with Copilot access for headless authentication",
     type: "string",
-    default:
-      process.env.COPILOT_GITHUB_TOKEN ??
-      process.env.GH_TOKEN ??
-      process.env.GITHUB_TOKEN,
+    default: env.COPILOT_GITHUB_TOKEN ?? env.GH_TOKEN ?? env.GITHUB_TOKEN,
   })
   .option("project-id", {
     describe: "GitLab project ID",
     type: "string",
-    default: process.env.CI_PROJECT_ID,
+    default: env.CI_PROJECT_ID,
   })
   .option("mr-iid", {
     describe: "GitLab merge request IID",
     type: "string",
-    default: process.env.CI_MERGE_REQUEST_IID,
+    default: env.CI_MERGE_REQUEST_IID,
   })
   .option("max-git-diff-page", {
     describe:
@@ -101,7 +99,7 @@ export const argv = yargs(hideBin(process.argv))
   .option("html-marker-prefix", {
     alias: "html-marker-preffix",
     describe:
-      "Prefix used to build HTML markers that identify CLI-generated GitLab MR comments: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data",
+      "Prefix used to build HTML markers that identify CLI-generated GitLab MR comments: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data-start, <prefix>-review-data-end, <prefix>-reviewing-marker",
     type: "string",
     default: "copilot",
     coerce: (arg: string | undefined) =>
@@ -135,10 +133,41 @@ export const argv = yargs(hideBin(process.argv))
       }
     },
   })
-  .option("db", {
-    describe: "Path to SQLite database for review history tracking (optional)",
-    type: "string",
-    default: process.env.COPILOT_DB,
+  .option("max-history-length", {
+    describe:
+      "Maximum number of prior review runs to keep in the summary-embedded review history. Older runs are discarded first.",
+    type: "number",
+    default: 2,
+    coerce: (arg: number | undefined) => {
+      if (arg === undefined) {
+        return 2;
+      }
+
+      if (!Number.isInteger(arg) || arg <= 0) {
+        throw new Error("--max-history-length must be a positive integer");
+      }
+
+      return arg;
+    },
+  })
+  .option("process-max-pending-time", {
+    describe:
+      "Maximum number of minutes to wait for an existing in-progress review marker before skipping this run.",
+    type: "number",
+    default: 30,
+    coerce: (arg: number | undefined) => {
+      if (arg === undefined) {
+        return 30;
+      }
+
+      if (!Number.isInteger(arg) || arg <= 0) {
+        throw new Error(
+          "--process-max-pending-time must be a positive integer",
+        );
+      }
+
+      return arg;
+    },
   })
   .option("instruction-files", {
     describe:
@@ -182,7 +211,7 @@ export const argv = yargs(hideBin(process.argv))
   })
   .option("ignored-rank", {
     describe:
-      "Review rank(s) to hide from both inline reviews and the summary note. Allowed values: HIGH, MEDIUM, LOW.",
+      "Review rank(s) to ask the LLM to omit from inline reviews and the summary note. Allowed values: HIGH, MEDIUM, LOW.",
     type: "string",
     array: true,
     default: [] as string[],
@@ -204,5 +233,5 @@ export const argv = yargs(hideBin(process.argv))
     getFormattedVersion(),
   )
   .alias("v", "version")
-  .demandOption(["gitlab-token", "gitlab-url", "project-id", "mr-iid"])
+  .demandOption(["agent"])
   .parseSync();

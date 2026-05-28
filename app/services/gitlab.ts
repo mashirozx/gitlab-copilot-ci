@@ -1,30 +1,82 @@
-import { Gitlab } from "@gitbeaker/rest";
+import {
+  type DiscussionSchema,
+  Gitlab,
+  type MergeRequestNoteSchema,
+} from "@gitbeaker/rest";
 import type { ReviewItemEntity } from "../types/review.types";
 import { argv } from "../utils/argv";
-import { getReviewPreferredLine } from "../utils/review-helpers";
 import {
   buildReviewDiscussionBody,
   getDisplayLanguages,
 } from "../utils/review-output";
 import type {
-  CleanupPreviousDiscussionsDataType,
   MergeRequestDiffPageDataType,
   MergeRequestDiffsResultDataType,
-  MergeRequestDiscussionEntity,
   MergeRequestPositionContextEntity,
-  MergeRequestSummaryNoteEntity,
-  ReviewTrackingEntity,
-  TrackedDiscussionEntity,
+  ReviewHistoryDiscussionEntity,
+  ReviewHistoryRunEntity,
 } from "./gitlab.types";
 import { logger } from "./logger";
+
+const requireArg = ({
+  name,
+  value,
+}: {
+  name: string;
+  value: string | undefined;
+}): string => {
+  if (value === undefined) {
+    throw new Error(`${name} is required`);
+  }
+
+  return value;
+};
+
+export const buildDiscussionPosition = ({
+  mergeRequest,
+  review,
+}: {
+  mergeRequest: MergeRequestPositionContextEntity;
+  review: ReviewItemEntity;
+}) => {
+  const positionBase = {
+    baseSha: mergeRequest.diff_refs.base_sha,
+    headSha: mergeRequest.diff_refs.head_sha,
+    startSha: mergeRequest.diff_refs.base_sha,
+    positionType: "text" as const,
+    newPath: review.file_path,
+    oldPath: review.file_path,
+  };
+
+  if (review.new_line !== undefined) {
+    return {
+      ...positionBase,
+      newLine: String(review.new_line),
+    };
+  }
+
+  return {
+    ...positionBase,
+    oldLine: String(review.old_line),
+  };
+};
 
 export class GitLabService {
   private readonly diffPageSize = 20;
   private readonly maxGitDiffPage =
     argv["max-git-diff-page"] ?? Number.POSITIVE_INFINITY;
   private readonly client: Gitlab;
-  private readonly projectId = argv["project-id"];
-  private readonly mrIid = parseInt(argv["mr-iid"], 10);
+  private readonly projectId = requireArg({
+    name: "project-id",
+    value: argv["project-id"],
+  });
+  private readonly mrIid = parseInt(
+    requireArg({
+      name: "mr-iid",
+      value: argv["mr-iid"],
+    }),
+    10,
+  );
   private readonly displayLanguages = getDisplayLanguages({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
@@ -32,8 +84,13 @@ export class GitLabService {
   private readonly collapsedLanguages = argv["collapsed-lang"];
   private readonly htmlMarkerPrefix = argv["html-marker-prefix"];
   private readonly reviewMarker = `${this.htmlMarkerPrefix}-review-marker`;
+  private readonly reviewingMarker =
+    `${this.htmlMarkerPrefix}-reviewing-marker`;
   private readonly summaryMarker = `${this.htmlMarkerPrefix}-summary-marker`;
-  private readonly reviewDataTag = `${this.htmlMarkerPrefix}-review-data`;
+  private readonly reviewDataStartTag =
+    `${this.htmlMarkerPrefix}-review-data-start`;
+  private readonly reviewDataEndTag =
+    `${this.htmlMarkerPrefix}-review-data-end`;
 
   constructor() {
     this.client = new Gitlab({
@@ -44,6 +101,9 @@ export class GitLabService {
 
   getMergeRequest = async () =>
     this.client.MergeRequests.show(this.projectId, this.mrIid);
+
+  private getMergeRequestNotes = async (): Promise<MergeRequestNoteSchema[]> =>
+    this.client.MergeRequestNotes.all(this.projectId, this.mrIid);
 
   getMergeRequestDiffs = async (): Promise<MergeRequestDiffsResultDataType> => {
     const pages: MergeRequestDiffPageDataType[] = [];
@@ -91,25 +151,38 @@ export class GitLabService {
   };
 
   getExistingSummaryNote = async (): Promise<
-    MergeRequestSummaryNoteEntity | undefined
+    MergeRequestNoteSchema | undefined
   > => {
-    const mrNotes = (await this.client.MergeRequestNotes.all(
-      this.projectId,
-      this.mrIid,
-    )) as MergeRequestSummaryNoteEntity[];
+    const mrNotes = await this.getMergeRequestNotes();
 
     return mrNotes.find((note) =>
       note.body.includes(`<!-- ${this.summaryMarker} -->`),
     );
   };
 
-  getTrackedDiscussionsFromSummary = ({
+  getReviewingMarkerNote = async ({
+    ignoreNoteId,
+  }: {
+    ignoreNoteId?: number;
+  } = {}): Promise<MergeRequestNoteSchema | undefined> => {
+    const mrNotes = await this.getMergeRequestNotes();
+
+    return mrNotes.find(
+      (note) =>
+        note.body.includes(`<!-- ${this.reviewingMarker} -->`) &&
+        note.id !== ignoreNoteId,
+    );
+  };
+
+  getReviewHistoryFromSummary = ({
     noteBody,
   }: {
     noteBody: string;
-  }): TrackedDiscussionEntity[] => {
+  }): ReviewHistoryRunEntity[] => {
     const dataMatch = noteBody.match(
-      new RegExp(`<!-- ${this.reviewDataTag}:(.*?) -->`),
+      new RegExp(
+        `<!-- ${this.reviewDataStartTag} -->\\s*<!--\\s*([\\s\\S]*?)\\s*-->\\s*<!-- ${this.reviewDataEndTag} -->`,
+      ),
     );
 
     if (!dataMatch) {
@@ -117,87 +190,27 @@ export class GitLabService {
     }
 
     try {
-      const parsed = JSON.parse(dataMatch[1] ?? "null") as ReviewTrackingEntity;
+      const encodedPayload = dataMatch[1]?.trim();
 
-      return parsed.discussions ?? [];
+      if (!encodedPayload) {
+        return [];
+      }
+
+      const parsed = JSON.parse(
+        Buffer.from(encodedPayload, "base64").toString("utf8"),
+      ) as ReviewHistoryRunEntity[];
+
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       logger.warn(
-        "Failed to parse previous discussion data from summary comment",
+        "Failed to parse previous review history from summary comment",
       );
       return [];
     }
   };
 
-  deleteSummaryNote = async ({ noteId }: { noteId: number }) =>
+  deleteMergeRequestNote = async ({ noteId }: { noteId: number }) =>
     this.client.MergeRequestNotes.remove(this.projectId, this.mrIid, noteId);
-
-  cleanupPreviousDiscussions = async ({
-    trackedDiscussions,
-  }: {
-    trackedDiscussions: TrackedDiscussionEntity[];
-  }): Promise<CleanupPreviousDiscussionsDataType> => {
-    const discussions = (await this.client.MergeRequestDiscussions.all(
-      this.projectId,
-      this.mrIid,
-    )) as MergeRequestDiscussionEntity[];
-
-    const processedDiscussions: TrackedDiscussionEntity[] = [];
-    const remainingDiscussions: TrackedDiscussionEntity[] = [];
-    const errors: string[] = [];
-
-    for (const tracked of trackedDiscussions) {
-      try {
-        const discussion = discussions.find((item) => item.id === tracked.id);
-
-        if (!discussion || discussion.resolved) {
-          continue;
-        }
-
-        const notes = (discussion.notes ?? []).filter((note) => !note.system);
-
-        if (!notes[0]?.body?.includes(`<!-- ${this.reviewMarker} -->`)) {
-          continue;
-        }
-
-        const hasOtherReplies = notes.some(
-          (note) => !note.body?.includes(`<!-- ${this.reviewMarker} -->`),
-        );
-
-        if (hasOtherReplies || discussion.outdated) {
-          await this.client.MergeRequestDiscussions.resolve(
-            this.projectId,
-            this.mrIid,
-            tracked.id,
-            true,
-          );
-          processedDiscussions.push(tracked);
-          continue;
-        }
-
-        for (const note of notes) {
-          await this.client.MergeRequestDiscussions.removeNote(
-            this.projectId,
-            this.mrIid,
-            tracked.id,
-            note.id,
-          );
-        }
-
-        processedDiscussions.push(tracked);
-      } catch (error) {
-        const message = `Failed to clean up discussion ${tracked.id} (${tracked.file}:${tracked.line}): ${error instanceof Error ? error.message : String(error)}`;
-        logger.error(message);
-        errors.push(message);
-        remainingDiscussions.push(tracked);
-      }
-    }
-
-    return {
-      processedDiscussions,
-      remainingDiscussions,
-      errors,
-    };
-  };
 
   createReviewDiscussion = async ({
     review,
@@ -205,7 +218,7 @@ export class GitLabService {
   }: {
     review: ReviewItemEntity;
     mergeRequest: MergeRequestPositionContextEntity;
-  }): Promise<TrackedDiscussionEntity> => {
+  }): Promise<ReviewHistoryDiscussionEntity> => {
     if (review.new_line === undefined && review.old_line === undefined) {
       throw new Error(
         "Review must include at least one of new_line or old_line",
@@ -233,36 +246,39 @@ export class GitLabService {
      *
      * Reference: https://stackoverflow.com/a/65944171/8083009
      */
-    const positionBase = {
-      baseSha: mergeRequest.diff_refs.base_sha,
-      headSha: mergeRequest.diff_refs.head_sha,
-      startSha: mergeRequest.diff_refs.base_sha,
-      positionType: "text" as const,
-      newPath: review.file_path,
-      oldPath: review.file_path,
-    };
+    // Single-line discussions should anchor to one side only. When both line
+    // numbers are present, prefer the new side so GitLab does not render the
+    // same thread twice in split diff views.
+    const position = buildDiscussionPosition({
+      mergeRequest,
+      review,
+    });
 
-    const position = {
-      ...positionBase,
-      ...(review.new_line !== undefined
-        ? { newLine: String(review.new_line) }
-        : {}),
-      ...(review.old_line !== undefined
-        ? { oldLine: String(review.old_line) }
-        : {}),
-    };
+    const discussion: DiscussionSchema =
+      await this.client.MergeRequestDiscussions.create(
+        this.projectId,
+        this.mrIid,
+        commentBody,
+        { position },
+      );
 
-    const discussion = await this.client.MergeRequestDiscussions.create(
-      this.projectId,
-      this.mrIid,
-      commentBody,
-      { position },
-    );
+    const createdNote = discussion.notes?.find((note) => !note.system);
+
+    if (!createdNote?.id) {
+      throw new Error(
+        "GitLab discussion create response did not include the created note id",
+      );
+    }
 
     return {
-      id: discussion.id,
-      file: review.file_path,
-      line: getReviewPreferredLine({ review }) ?? 0,
+      discussion_id: discussion.id,
+      note_id: String(createdNote.id),
+      content: {
+        suggestion: review.suggestion,
+        file_path: review.file_path,
+        old_line: review.old_line ?? null,
+        new_line: review.new_line ?? null,
+      },
     };
   };
 
@@ -272,6 +288,13 @@ export class GitLabService {
       this.mrIid,
       summaryBody,
     );
+
+  createReviewingMarkerNote = async ({
+    noteBody,
+  }: {
+    noteBody: string;
+  }): Promise<MergeRequestNoteSchema> =>
+    this.client.MergeRequestNotes.create(this.projectId, this.mrIid, noteBody);
 }
 
 export const gitlabService = new GitLabService();

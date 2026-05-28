@@ -12,6 +12,16 @@ export const getElapsedMilliseconds = ({
   return getNowEpochMilliseconds() - startTimeMs;
 };
 
+export const sleepMilliseconds = async ({
+  milliseconds,
+}: {
+  milliseconds: number;
+}): Promise<void> => {
+  await new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+};
+
 export const formatLocalTimestamp = ({
   includeMilliseconds = false,
   dateTimeSeparator,

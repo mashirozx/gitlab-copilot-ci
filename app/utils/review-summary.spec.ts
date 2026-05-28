@@ -24,6 +24,7 @@ process.argv = [
 
 const {
   buildReviewDiscussionBody,
+  formatCollapsedLanguageHeader,
   getDisplayLanguages,
   getPromptTranslationLangs,
 } = await import("./review-output");
@@ -31,9 +32,12 @@ const {
 const { modelDisplayName } = await import("./model-display.ts");
 
 const {
+  buildSummaryNote,
   buildPerformanceMetricsSection,
+  encodeReviewHistory,
   getAgentDisplayLabel,
   renderSummaryComment,
+  trimReviewHistoryRuns,
 } = await import("./review-summary");
 
 import type { ReviewItemEntity } from "../types/review.types";
@@ -69,6 +73,10 @@ const buildConcreteReviewSummaryTitle = ({
 
 describe("buildReviewDiscussionBody", () => {
   test("renders rank math and collapsed translated languages", () => {
+    const collapsedHeader = formatCollapsedLanguageHeader({
+      language: "zh-CN",
+    });
+
     const body = buildReviewDiscussionBody({
       marker: "<!-- marker -->",
       review: reviews[0] as ReviewItemEntity,
@@ -80,7 +88,7 @@ describe("buildReviewDiscussionBody", () => {
     expect(body).toContain(modelDisplayName);
     expect(body).toContain("English first");
     expect(body).toContain("\n\n---\n\n<details>");
-    expect(body).toContain("<summary>zh-CN</summary>");
+    expect(body).toContain(`<summary>${collapsedHeader}</summary>`);
     expect(body).toContain("中文第一条");
     expect(body).toContain("\n\n---");
   });
@@ -107,7 +115,31 @@ describe("modelDisplayName", () => {
 });
 
 describe("renderSummaryComment", () => {
+  test("formats collapsed language headers using localized names and flags", () => {
+    const chineseHeader = formatCollapsedLanguageHeader({ language: "zh" });
+    const chineseCnHeader = formatCollapsedLanguageHeader({
+      language: "zh-CN",
+    });
+    const englishHeader = formatCollapsedLanguageHeader({ language: "en" });
+    const japaneseHeader = formatCollapsedLanguageHeader({ language: "ja" });
+
+    expect(chineseHeader.endsWith("🇨🇳")).toBe(true);
+    expect(chineseHeader.replace(" 🇨🇳", "").trim().length).toBeGreaterThan(0);
+
+    expect(chineseCnHeader.endsWith("🇨🇳")).toBe(true);
+    expect(chineseCnHeader.replace(" 🇨🇳", "")).toContain("中");
+
+    expect(englishHeader.endsWith("🇬🇧")).toBe(true);
+    expect(englishHeader.replace(" 🇬🇧", "")).toContain("English");
+
+    expect(japaneseHeader).toBe("日本語");
+  });
+
   test("renders the selected language summary block directly", () => {
+    const collapsedHeader = formatCollapsedLanguageHeader({
+      language: "zh-CN",
+    });
+
     const rendered = renderSummaryComment({
       summary: {
         content: `${buildConcreteReviewSummaryTitle({ llmName: "GPT-5.4" })}
@@ -144,13 +176,17 @@ None.`,
     });
 
     expect(rendered).not.toContain("English changes.");
-    expect(rendered).toContain("<summary>zh-CN</summary>");
+    expect(rendered).toContain(`<summary>${collapsedHeader}</summary>`);
     expect(rendered).toContain("发现 2 条建议：");
     expect(rendered).toContain("- src/a.ts:10: 第一条");
     expect(rendered).toContain("- src/b.ts:20: 第二条");
   });
 
   test("requests and renders collapsed-only languages from the merged language set", () => {
+    const collapsedHeader = formatCollapsedLanguageHeader({
+      language: "zh-CN",
+    });
+
     const translationLangs = getPromptTranslationLangs({
       langs: [],
       collapsedLangs: ["zh-CN", "english", "zh-CN"],
@@ -194,12 +230,19 @@ None.`,
       collapsedLanguages: ["zh-CN"],
     });
 
-    expect(rendered).toContain("<summary>zh-CN</summary>");
+    expect(rendered).toContain(`<summary>${collapsedHeader}</summary>`);
     expect(rendered).toContain("中文变更。");
     expect(rendered).not.toContain("English changes.");
   });
 
   test("keeps requested language content even when translated headers omit lang suffixes", () => {
+    const englishHeader = formatCollapsedLanguageHeader({
+      language: "en",
+    });
+    const japaneseHeader = formatCollapsedLanguageHeader({
+      language: "ja",
+    });
+
     const rendered = renderSummaryComment({
       summary: {
         content: `${buildConcreteReviewSummaryTitle({ llmName: "GPT-5.4" })}
@@ -249,13 +292,20 @@ None.`,
     });
 
     expect(rendered).toContain("中文变更。");
-    expect(rendered).toContain("<summary>en</summary>");
+    expect(rendered).toContain(`<summary>${englishHeader}</summary>`);
     expect(rendered).toContain("English changes.");
-    expect(rendered).toContain("<summary>ja</summary>");
+    expect(rendered).toContain(`<summary>${japaneseHeader}</summary>`);
     expect(rendered).toContain("日本語の変更。");
   });
 
   test("reads summary translations directly by language key", () => {
+    const englishHeader = formatCollapsedLanguageHeader({
+      language: "en",
+    });
+    const japaneseHeader = formatCollapsedLanguageHeader({
+      language: "ja",
+    });
+
     const rendered = renderSummaryComment({
       summary: {
         content: `${buildConcreteReviewSummaryTitle({ llmName: "GPT-5.4" })}
@@ -289,9 +339,9 @@ None.`,
       collapsedLanguages: ["en", "ja"],
     });
 
-    expect(rendered).toContain("<summary>en</summary>");
+    expect(rendered).toContain(`<summary>${englishHeader}</summary>`);
     expect(rendered).toContain("English changes.");
-    expect(rendered).toContain("<summary>ja</summary>");
+    expect(rendered).toContain(`<summary>${japaneseHeader}</summary>`);
     expect(rendered).toContain("日本語の変更。");
   });
 
@@ -419,5 +469,104 @@ describe("buildPerformanceMetricsSection", () => {
     expect(section).toContain("- ✍️ **Cache write tokens**: 0");
     expect(section).toContain("- 🔢 **Total tokens**: 1611");
     expect(section).toContain("- 💸 **Total cost**: 0");
+  });
+});
+
+describe("review history summary data", () => {
+  test("trims review history to the latest configured runs", () => {
+    const trimmed = trimReviewHistoryRuns({
+      reviewHistory: [
+        {
+          discussions: [
+            {
+              discussion_id: "1",
+              note_id: "1",
+              content: {
+                suggestion: "oldest",
+                file_path: "a.ts",
+                old_line: null,
+                new_line: 1,
+              },
+            },
+          ],
+        },
+        {
+          discussions: [
+            {
+              discussion_id: "2",
+              note_id: "2",
+              content: {
+                suggestion: "middle",
+                file_path: "b.ts",
+                old_line: null,
+                new_line: 2,
+              },
+            },
+          ],
+        },
+        {
+          discussions: [
+            {
+              discussion_id: "3",
+              note_id: "3",
+              content: {
+                suggestion: "latest",
+                file_path: "c.ts",
+                old_line: null,
+                new_line: 3,
+              },
+            },
+          ],
+        },
+      ],
+      maxHistoryLength: 2,
+    });
+
+    expect(trimmed).toHaveLength(2);
+    expect(trimmed[0]?.discussions[0]?.content.suggestion).toBe("middle");
+    expect(trimmed[1]?.discussions[0]?.content.suggestion).toBe("latest");
+  });
+
+  test("appends the encoded review history block at the end of the summary note", () => {
+    const reviewHistory = [
+      {
+        discussions: [
+          {
+            discussion_id: "discussion-1",
+            note_id: "note-1",
+            content: {
+              suggestion: "Existing suggestion",
+              file_path: "src/a.ts",
+              old_line: null,
+              new_line: 10,
+            },
+          },
+        ],
+      },
+    ];
+    const encodedReviewHistory = encodeReviewHistory({
+      reviewHistory,
+    });
+    const summaryBody = buildSummaryNote({
+      response: {
+        summary: {
+          content: `${buildConcreteReviewSummaryTitle({ llmName: "GPT-5.4" })}
+
+## 📋 Pull Request Changes
+English changes.`,
+          translations: {},
+        },
+        reviews: [],
+      },
+      reviewHistory,
+      errors: [],
+    });
+
+    expect(summaryBody).toContain("<!-- copilot-review-data-start -->");
+    expect(summaryBody).toContain(encodedReviewHistory);
+    expect(summaryBody).toContain("<!-- copilot-review-data-end -->");
+    expect(
+      summaryBody.trim().endsWith("<!-- copilot-review-data-end -->"),
+    ).toBe(true);
   });
 });

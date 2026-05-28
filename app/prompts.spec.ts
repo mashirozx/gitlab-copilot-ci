@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
 const originalArgv = [...process.argv];
+const originalCommitSha = process.env.CI_COMMIT_SHA;
+const originalCommitShortSha = process.env.CI_COMMIT_SHORT_SHA;
+const originalProjectUrl = process.env.CI_PROJECT_URL;
 
 const loadPromptsModule = async () => {
+  process.env.CI_COMMIT_SHA = "1234567890abcdef";
+  process.env.CI_COMMIT_SHORT_SHA = "12345678";
+  process.env.CI_PROJECT_URL = "https://gitlab.example.com/group/project";
+
   process.argv = [
     originalArgv[0] ?? "bun",
     originalArgv[1] ?? "test",
@@ -23,6 +30,24 @@ const loadPromptsModule = async () => {
 
 afterEach(() => {
   process.argv = [...originalArgv];
+
+  if (originalCommitSha === undefined) {
+    delete process.env.CI_COMMIT_SHA;
+  } else {
+    process.env.CI_COMMIT_SHA = originalCommitSha;
+  }
+
+  if (originalCommitShortSha === undefined) {
+    delete process.env.CI_COMMIT_SHORT_SHA;
+  } else {
+    process.env.CI_COMMIT_SHORT_SHA = originalCommitShortSha;
+  }
+
+  if (originalProjectUrl === undefined) {
+    delete process.env.CI_PROJECT_URL;
+  } else {
+    process.env.CI_PROJECT_URL = originalProjectUrl;
+  }
 });
 
 describe("buildCopilotPrompt", () => {
@@ -32,7 +57,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
-      previousReviews: [],
+      historyItems: [],
       debugMode: false,
     });
 
@@ -40,28 +65,55 @@ describe("buildCopilotPrompt", () => {
     expect(prompt.length).toBeGreaterThan(0);
   });
 
-  test("returns a prompt string for debug review mode with prior reviews", async () => {
+  test("describes previous inline review history as duplicate suppression only", async () => {
     const { buildCopilotPrompt } = await loadPromptsModule();
     const prompt = buildCopilotPrompt({
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: "Test description",
-      previousReviews: [
+      historyItems: [
         {
-          id: "review-1",
-          mr_iid: "2",
           file_path: "app/main.ts",
           new_line: 42,
           old_line: null,
           suggestion: "Existing suggestion",
-          source_snippet: "const value = 1;",
-          created_at: 0,
         },
       ],
       debugMode: true,
     });
 
-    expect(typeof prompt).toBe("string");
-    expect(prompt.length).toBeGreaterThan(0);
+    expect(prompt).toContain(
+      "## Previous Inline Review History (duplicate suppression only)",
+    );
+    expect(prompt).toContain(
+      "Do not let this history change the walkthrough, change summary, summary counts, or any other summary content",
+    );
+    expect(prompt).toContain("**File**: app/main.ts");
+    expect(prompt).toContain("**Lines**: new 42, old -");
+    expect(prompt).toContain("**Suggestion**: Existing suggestion");
+    expect(prompt).not.toContain(
+      "Reviews marked with this will be automatically deleted if not resolved before next update",
+    );
+  });
+
+  test("includes the commit reference and review-summary footer note in the template", async () => {
+    const { buildCopilotPrompt } = await loadPromptsModule();
+    const prompt = buildCopilotPrompt({
+      diffFilePaths: ["mr-diff.page-1.diff"],
+      title: "Test MR",
+      description: null,
+      historyItems: [],
+      debugMode: false,
+    });
+
+    expect(prompt).toContain(
+      "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):",
+    );
+    expect(prompt).toContain(
+      "***\n\n<sub>Suggestions from previous review runs are not listed here.</sub>",
+    );
+    expect(prompt).toContain(
+      'Keep the markdown commit reference from "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):" unchanged and translate only the surrounding prose.',
+    );
   });
 });

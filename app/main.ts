@@ -5,10 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildCopilotPrompt } from "./prompts";
 import { runCopilotReview } from "./services/copilot";
-import { databaseService } from "./services/db";
-import type { StoredReviewEntity } from "./services/db.types";
 import { gitlabService } from "./services/gitlab";
-import type { TrackedDiscussionEntity } from "./services/gitlab.types";
+import type { ReviewHistoryDiscussionEntity } from "./services/gitlab.types";
 import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
 import { argv } from "./utils/argv";
@@ -17,21 +15,26 @@ import {
   colorizeDiffLineCode,
   recomputeReviewPositionFromDiffReference,
 } from "./utils/diff-files";
+import { formatReviewLocation } from "./utils/review-helpers";
 import {
-  findDiffItemByFilePath,
-  formatReviewLocation,
-} from "./utils/review-helpers";
-import {
-  filterReviewsByIgnoredRanks,
   getPromptTranslationLangs,
   normalizeReviewResponse,
 } from "./utils/review-output";
-import { buildSummaryNote } from "./utils/review-summary";
+import {
+  buildReviewingMarkerNoteBody,
+  shouldSkipForStaleCommit,
+  waitForPendingReviewToFinish,
+} from "./utils/review-process";
+import {
+  buildSummaryNote,
+  trimReviewHistoryRuns,
+} from "./utils/review-summary";
 import { getFormattedVersion } from "./utils/version";
 
 const main = async () => {
-  const mrIid = parseInt(argv["mr-iid"], 10);
   const errors: string[] = [];
+  let reviewingMarkerNoteId: number | null = null;
+  let tempDir: string | null = null;
 
   if (argv["debug"]) {
     logger.info(
@@ -43,22 +46,53 @@ const main = async () => {
   logger.silent(`Gitlab Copilot CI`);
   logger.box(getFormattedVersion());
 
-  // Initialize database if path is provided
-  databaseService.initialize({ errors });
+  if (!(await waitForPendingReviewToFinish())) {
+    return;
+  }
 
   // A. Fetch MR details and diff (SHA values needed for comment positioning)
   const mr = await gitlabService.getMergeRequest();
-  const {
-    changes,
-    pages: diffPages,
-    errors: diffFetchErrors,
-  } = await gitlabService.getMergeRequestDiffs();
-  errors.push(...diffFetchErrors);
-  const tempDir = mkdtempSync(join(tmpdir(), "copilot-review-"));
+
+  if (
+    shouldSkipForStaleCommit({ mergeRequestHeadSha: mr.diff_refs.head_sha })
+  ) {
+    return;
+  }
+
+  const reviewingMarkerNote = await gitlabService.createReviewingMarkerNote({
+    noteBody: buildReviewingMarkerNoteBody({
+      htmlMarkerPrefix: argv["html-marker-prefix"],
+    }),
+  });
+  reviewingMarkerNoteId = reviewingMarkerNote.id;
+  logger.info("[GitLab] Posted review-in-progress marker note");
 
   try {
+    const existingSummaryNote = await gitlabService.getExistingSummaryNote();
+    const reviewHistory = existingSummaryNote
+      ? gitlabService.getReviewHistoryFromSummary({
+          noteBody: existingSummaryNote.body,
+        })
+      : [];
+    const historyItems = reviewHistory.flatMap((run) =>
+      run.discussions.map((discussion) => discussion.content),
+    );
+
+    logger.info(
+      `[GitLab] Loaded ${historyItems.length} prior inline review item(s) from ${reviewHistory.length} summary history run(s)`,
+    );
+
+    const {
+      changes,
+      pages: diffPages,
+      errors: diffFetchErrors,
+    } = await gitlabService.getMergeRequestDiffs();
+    errors.push(...diffFetchErrors);
+    const createdTempDir = mkdtempSync(join(tmpdir(), "copilot-review-"));
+    tempDir = createdTempDir;
+
     const diffFilePaths = diffPages.map(({ page, diffs }) => {
-      const diffFilePath = join(tempDir, `mr-diff.page-${page}.diff`);
+      const diffFilePath = join(createdTempDir, `mr-diff.page-${page}.diff`);
       writeFileSync(diffFilePath, buildDiffPageFileContent({ diffs }), "utf-8");
       return diffFilePath;
     });
@@ -66,24 +100,6 @@ const main = async () => {
     logger.info(
       `[GitLab] Loaded ${changes.length} diff file entries across ${diffPages.length} page(s)`,
     );
-
-    // Load previous reviews from database if available
-    let previousReviews: StoredReviewEntity[] = [];
-    if (databaseService.isEnabled()) {
-      try {
-        previousReviews = databaseService.getStoredReviewsForMR({
-          mrIid: String(mrIid),
-        });
-        logger.info(
-          `[Database] Loaded ${previousReviews.length} previous review(s) for MR ${mrIid}`,
-        );
-      } catch (e) {
-        const msg = `[Database] Failed to load previous reviews: ${e instanceof Error ? e.message : String(e)}`;
-        logger.error(msg);
-        logger.error(e);
-        errors.push(msg);
-      }
-    }
 
     logger.info(`[LLM] Using service: ${argv["agent"]}`);
 
@@ -94,7 +110,7 @@ const main = async () => {
       diffFilePaths,
       title: mr.title,
       description: mr.description,
-      previousReviews,
+      historyItems,
       debugMode: argv["debug"],
     });
     const response = await reviewRunner({
@@ -107,94 +123,42 @@ const main = async () => {
         collapsedLangs: argv["collapsed-lang"],
       }),
     });
-    const reviews = filterReviewsByIgnoredRanks({
-      reviews: Array.isArray(normalizedResponse.reviews)
-        ? normalizedResponse.reviews
-        : [],
-      ignoredRanks: argv["ignored-rank"],
-    });
-    const filteredResponse = {
-      ...normalizedResponse,
-      reviews,
-    };
+    const reviews = normalizedResponse.reviews;
 
-    // Persist reviews to database if available
-    if (databaseService.isEnabled() && reviews.length > 0) {
-      try {
-        for (const review of reviews) {
-          const diffItem = findDiffItemByFilePath({
-            changes,
-            filePath: review.file_path,
-          });
-          const sourceSnippet = diffItem?.diff ?? "";
-          databaseService.storeReview({
-            mrIid: String(mrIid),
-            review,
-            sourceSnippet,
-          });
-        }
-        logger.info(
-          `[Database] Persisted ${reviews.length} review(s) for MR ${mrIid}`,
-        );
-      } catch (e) {
-        const msg = `[Database] Failed to persist reviews: ${e instanceof Error ? e.message : String(e)}`;
-        logger.error(msg);
-        logger.error(e);
-        errors.push(msg);
-      }
+    if (normalizedResponse.errors) errors.push(...normalizedResponse.errors);
+
+    if (
+      !(await waitForPendingReviewToFinish({
+        ignoreReviewingNoteId: reviewingMarkerNoteId ?? undefined,
+      }))
+    ) {
+      return;
     }
 
-    if (filteredResponse.errors) errors.push(...filteredResponse.errors);
+    const latestMergeRequest = await gitlabService.getMergeRequest();
+    if (
+      shouldSkipForStaleCommit({
+        mergeRequestHeadSha: latestMergeRequest.diff_refs.head_sha,
+      })
+    ) {
+      return;
+    }
 
     logger.success("Review results:");
-    logger.log(JSON.stringify(filteredResponse, null, 2));
+    logger.log(JSON.stringify(normalizedResponse, null, 2));
 
-    // C. Find existing summary comment and extract previous discussion IDs from it
-    const existingSummaryNote = await gitlabService.getExistingSummaryNote();
-
-    let previousDiscussions: TrackedDiscussionEntity[] = [];
-    if (existingSummaryNote) {
-      previousDiscussions = gitlabService.getTrackedDiscussionsFromSummary({
-        noteBody: existingSummaryNote.body,
-      });
-      logger.info(
-        `Found ${previousDiscussions.length} previous review discussion(s) to check`,
-      );
-    }
-
-    // D. Clean up unresolved copilot-review discussions tracked in previous summary
-    let remainingPreviousDiscussions = previousDiscussions;
-    try {
-      const cleanupResult = await gitlabService.cleanupPreviousDiscussions({
-        trackedDiscussions: previousDiscussions,
-      });
-      remainingPreviousDiscussions = cleanupResult.remainingDiscussions;
-      errors.push(...cleanupResult.errors);
-
-      for (const tracked of cleanupResult.processedDiscussions) {
-        logger.success(
-          `Processed previous discussion ${tracked.id} (${tracked.file}:${tracked.line})`,
-        );
-      }
-    } catch (e) {
-      const msg = `Failed to clean up previous discussions: ${e instanceof Error ? e.message : String(e)}`;
-      logger.error(msg);
-      logger.error(e);
-      errors.push(msg);
-    }
-
-    // E. Post inline review comments, tracking created discussion IDs
-    const createdDiscussions: TrackedDiscussionEntity[] = [];
+    // C. Post inline review comments and store newly created review history entries
+    const createdDiscussions: ReviewHistoryDiscussionEntity[] = [];
     const diffLineMatchState = new Map<string, number>();
     for (const item of reviews) {
       try {
         const discussion = await gitlabService.createReviewDiscussion({
           review: item,
-          mergeRequest: mr,
+          mergeRequest: latestMergeRequest,
         });
         createdDiscussions.push(discussion);
         logger.success(
-          `Successfully posted comment to ${formatReviewLocation({ review: item })} (discussion: ${discussion.id})`,
+          `Successfully posted comment to ${formatReviewLocation({ review: item })} (discussion: ${discussion.discussion_id})`,
         );
       } catch (e) {
         const recomputedReview = recomputeReviewPositionFromDiffReference({
@@ -222,11 +186,11 @@ const main = async () => {
 
             const discussion = await gitlabService.createReviewDiscussion({
               review: recomputedReview,
-              mergeRequest: mr,
+              mergeRequest: latestMergeRequest,
             });
             createdDiscussions.push(discussion);
             logger.success(
-              `Successfully posted comment to ${formatReviewLocation({ review: recomputedReview })} after recomputing position by using ${item.diff_file} to find${colorizeDiffLineCode(item.diff_line_code)} (discussion: ${discussion.id})`,
+              `Successfully posted comment to ${formatReviewLocation({ review: recomputedReview })} after recomputing position by using ${item.diff_file} to find${colorizeDiffLineCode(item.diff_line_code)} (discussion: ${discussion.discussion_id})`,
             );
             continue;
           } catch (retryError) {
@@ -248,19 +212,18 @@ const main = async () => {
       }
     }
 
-    // F. Post summary comment with embedded tracking JSON
-    const trackingJson = JSON.stringify({
-      discussions: [...remainingPreviousDiscussions, ...createdDiscussions],
-    });
+    // D. Replace summary comment with updated embedded review history
     const summaryBody = buildSummaryNote({
-      response: filteredResponse,
-      trackingJson,
+      response: normalizedResponse,
+      reviewHistory: trimReviewHistoryRuns({
+        reviewHistory: [...reviewHistory, { discussions: createdDiscussions }],
+      }),
       errors,
     });
 
     try {
       if (existingSummaryNote) {
-        await gitlabService.deleteSummaryNote({
+        await gitlabService.deleteMergeRequestNote({
           noteId: existingSummaryNote.id,
         });
         logger.success("Deleted existing copilot review summary comment");
@@ -276,11 +239,26 @@ const main = async () => {
       logger.error(e);
     }
   } finally {
-    databaseService.close({ errors });
-    rmSync(tempDir, {
-      recursive: true,
-      force: true,
-    });
+    if (reviewingMarkerNoteId !== null) {
+      try {
+        await gitlabService.deleteMergeRequestNote({
+          noteId: reviewingMarkerNoteId,
+        });
+        logger.info("[GitLab] Removed review-in-progress marker note");
+      } catch (error) {
+        logger.error(
+          `[GitLab] Failed to remove review-in-progress marker note: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        logger.error(error);
+      }
+    }
+
+    if (tempDir) {
+      rmSync(tempDir, {
+        recursive: true,
+        force: true,
+      });
+    }
   }
 };
 

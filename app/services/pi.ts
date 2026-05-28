@@ -7,6 +7,7 @@ import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
+import { env } from "../utils/env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
 import { createPiMessageFormatter } from "../utils/pi-message-formatter";
 import {
@@ -169,11 +170,11 @@ export const runPiReview = async ({
       }
     };
 
-    const env: NodeJS.ProcessEnv = withCliColorEnv({
+    const childEnv: NodeJS.ProcessEnv = withCliColorEnv({
       env: {
         ...process.env,
-        PI_SKIP_VERSION_CHECK: process.env.PI_SKIP_VERSION_CHECK ?? "1",
-        PI_TELEMETRY: process.env.PI_TELEMETRY ?? "0",
+        PI_SKIP_VERSION_CHECK: env.PI_SKIP_VERSION_CHECK ?? "1",
+        PI_TELEMETRY: env.PI_TELEMETRY ?? "0",
       },
     });
 
@@ -190,11 +191,11 @@ export const runPiReview = async ({
 
     logger.info(`[Pi] Using model: ${argv["model"] ?? "default"}`);
 
-    const agentBin = argv["agent-bin"] ?? process.env.PI_BIN ?? "pi";
+    const agentBin = argv["agent-bin"] ?? env.PI_BIN ?? "pi";
 
     const child = spawn(agentBin, piArgs, {
       cwd: process.cwd(),
-      env,
+      env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
