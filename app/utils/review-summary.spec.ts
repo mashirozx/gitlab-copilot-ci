@@ -1,14 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildReviewDiscussionBody,
-  getDisplayLanguages,
-  getPromptTranslationLangs,
-} from "./review-output";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
 process.env.CI_MERGE_REQUEST_IID ??= "1";
+
+const originalArgv = [...process.argv];
+
+process.argv = [
+  originalArgv[0] ?? "bun",
+  originalArgv[1] ?? "test",
+  "--gitlab-token",
+  process.env.GITLAB_TOKEN,
+  "--gitlab-url",
+  process.env.CI_SERVER_URL,
+  "--project-id",
+  process.env.CI_PROJECT_ID,
+  "--mr-iid",
+  process.env.CI_MERGE_REQUEST_IID,
+  "--model",
+  "openai/gpt-5.4-mini:xhigh",
+];
+
+const {
+  buildReviewDiscussionBody,
+  getDisplayLanguages,
+  getPromptTranslationLangs,
+} = await import("./review-output");
+
+const { modelDisplayName } = await import("./model-display.ts");
 
 const {
   buildPerformanceMetricsSection,
@@ -52,13 +72,12 @@ describe("buildReviewDiscussionBody", () => {
     const body = buildReviewDiscussionBody({
       marker: "<!-- marker -->",
       review: reviews[0] as ReviewItemEntity,
-      model: "gpt-5.4 (high)",
       displayLanguages: ["english", "zh-CN"],
       collapsedLanguages: ["zh-CN"],
     });
 
     expect(body).toContain("\\colorbox{#ff4d4f}");
-    expect(body).toContain("gpt-5.4 (high)");
+    expect(body).toContain(modelDisplayName);
     expect(body).toContain("English first");
     expect(body).toContain("\n\n---\n\n<details>");
     expect(body).toContain("<summary>zh-CN</summary>");
@@ -70,15 +89,20 @@ describe("buildReviewDiscussionBody", () => {
     const body = buildReviewDiscussionBody({
       marker: "<!-- marker -->",
       review: reviews[0] as ReviewItemEntity,
-      model: "gpt-5.4 (high)",
       displayLanguages: ["english", "zh-CN"],
       collapsedLanguages: [],
     });
 
     expect(body).toContain(
-      "$\\colorbox{#ff4d4f}{\\color{white}{\\text{HIGH}}}$ gpt-5.4 (high)\n\nEnglish first",
+      `$\\colorbox{#ff4d4f}{\\color{white}{\\text{HIGH}}}$ ${modelDisplayName}\n\nEnglish first`,
     );
     expect(body).toContain("English first\n\n\n中文第一条");
+  });
+});
+
+describe("modelDisplayName", () => {
+  test("uses the shared configured model display constant", () => {
+    expect(modelDisplayName).toContain("<kbd>");
   });
 });
 
@@ -349,13 +373,12 @@ describe("buildPerformanceMetricsSection", () => {
       response: {
         summary: { content: "", translations: {} },
         reviews: [],
-        model: "gpt-5.4 (high)",
         duration: 1234,
       },
       agentDisplay: "GitHub Copilot CLI 1.0.54",
     });
 
-    expect(section).toContain("- 🤖 **Model**: gpt-5.4 (high)");
+    expect(section).toContain(`- 🤖 **Model**: ${modelDisplayName}`);
     expect(section).toContain("- 🧰 **Agent**: GitHub Copilot CLI 1.0.54");
     expect(section).toContain("- ⏱️ **Time taken**: 1s (1234ms)");
     expect(section.indexOf("**Model**")).toBeLessThan(
@@ -371,7 +394,6 @@ describe("buildPerformanceMetricsSection", () => {
       response: {
         summary: { content: "", translations: {} },
         reviews: [],
-        model: "gpt-5.4-mini",
         duration: 1234,
         usage: {
           input: 513,

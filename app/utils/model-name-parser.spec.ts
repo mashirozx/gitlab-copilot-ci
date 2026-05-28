@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseModelSpec } from "./model-name-parser";
+import { getPromptModelSpec, parseModelSpec } from "./model-name-parser";
 
 describe("parseModelSpec", () => {
   test("returns empty output for undefined or blank input", () => {
@@ -31,6 +31,36 @@ describe("parseModelSpec", () => {
     expect(parseModelSpec({ model: "org/model:preview:high" })).toEqual({
       model: "org/model:preview",
       effort: "high",
+    });
+  });
+});
+
+describe("getPromptModelSpec", () => {
+  test("returns empty output for undefined or blank input", () => {
+    expect(getPromptModelSpec({ model: undefined })).toEqual({});
+    expect(getPromptModelSpec({ model: "" })).toEqual({});
+  });
+
+  test("removes provider prefixes from plain configured models", () => {
+    expect(getPromptModelSpec({ model: "openai/gpt-4o" })).toEqual({
+      model: "gpt-4o",
+      configuredModel: "gpt-4o",
+    });
+  });
+
+  test("preserves explicit effort while removing provider prefixes", () => {
+    expect(getPromptModelSpec({ model: "openai/gpt-4o:high" })).toEqual({
+      model: "gpt-4o",
+      effort: "high",
+      configuredModel: "gpt-4o:high",
+    });
+  });
+
+  test("keeps model subvariants before the effort suffix", () => {
+    expect(getPromptModelSpec({ model: "org/model:preview:high" })).toEqual({
+      model: "model:preview",
+      effort: "high",
+      configuredModel: "model:preview:high",
     });
   });
 });

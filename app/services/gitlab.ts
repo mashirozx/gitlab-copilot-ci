@@ -201,11 +201,9 @@ export class GitLabService {
 
   createReviewDiscussion = async ({
     review,
-    model,
     mergeRequest,
   }: {
     review: ReviewItemEntity;
-    model?: string;
     mergeRequest: MergeRequestPositionContextEntity;
   }): Promise<TrackedDiscussionEntity> => {
     if (review.new_line === undefined && review.old_line === undefined) {
@@ -218,7 +216,6 @@ export class GitLabService {
     const commentBody = buildReviewDiscussionBody({
       marker,
       review,
-      model,
       displayLanguages: this.displayLanguages,
       collapsedLanguages: this.collapsedLanguages,
     });

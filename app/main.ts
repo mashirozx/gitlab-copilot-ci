@@ -190,7 +190,6 @@ const main = async () => {
       try {
         const discussion = await gitlabService.createReviewDiscussion({
           review: item,
-          model: response.model,
           mergeRequest: mr,
         });
         createdDiscussions.push(discussion);
@@ -223,7 +222,6 @@ const main = async () => {
 
             const discussion = await gitlabService.createReviewDiscussion({
               review: recomputedReview,
-              model: response.model,
               mergeRequest: mr,
             });
             createdDiscussions.push(discussion);

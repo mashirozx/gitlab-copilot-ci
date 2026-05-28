@@ -4,12 +4,14 @@ import {
 } from "./constants";
 import type { StoredReviewEntity } from "./services/db.types";
 import { argv } from "./utils/argv";
+import { getPromptModelSpec } from "./utils/model-name-parser";
 import {
   getPromptTranslationLangs,
   getRankInlineMath,
 } from "./utils/review-output";
 
 export const REVIEW_SUMMARY_TITLE = `# 📝 Code Review Summary by \${LLM name}`;
+export const REVIEW_SUMMARY_TITLE_TEXT = `Code Review Summary by \${LLM name}`;
 
 const buildTranslationsSpec = (langs: string[]): string => {
   if (langs.length === 0) return "";
@@ -20,7 +22,7 @@ const buildTranslationsSpec = (langs: string[]): string => {
 const buildTranslationsSectionInstructions = (langs: string[]): string => {
   if (langs.length === 0) return "";
 
-  const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE;
+  const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE_TEXT;
 
   return langs
     .map(
@@ -28,7 +30,7 @@ const buildTranslationsSectionInstructions = (langs: string[]): string => {
 
 For "summary.translations["${lang}"]", return a complete markdown block using the same section structure, written entirely in ${lang}. Use a heading like:
 # 📝 [translated equivalent of "${reviewSummaryTitleTemplate}"] (${lang})
-Translate the title text too, not only the body sections.
+Keep the markdown heading prefix exactly as "# 📝 ". Do not translate, duplicate, remove, or add markdown symbols, heading markers, or emoji in the title line. Translate only the human-language title text after that prefix.
 Include translated equivalents of "## 📋 Walkthrough", "## 🚧 Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
 The Other Suggestions section may be a bullet list, numbered list, or short paragraph, but it must stay in the comment markdown rather than the reviews JSON array.
@@ -112,6 +114,9 @@ export const buildCopilotPrompt = ({
   const extraPrompts = argv["extra-prompts"]?.trim();
   const ignoredRanks = argv["ignored-rank"];
   const shouldTeachDiffCompute = argv["should-teach-diff-compute"];
+  const configuredPromptModel = getPromptModelSpec({
+    model: argv["model"],
+  });
   const mrDescription = description?.trim()
     ? `\n\n## Pull Request Description\n${description.trim()}`
     : "";
@@ -184,7 +189,7 @@ ${review.source_snippet}
   const translatedRankFlagInstructions =
     langs.length > 0 ? buildTranslatedRankFlagInstructions() : "";
 
-  const summaryTemplate = `MUST use this exact template:\n\n# 📝 ${reviewSummaryTitleTemplate}\n\n## 📋 Walkthrough\n[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]\n\n## 🚧 Changes\n[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]\n\n[Example structure for one step:]\n**Step title**\n\n| Layer / File(s) | Summary |\n| --- | --- |\n| **module/method name/desc**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |\n\n[Repeat for additional steps when needed.]\n\n## 🔍 Review Summary\nFound X suggestion(s) from changes:\n\n[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: ✨ I have no feedback to provide.`;
+  const summaryTemplate = `MUST use this exact template:\n\n${reviewSummaryTitleTemplate}\n\n## 📋 Walkthrough\n[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]\n\n## 🚧 Changes\n[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]\n\n[Example structure for one step:]\n**Step title**\n\n| Layer / File(s) | Summary |\n| --- | --- |\n| **module/method name/desc**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |\n\n[Repeat for additional steps when needed.]\n\n## 🔍 Review Summary\nFound X suggestion(s) from changes:\n\n[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: ✨ I have no feedback to provide.`;
 
   const instructionEntryFilesSection =
     instructionFiles.length > 0
@@ -218,6 +223,11 @@ ${extraPrompts}
 You must obey the additional required instructions above unless they conflict with higher-priority system or repository rules.`
     : "";
 
+  const configuredModelSection = configuredPromptModel.model
+    ? `- The configured runtime model string for this review is "${configuredPromptModel.model}". You are being called by an agent with this model string already set.
+- Use this configured runtime model string as the source of truth for the human-readable model display name in the summary title instead of guessing from runtime self-identification.`
+    : "";
+
   return `You are a senior code reviewer working in this repository.
 
 Read-only task:
@@ -242,7 +252,6 @@ Analyze what this pull request changes and generate:
 
 Return only a JSON object with this structure:
 {
-  "model": "string in format: \${model-name} (\${effort or thinking level})",
   "summary": {
     "content": "${summaryTemplate}",
     "translations": { ${langs.map((lang) => `"${lang}": "string"`).join(", ")} }
@@ -265,10 +274,17 @@ Notes:
 - Reviews marked with this will be automatically deleted if not resolved before next update
 
 Rules:
-- The top-level "model" field is required.
-- Format "model" exactly as: \${model-name} (\${effort or thinking level}). Examples: gpt-5.4 (high), claude-sonnet-4 (thinking).
+- Use the configured runtime model string provided below as the source of truth for the summary title's human-readable model display name instead of guessing from runtime self-identification.${
+    configuredModelSection
+      ? `
+${configuredModelSection}`
+      : ""
+  }
+- CRITICAL NOMENCLATURE RULE: Only omit the tier modifier if the model is the true base, standard, or full-sized variant. If you are a specialized variant (like mini, nano, flash, pro, or thinking), you MUST append your tier modifier (e.g., 'gpt-5.4-mini', 'gemini-3.5-flash'). Never omit 'mini' if you are a mini model.
 - If you choose any local scripted operation or compute tool during review, prefer Node.js over Python or other language runtimes.
-- In the title of "summary.content" and every value in "summary.translations", replace "\${LLM name}" with a human-readable LLM name, such as "GPT-5.4" or "MiMo-V2.5-Pro".
+- In the title of "summary.content" and every value in "summary.translations", replace "\${LLM name}" with the full, human-readable model display name using Title Case with space separation (e.g., "GPT-5.4 mini", "Gemini 3.5 Flash"). If and only if you are the standard/base model, drop the tier suffix (e.g., use "GPT-5.4", not "GPT-5.4 Base").
+- The full human-readable model display name must appear in the summary title. Do not add any separate JSON field for model or effort output.
+- In every summary title, keep the exact markdown prefix "# 📝 " and do not translate or duplicate markdown symbols or emoji. Translate only the natural-language title text after that prefix when needed.
 - Always write "summary.content" and every review item's "suggestion" in English, regardless of --lang or --collapsed-lang.
 - Any non-English language requested by the runtime must be returned only inside the JSON translation fields.
 - Keep suggestion and all translations aligned in meaning
