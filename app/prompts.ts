@@ -2,8 +2,9 @@ import {
   REVIEW_RESPONSE_JSON_END_MARKER,
   REVIEW_RESPONSE_JSON_START_MARKER,
 } from "./constants";
-import type { StoredReviewEntity } from "./services/db.types";
+import type { ReviewHistoryContentEntity } from "./services/gitlab.types";
 import { argv } from "./utils/argv";
+import { buildCurrentCommitReference } from "./utils/commit-reference";
 import { getPromptModelSpec } from "./utils/model-name-parser";
 import {
   getPromptTranslationLangs,
@@ -23,6 +24,8 @@ const buildTranslationsSectionInstructions = (langs: string[]): string => {
   if (langs.length === 0) return "";
 
   const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE_TEXT;
+  const reviewSummaryLeadLine = buildReviewSummaryLeadLine();
+  const reviewSummaryFooterNote = buildReviewSummaryFooterNote();
 
   return langs
     .map(
@@ -33,10 +36,20 @@ For "summary.translations["${lang}"]", return a complete markdown block using th
 Keep the markdown heading prefix exactly as "# 📝 ". Do not translate, duplicate, remove, or add markdown symbols, heading markers, or emoji in the title line. Translate only the human-language title text after that prefix.
 Include translated equivalents of "## 📋 Walkthrough", "## 🚧 Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
-The Other Suggestions section may be a bullet list, numbered list, or short paragraph, but it must stay in the comment markdown rather than the reviews JSON array.
-If no suggestions, write the localized equivalent of "✨ No issues found!".`,
+Keep the markdown commit reference from "${reviewSummaryLeadLine}" unchanged and translate only the surrounding prose.
+After the inline-review list, keep the same separator and subscript note structure as "${reviewSummaryFooterNote}", translated naturally while preserving the HTML and markdown structure.
+The Other Suggestions section may be a bullet list, numbered list, or a short paragraph, but it must remain in the comment markdown rather than the reviews JSON array.
+If there are no suggestions, write the localized equivalent of "✨ No issues found!".`,
     )
     .join("");
+};
+
+const buildReviewSummaryLeadLine = (): string => {
+  return `Found X review suggestion(s) in the changes from ${buildCurrentCommitReference()}:`;
+};
+
+const buildReviewSummaryFooterNote = (): string => {
+  return "<sub>Suggestions from previous review runs are not listed here.</sub>";
 };
 
 const buildTranslatedRankFlagInstructions = (): string => {
@@ -97,13 +110,13 @@ export const buildCopilotPrompt = ({
   diffFilePaths,
   title,
   description,
-  previousReviews,
+  historyItems,
   debugMode,
 }: {
   diffFilePaths: string[];
   title: string;
   description?: string | null;
-  previousReviews?: StoredReviewEntity[];
+  historyItems?: ReviewHistoryContentEntity[];
   debugMode: boolean;
 }): string => {
   const langs = getPromptTranslationLangs({
@@ -121,28 +134,26 @@ export const buildCopilotPrompt = ({
     ? `\n\n## Pull Request Description\n${description.trim()}`
     : "";
 
-  const previousReviewsSection =
-    previousReviews && previousReviews.length > 0
+  const reviewHistorySection =
+    historyItems && historyItems.length > 0
       ? `
 
-## Previous Reviews (for validation - check if still applicable)
+## Previous Inline Review History (duplicate suppression only)
 
-The following reviews were posted on this MR in previous runs. Please verify if each is still valid in the current diff.
+The following inline review comments were already posted by earlier CI runs.
 
-- If a previous review is still valid and can be mapped to an exact valid current diff line, include it in the "reviews" array.
-- If it remains conceptually valid but cannot be mapped to an exact valid current diff line, include it only in the comment's "## 💡 Other Suggestions" section, not in the "reviews" array.
+- Use this history only to avoid creating a duplicate inline review when the same issue is already covered on the same file and exact same old/new line pair.
+- Do not let this history change the walkthrough, change summary, summary counts, or any other summary content except omitting duplicate inline findings.
+- If a similar issue appears on a different file or different line pair, you should still create a new review item for it.
+- If you are unsure whether a history item describes the same issue, prefer treating it as different instead of suppressing a new finding.
 
-${previousReviews
+${historyItems
   .map(
     (review, idx) => `
 ### Previous Review ${idx + 1}
 **File**: ${review.file_path}
-**Line**: ${review.old_line ? `new ${review.new_line}, old ${review.old_line}` : review.new_line}
+**Lines**: new ${review.new_line ?? "-"}, old ${review.old_line ?? "-"}
 **Suggestion**: ${review.suggestion}
-**Context**:
-\`\`\`
-${review.source_snippet}
-\`\`\`
 `,
   )
   .join("\n")}
@@ -189,7 +200,40 @@ ${review.source_snippet}
   const translatedRankFlagInstructions =
     langs.length > 0 ? buildTranslatedRankFlagInstructions() : "";
 
-  const summaryTemplate = `MUST use this exact template:\n\n${reviewSummaryTitleTemplate}\n\n## 📋 Walkthrough\n[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]\n\n## 🚧 Changes\n[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]\n\n[Example structure for one step:]\n**Step title**\n\n| Layer / File(s) | Summary |\n| --- | --- |\n| **module/method name/desc**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |\n\n[Repeat for additional steps when needed.]\n\n## 🔍 Review Summary\nFound X suggestion(s) from changes:\n\n[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]\n\nIf no suggestions, instead write: ✨ No issues found!\n\n## 💡 Other Suggestions\n[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]\n\nIf there are no other suggestions, write: ✨ I have no feedback to provide.`;
+  const summaryTemplate = `MUST use this exact template:
+
+${reviewSummaryTitleTemplate}
+
+## 📋 Walkthrough
+[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]
+
+## 🚧 Changes
+[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]
+
+[Example structure for one step:]
+**Step title**
+
+| Layer / File(s) | Summary |
+| --- | --- |
+| **name or desc of module, method, or larger feature**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |
+
+[Repeat for additional steps when needed.]
+
+## 🔍 Review Summary
+${buildReviewSummaryLeadLine()}
+
+[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]
+
+If no suggestions, instead write: ✨ No issues found!
+
+***
+
+${buildReviewSummaryFooterNote()}
+
+## 💡 Other Suggestions
+[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]
+
+If there are no other suggestions, write: ✨ I have no feedback to provide.`;
 
   const instructionEntryFilesSection =
     instructionFiles.length > 0
@@ -241,7 +285,7 @@ ${title}${mrDescription}
 First, read the merge request diff from all of these files:
 ${diffFilesList}
 
-These files together contain the full paginated GitLab Merge Request unified diff. Read all of them before deciding whether a file or diff line exists.${diffLineNumberGuidance}${previousReviewsSection}${debugPrompt}
+These files together contain the full paginated GitLab Merge Request unified diff. Read all of them before deciding whether a file or diff line exists.${diffLineNumberGuidance}${reviewHistorySection}${debugPrompt}
 
 Then, inspect any repository files you need for context, including changed files, imported files, relevant skills/*/SKILL.md files, and repository guideline files.${guidelineFilesSection}
 ${extraPromptsSection}
@@ -271,7 +315,6 @@ Return only a JSON object with this structure:
 
 Notes:
 - Each review will automatically be marked with: <!-- copilot-review-{file_path}:{line} -->
-- Reviews marked with this will be automatically deleted if not resolved before next update
 
 Rules:
 - Use the configured runtime model string provided below as the source of truth for the summary title's human-readable model display name instead of guessing from runtime self-identification.${

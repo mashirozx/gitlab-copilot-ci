@@ -3,6 +3,7 @@ import type {
   ReviewRankEntity,
   ReviewResponseEntity,
 } from "../types/review.types";
+import { countryCodeToFlagEmoji } from "./country-code-to-flag-emoji";
 import { modelDisplayName } from "./model-display.ts";
 
 const ENGLISH_LANGUAGE_KEY = "english";
@@ -107,6 +108,87 @@ export const buildDetailsBlock = ({
   return `<details>\n<summary>${summary}</summary>\n\n${content}\n\n</details>`;
 };
 
+const normalizeLanguageTagForDisplay = ({
+  language,
+}: {
+  language: string;
+}): string => {
+  const trimmedLanguage = language.trim();
+
+  if (trimmedLanguage.length === 0) {
+    return ENGLISH_LANGUAGE_KEY;
+  }
+
+  return trimmedLanguage.toLowerCase() === ENGLISH_LANGUAGE_KEY
+    ? "en"
+    : trimmedLanguage;
+};
+
+const getCollapsedLanguageFlagTag = ({
+  languageTag,
+}: {
+  languageTag: string;
+}): string | null => {
+  const normalizedLanguageTag = languageTag.trim().toLowerCase();
+
+  if (normalizedLanguageTag === "en") {
+    return "en-GB";
+  }
+
+  if (normalizedLanguageTag === "zh") {
+    return "zh-CN";
+  }
+
+  try {
+    return new Intl.Locale(languageTag).region ? languageTag : null;
+  } catch {
+    return null;
+  }
+};
+
+const getCollapsedLanguageFlag = ({
+  languageTag,
+}: {
+  languageTag: string;
+}): string => {
+  const flagLanguageTag = getCollapsedLanguageFlagTag({ languageTag });
+
+  if (!flagLanguageTag) {
+    return "";
+  }
+
+  try {
+    return countryCodeToFlagEmoji(flagLanguageTag);
+  } catch {
+    return "";
+  }
+};
+
+export const formatCollapsedLanguageHeader = ({
+  language,
+}: {
+  language: string;
+}): string => {
+  const normalizedLanguageTag = normalizeLanguageTagForDisplay({ language });
+
+  let localizedLanguageName = language.trim() || normalizedLanguageTag;
+
+  try {
+    localizedLanguageName =
+      new Intl.DisplayNames([normalizedLanguageTag], {
+        type: "language",
+      }).of(normalizedLanguageTag) ?? localizedLanguageName;
+  } catch {
+    // Fall back to the requested language token when Intl cannot resolve it.
+  }
+
+  const flag = getCollapsedLanguageFlag({
+    languageTag: normalizedLanguageTag,
+  });
+
+  return flag ? `${localizedLanguageName} ${flag}` : localizedLanguageName;
+};
+
 export const normalizeReviewRank = ({
   rank,
 }: {
@@ -162,22 +244,6 @@ export const normalizeReviewResponse = ({
       rank: normalizeReviewRank({ rank: review.rank }),
     })),
   };
-};
-
-export const filterReviewsByIgnoredRanks = ({
-  reviews,
-  ignoredRanks,
-}: {
-  reviews: ReviewItemEntity[];
-  ignoredRanks: ReviewRankEntity[];
-}): ReviewItemEntity[] => {
-  if (ignoredRanks.length === 0) {
-    return reviews;
-  }
-
-  return reviews.filter((review) => {
-    return !ignoredRanks.includes(normalizeReviewRank({ rank: review.rank }));
-  });
 };
 
 export const getRankInlineMath = ({
@@ -258,7 +324,7 @@ export const buildReviewDiscussionBody = ({
 
     collapsedSections.push(
       buildDetailsBlock({
-        summary: language,
+        summary: formatCollapsedLanguageHeader({ language }),
         content: message,
       }),
     );

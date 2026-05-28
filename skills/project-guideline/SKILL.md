@@ -1,12 +1,12 @@
 ---
 name: project-guideline
-description: Complete project structure, architecture, and development guidelines for gitlab-copilot-ci
+description: Complete project structure, runtime workflow, and maintenance guidance for gitlab-copilot-ci
 keywords:
   - project-structure
   - app-runtime
-  - ci-runtime
   - review-process
-  - sqlite
+  - review-history
+  - debounce
   - release-process
 ---
 
@@ -14,688 +14,231 @@ keywords:
 
 ## Project Overview
 
-**gitlab-copilot-ci** is a Bun-based shell application compiled into a binary for automated code review. The binary integrates with GitLab CI systems to perform code reviews using a selectable LLM CLI provider (currently `github-copilot-cli` or Pi) and post results back to merge requests.
+**gitlab-copilot-ci** is a Bun-based shell application compiled into a binary for automated merge-request review. The binary runs inside GitLab CI for an external repository, reads merge-request diffs from GitLab, asks a configured review agent to produce inline findings plus a markdown summary, posts new inline discussions, and replaces a single top-level summary note.
 
-### Two Runtime Environments
+### Runtime Environments
 
 #### 1. App Runtime
-- **Context**: Binary executes in CI of *external projects* (customer repositories)
-- **Purpose**: Review code changes in merge requests using the configured LLM service provider
-- **Configuration**: Invoked with GitLab credentials plus provider-specific CLI authentication via CLI arguments or environment variables
-- **State Management**: Uses SQLite (optional `--db` argument) to track review history
-- **Entry Point**: `app/main.ts` (compiled to `dist/gitlab-copilot-ci` binary)
+- **Context**: The compiled binary runs in CI for a target repository.
+- **Purpose**: Review merge-request diffs with either GitHub Copilot CLI or Pi and post results back to GitLab.
+- **State Management**: Review history is stored inside the summary note itself as a hidden base64-encoded HTML marker block. There is no SQLite database.
+- **Entry Point**: `app/main.ts`.
 
-#### 2. CI Runtime
-- **Context**: This project's own CI (`.gitlab-ci.yml`)
-- **Purpose**: Build the binary for multiple platforms, validate builds, and create releases
-- **Configuration**: Uses GitLab CI environment variables and scripts
-- **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`
-- **Artifacts**: Versioned binaries (e.g., `gitlab-copilot-ci-1.0.0-darwin-arm64`)
-
----
+#### 2. Project CI Runtime
+- **Context**: This repository's own CI builds and publishes release binaries.
+- **Purpose**: Validate, package, and publish `gitlab-copilot-ci` artifacts.
+- **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`.
 
 ## Terminology
 
 ### Review vs. Summary
 
-- **Review** (inline): One comment on a specific diff position. Each review is a `ReviewItemEntity` with `file_path`, `suggestion`, optional `new_line`, optional `old_line`, optional `diff_file`, optional `diff_line_code`, optional `rank` (`HIGH`, `MEDIUM`, `LOW`), and optional `translations: Record<string, string>` for additional languages. New review output is expected to include `diff_file`, `diff_line_code`, and `rank`, and at least one of `new_line` or `old_line` must be present.
-- **Summary** (top-level): A single markdown comment posted to the merge request containing a human-readable overview of all reviews. It also includes a `## 💡 Other Suggestions` section for valid findings that should stay out of inline review comments because they cannot be mapped safely to an exact current diff line. Marked with HTML comment `<!-- <prefix>-summary-marker -->`, where `<prefix>` comes from `--html-marker-prefix` (default: `copilot`).
+- **Review**: One inline GitLab discussion posted on a specific diff position. Review items come from `ReviewItemEntity` and must include `file_path`, English `suggestion`, `rank`, `diff_file`, `diff_line_code`, and at least one of `new_line` or `old_line`.
+- **Summary**: One top-level markdown note for the merge request. It contains the human-readable walkthrough/changes/review summary/other suggestions plus metrics, errors, and the hidden review-history marker block.
 
-### Related Terms
-- **Thread/Discussion**: GitLab's term for a conversation thread on a diff line. Each review comment starts a discussion.
-- **Review tracking**: Information embedded in the summary comment's HTML (`<!-- <prefix>-review-data:... -->`) to track which discussions were created by the bot.
-- **Marker purpose**: The generated marker trio (`<prefix>-review-marker`, `<prefix>-summary-marker`, `<prefix>-review-data`) is the identity mechanism for comments created by this CLI on GitLab MRs, enabling safe lookup, cleanup, and summary replacement without touching unrelated user comments.
-- **Discussion note deletion**: Inline review notes inside a merge-request discussion must be deleted through `MergeRequestDiscussions.removeNote(...)`, not `MergeRequestNotes.remove(...)`.
-- **Tracking retention**: When a run replaces the summary comment, it must carry forward any previously tracked discussions that could not be cleaned up in the current run, plus newly created discussions from the current run.
-- **Preserve behavior docs during refactors**: When moving logic between files, keep critical inline documentation with the owning code path, especially GitLab MR discussion position rules that explain `startSha = baseSha` and when `oldLine` must be omitted.
+### HTML Markers
 
----
+All GitLab comments created by the CLI are identified by `--html-marker-prefix`.
+
+- `<prefix>-review-marker`: inserted into every inline review comment.
+- `<prefix>-summary-marker`: inserted at the start of the summary note.
+- `<prefix>-review-data-start` / `<prefix>-review-data-end`: wrap the hidden base64 review-history payload at the end of the summary note.
+- `<prefix>-reviewing-marker`: inserted into the temporary top-level note that marks an in-progress review job.
+
+### Review History Payload
+
+The hidden summary payload encodes `JSON.stringify(reviewHistoryRuns)` in base64.
+
+Each element in the array represents one CI review run:
+
+```ts
+type ReviewHistoryRunEntity = {
+  discussions: Array<{
+    discussion_id: string;
+    note_id: string;
+    content: {
+      suggestion: string;
+      file_path: string;
+      old_line: number | null;
+      new_line: number | null;
+    };
+  }>;
+};
+```
+
+Rules:
+- Only successfully posted inline discussions are stored.
+- Summary-only `## 💡 Other Suggestions` content is not stored.
+- History is trimmed to the latest `--max-history-length` runs.
+- The next run flattens prior `content` items and passes them to the prompt only to suppress duplicate inline findings on the same file and exact old/new line pair.
+- Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
 
 ## Module Organization
 
-The app source is split into focused modules under `app/`:
-
 | File | Purpose |
 |------|---------|
-| `app/main.ts` | Entry point — orchestrates the review workflow, writes one temporary `mr-diff.page-<n>.diff` file per paginated GitLab diff page, retries failed inline posts with positions recomputed from diff-file references, and dispatches review generation to the provider selected by `--agent` |
-| `app/constants.ts` | Shared app-wide constants, including the JSON start/end markers required in prompt instructions and provider CLI output parsing |
-| `app/utils/cli-env.ts` | Shared CLI environment helpers, including color-preserving defaults used by both Copilot and Pi child processes |
-| `app/utils/json.ts` | Shared JSON helpers for extracting marker-wrapped payloads and safe parsing |
-| `app/utils/model-name-parser.ts` | Shared model-string parser that splits `provider/model:effort` or similar merged model syntax on the final `:` for agent-specific handling |
-| `app/utils/pi-message-formatter.ts` | Pi-specific message/event formatter that turns Pi JSON stream events into concise, human-readable console output without changing raw log capture |
-| `app/utils/pi-usage-collector.ts` | Pi-specific usage extractor/normalizer for `agent_end.usage`, including raw stdout fallback parsing for large real-world payloads |
-| `app/utils/time.ts` | Shared time helpers for local timestamp formatting and elapsed-millisecond measurement |
-| `mr-test.ts` | Standalone GitLab MR discussion repro script that posts one inline discussion with direct `fetch()` using provided `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid`, printing endpoint, payload, and raw response for 500-debugging |
-| `pi-tst.ts` | Manual Pi spawn repro script for local debugging of stdout/stderr behavior; run with `GEMINI_API_KEY=... bun run ./pi-tst.ts` and add `--bad-key` to force an auth failure path |
-| `app/types/review.types.ts` | Review payload and LLM response entities used across prompt building, providers, and review-position recomputation (`ReviewItemEntity`, `ReviewResponseEntity`) |
-| `app/services/db.types.ts` | SQLite review storage entity (`StoredReviewEntity`) |
-| `app/services/gitlab.types.ts` | GitLab-facing entities and internal GitLab workflow data types (`TrackedDiscussionEntity`, MR context/note/discussion entities, and cleanup/diff result data types). Individual MR diff items still use gitbeaker's upstream `MergeRequestDiffSchema`. |
-| `app/types/sql.d.ts` | Ambient module declaration for `.sql` file imports |
-| `app/prompts.ts` | Prompt template builder (`buildCopilotPrompt`) with multilingual support, the shared `REVIEW_SUMMARY_TITLE` prompt contract constant, prompt-owned `--instruction-files` handling for repository instruction entry files, a dedicated unified-diff line-number guidance block, support for `new_line`/`old_line` review positions plus `diff_file`/`diff_line_code` references, rank requirements, explicit instructions to read all paginated `mr-diff.page-*.diff` files, translated-summary rank-badge guidance that localizes only the rank word inside the LaTeX badge text, a `## 📋 Walkthrough` section for intent plus implementation flow, a per-step `## 🚧 Changes` markdown table block, and a markdown-only `## 💡 Other Suggestions` summary section |
-| `app/utils/diff-files.ts` | Diff-page helpers for building line-addressable unified diff files, including always-on `# gitlab-meta ...` comment lines plus standard extended diff headers for file metadata such as mode changes and renames, and recomputing GitLab review positions from `diff_file` / `diff_line_code` references |
-| `app/utils/review-helpers.ts` | Pure lookup helpers for the review workflow, such as finding diff entries by file path and formatting/choosing review line positions |
-| `app/utils/review-output.ts` | Review output normalization and rendering helpers for rank badges, language filtering/collapsing, and summary markdown rewriting |
-| `app/utils/review-summary.ts` | Pure summary markdown builders for performance/error sections and final MR summary note composition |
-| `app/migrations/0001_initial.sql` | Initial schema: `reviews` and `schema_migrations` tables |
-| `app/migrations/index.ts` | Migration registry and loader |
-| `app/utils/argv.ts` | CLI argument parsing via yargs, including agent selection with `--agent` and shared model syntax parsing |
-| `app/services/logger.ts` | Consola-based logger with file reporter and module-scope `--log` initialization; uses Temporal for timestamps |
-| `app/services/db.ts` | `DatabaseService` that owns the optional SQLite connection, migration runner, review reads/writes, and close lifecycle; uses Temporal for `created_at` and imports its runtime SQL statements from `app/services/sql/*.sql` |
-| `app/services/sql/*.sql` | Runtime SQL text files used by `DatabaseService` for schema_migrations setup, PRAGMA configuration, and review queries/writes |
-| `app/services/copilot.ts` | Copilot CLI interaction (`runCopilotReview`, `getContextInfo`) using shared CLI env, start/end JSON marker extraction/parsing, and elapsed-time helpers |
-| `app/services/pi.ts` | Pi CLI interaction (`runPiReview`) for the `--agent=pi` provider path; it runs Pi in JSON event stream mode, passes the review prompt as a CLI argument, formats Pi console events through `app/utils/pi-message-formatter.ts`, and uses shared CLI env, start/end JSON marker helpers, elapsed-time helpers, and `app/utils/pi-usage-collector.ts` before parsing the `agent_end` event back into the shared `ReviewResponseEntity` contract |
-| `app/services/gitlab.ts` | `GitLabService` wrapper around `@gitbeaker/rest` for MR fetch/diff, paginated `/diffs` retrieval, summary-note lookup/removal, discussion cleanup, and comment creation, including inline review positions that may use `new_line`, `old_line`, or both |
+| `app/main.ts` | Orchestrates debounce, stale-commit skipping, diff fetch, prompt generation, agent execution, inline discussion posting, summary replacement, and cleanup of the reviewing marker note |
+| `app/constants.ts` | Shared JSON markers and CLI environment defaults |
+| `app/prompts.ts` | Builds the review prompt, including diff-reading instructions, duplicate-suppression history, translation requirements, and diff-position guidance |
+| `app/services/gitlab.ts` | GitLab API wrapper for MR fetch, diff pagination, note lookup/creation/deletion, history parsing, and inline discussion creation |
+| `app/services/gitlab.types.ts` | GitLab-facing entities, review-history payload types, MR note types, and diff result types |
+| `app/services/copilot.ts` | GitHub Copilot CLI invocation and response parsing |
+| `app/services/pi.ts` | Pi invocation, event-stream parsing, human-readable console formatting, and usage extraction |
+| `app/services/logger.ts` | Shared `consola` logger and optional file logging |
+| `app/utils/argv.ts` | CLI argument parsing via yargs |
+| `app/utils/env.ts` | Shared live getters for runtime environment variables so modules can import a central env helper without snapshotting `process.env` at import time |
+| `app/utils/diff-files.ts` | Writes paginated unified diff files and can recompute positions from `diff_file` / `diff_line_code` references |
+| `app/utils/review-helpers.ts` | Pure helpers for review line/location formatting |
+| `app/utils/review-output.ts` | Normalizes model output and renders inline review comment bodies |
+| `app/utils/review-summary.ts` | Renders summary markdown, performance/errors, history trimming, and encoded history blocks |
+| `app/utils/time.ts` | Temporal-based time helpers and async sleep utility |
+| `app/utils/model-name-parser.ts` | Shared model parsing helpers |
+| `app/utils/commit-reference.ts` | Shared current-commit short SHA / URL / markdown reference helpers used by prompts and reviewing-marker notes |
+| `app/utils/model-display.ts` | Shared normalized model display string for summaries and inline reviews |
+| `app/utils/pi-message-formatter.ts` | Human-readable Pi console event formatter |
+| `app/utils/pi-usage-collector.ts` | Pi usage extraction helpers |
+| `app/utils/json.ts` | Safe JSON extraction/parsing helpers |
+| `app/utils/cli-env.ts` | Shared CLI environment helpers |
+| `app/types/review.types.ts` | Shared review/summary/usage payload types |
 
 Rules:
-- No default exports in `app/` (enforced by biome, except `app/types/sql.d.ts`)
-- Use named imports throughout
-- Service imports from within `app/` use `./services/xxx`
-- Type imports should come from domain modules (`./types/review.types`, `./services/db.types`, `./services/gitlab.types`) rather than a single central type hub
-- Naming convention: storage-related or external data structure types use `*Entity`; internal workflow structures use `*DataType`
-- Pure parser/formatter/lookup logic that does not own side effects should live under `app/utils/`, not `app/main.ts`
+- No default exports in `app/`.
+- Use named imports throughout.
+- Prefer pure helpers in `app/utils/` over embedding parser/formatter logic in `app/main.ts`.
+- Type imports should come from the owning domain module, for example `./types/review.types` and `./services/gitlab.types`.
 
----
+## CLI Arguments and Environment Variables
 
-## Temporal and Time Handling
+`app/utils/argv.ts` accepts:
 
-- **Package**: `temporal-polyfill` (installed with `-E` for exact version)
-- **Usage**: Replaces `Date.now()` throughout
-  - `Temporal.Now.instant().epochMilliseconds` — milliseconds since epoch
-  - `Temporal.Now.plainDateTimeISO()` — local ISO date/time (for formatting log filenames)
-- **Logger**: Timestamps in `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log` format use `Temporal.Now.plainDateTimeISO()`
-- **Database**: Review `created_at` field stores `Temporal.Now.instant().epochMilliseconds` (milliseconds)
-- **Review ID**: Composite ID includes `Temporal.Now.instant().epochMilliseconds` for uniqueness
+- `--agent`: `github-copilot-cli` or `pi`. Default: `github-copilot-cli`.
+- `--gitlab-token`: defaults to `GITLAB_TOKEN`.
+- `--gitlab-url`: defaults to `CI_SERVER_URL`.
+- `--agent-bin`: optional override for the selected agent binary. Defaults to `AGENT_BIN` when set, otherwise the provider-specific fallback (`copilot` / `pi`).
+- `--agent-args`: optional extra CLI arguments appended after built-in provider flags.
+- `--model`: shared runtime model string. Default: `gpt-5.4`.
+- `--copilot-github-token`: defaults to `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`.
+- `--project-id`: defaults to `CI_PROJECT_ID`.
+- `--mr-iid`: defaults to `CI_MERGE_REQUEST_IID`.
+- `--max-git-diff-page`: positive integer page limit for paginated MR diff fetches. Default: unlimited.
+- `--max-history-length`: positive integer cap for the number of review runs kept in the encoded summary history. Default: `2`.
+- `--process-max-pending-time`: positive integer number of minutes to wait for an existing reviewing marker before skipping the current run. Default: `30`.
+- `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
+- `--debug` / `-d`: generate mock reviews only.
+- `--log`: enable file logging; supports bare flag or a directory path.
+- `--log-level`: logger verbosity.
+- `--instruction-files`: repeatable list of repository instruction entry files passed through to the prompt.
+- `--extra-prompts`: appended prompt text.
+- `--should-teach-diff-compute`: include the explicit unified-diff line-number teaching block. Default: `false`.
+- `--tools`: repeatable extra tool allowlist entries.
+- `--lang`: repeatable display languages for summary/inline output.
+- `--collapsed-lang` / `--c-lang`: repeatable display languages to render in `<details>` blocks.
+- `--ignored-rank`: repeatable prompt-side rank suppression request with values `HIGH`, `MEDIUM`, `LOW`.
+- `--version` / `-v`: print version info and exit.
 
----
+Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
 
-## App Runtime Details
+## Review Workflow
 
-### CLI Arguments and Environment Variables
+`app/main.ts` follows this sequence:
 
-**app/main.ts** (via `app/utils/argv.ts`) accepts:
-- `--agent`: Agent provider for review generation. Choices: `github-copilot-cli`, `pi`. Default: `github-copilot-cli`.
-- `--gitlab-token` / `GITLAB_TOKEN`: GitLab API authentication
-- `--gitlab-url` / `CI_SERVER_URL`: GitLab server URL (e.g., `https://gitlab.com`)
-- `--agent-bin`: Path to the selected agent CLI binary (optional). Defaults to `AGENT_BIN` when set. Runtime fallback remains agent-specific (`COPILOT_BIN`/`copilot` for GitHub Copilot CLI, `PI_BIN`/`pi` for Pi) when not provided.
-- `--agent-args`: Optional extra CLI arguments appended to the selected agent invocation after built-in preset options and before the final prompt argument.
-- `--model`: Shared model string option. Default: `gpt-5.4`. Supports provider prefixes like `openai/gpt-4o` and effort shorthand like `sonnet:high`. Pi receives the model string unchanged. `github-copilot-cli` parses the final `:effort` suffix and forwards it via Copilot CLI `--effort`.
-- `--copilot-github-token`: GitHub token for Copilot authentication (from `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`)
-- `--project-id` / `CI_PROJECT_ID`: GitLab project ID
-- `--mr-iid` / `CI_MERGE_REQUEST_IID`: Merge request IID
-- `--max-git-diff-page`: Maximum number of paginated GitLab MR diff pages to fetch. Default: unlimited. The runtime currently requests `per_page=20`, so a limit of `N` pages means at most the first `20 * N` diff entries are provided to review generation.
-- `--instruction-files`: Repository instruction entry file paths to pass through to the LLM review prompt (repeatable). The runtime does not read or verify these paths locally. When omitted, the prompt falls back to the common instruction entry files list (`AGENTS.md`, `CLAUDE.md`, `.instructions.md`, `copilot-instructions.md`, `.cursorrules`, `GEMINI.md`).
-- `--extra-prompts`: Extra prompt text appended verbatim to the generated review prompt. When provided, the prompt explicitly tells the LLM to obey it unless it conflicts with higher-priority system or repository guidance.
-- `--should-teach-diff-compute`: Whether to include the prompt's dedicated unified-diff line-number teaching block. Default: `false`. When enabled, the prompt teaches the LLM to compute `old_line` / `new_line` from diff hunks, permits verification with locally installed Node.js, and still requires exact positions grounded in the diff text.
-- `--tools`: Additional agent tool names to allow beyond the built-in defaults. Repeatable. The runtime appends these names to the provider-specific default allowlist and de-duplicates the final tool set.
-- `--lang`: Display language(s) for summary and inline review output (repeatable, e.g. `--lang=zh-CN --lang=ja --lang=english`). If omitted, display defaults to English only. When provided, only the merged `--lang` / `--collapsed-lang` selection is shown, and English appears only when explicitly requested.
-- `--collapsed-lang` / `--c-lang`: Display language(s) that should render inside GitLab `<details>` blocks in both inline reviews and the summary note. `--collapsed-lang` values are also treated as requested display/translation languages even when they are not repeated in `--lang`.
-- `--ignored-rank`: Review rank(s) to suppress from both inline reviews and the summary note. Allowed values: `HIGH`, `MEDIUM`, `LOW`.
-- `--version` / `-v`: Show version information and exit immediately. Prints: `${name} ${version} (${platform}-${arch}) - ${commit-hash}`
-- `--html-marker-prefix`: Prefix used to generate HTML markers for inline reviews, summary note detection, and tracking data. Generated values are `<prefix>-review-marker`, `<prefix>-summary-marker`, and `<prefix>-review-data`. Default: `copilot`. Validation accepts lowercase kebab-case prefixes such as `xiaomi-mimo-code-review`.
-- `--debug`: Test mode (generates mock reviews instead of real analysis)
-- **`--db`**: Path to SQLite database for review history (optional)
-- **`--log`**: Enable log file writing (independent of `--debug`). Standard parser pattern for a flag that may appear with or without a value:
-  - Parser config: `type: "string", array: true, coerce: ...`
-  - Coerced runtime type: `true | string | undefined`
-  - `undefined`: logging disabled
-  - `true`: `--log` with no value, write to current working directory
-  - `string`: first explicit path value from `--log /path` or repeated forms like `--log /a --log /b`
-  - Standard resolution: for yargs options that must support both bare-flag and string-value forms, use `array: true` to capture presence and `coerce` to normalize the final runtime shape. Do not rely on `type: "string"` alone.
+1. Check for an existing `<!-- <prefix>-reviewing-marker -->` note.
+2. If present, wait 30 seconds and check again until the marker disappears or total wait exceeds `--process-max-pending-time` minutes.
+3. If the marker still exists at the limit, log a warning and exit successfully without reviewing.
+4. Fetch the merge request and compare `process.env.CI_COMMIT_SHA` to `mr.diff_refs.head_sha`.
+5. If the MR head moved to a different commit, log a warning and exit successfully without reviewing.
+6. Post a new reviewing-marker note that references the current commit (`CI_COMMIT_SHORT_SHA` / `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available).
+7. Load the existing summary note, decode the review-history block if present, flatten prior discussion content, and feed it into the prompt only for duplicate suppression.
+8. Fetch paginated MR diffs and write one temp file per page: `mr-diff.page-<n>.diff`.
+9. Run the configured agent (`github-copilot-cli` or `pi`) with the generated prompt.
+10. Before any GitLab writes, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
+11. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
+12. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
+13. Normalize the response and post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
+14. Replace the prior summary note with a new one that contains the updated markdown plus the trimmed encoded history block.
+15. Delete the reviewing-marker note in a `finally` block, even if the review run fails.
 
-### Pi Provider Runtime
+### Duplicate Suppression Semantics
 
-When `--agent=pi` is selected:
+Prompt history is not a request to repeat or validate older comments. It is only a suppression list.
 
-- The app starts Pi with `--mode json --no-session --tools <default-tools-plus-extra-tools>`, where the default Pi tool set is `read,grep,find,ls,bash` and any `--tools` values are appended and de-duplicated
-- It forwards `--model` exactly as provided, so provider prefixes and shorthand effort suffixes remain compatible with Pi's model syntax
-- It appends optional parsed `--agent-args` tokens after preset Pi CLI options and before the final prompt argument
-- It passes the full review prompt as the final CLI argument
-- It spawns Pi with stdin ignored (`stdio: ["ignore", "pipe", "pipe"]`) so the CLI does not hang waiting for EOF on stdin
-- Pi's raw JSONL stream is preserved for logging and parsing, but console output is reformatted into concise event summaries during local runs
-- Tool execution events are summarized on console as readable blocks such as `Read ...`, `Grep ...`, and `Glob ...`, with green bullets for success and red bullets for errors
-- For `read` tool events, absolute paths outside the current working directory are shortened to just the filename in console output and highlighted in cyan, while normal in-workspace/relative display paths are highlighted in yellow
-- Pi assistant text emitted in non-final message events is shown incrementally on console during thinking/streaming, and assistant `message_end` thinking payloads render as a dedicated multiline `Thinking:` block. The formatter accepts both plural `messages` arrays and singular `message` / assistant-partial event payloads from Pi-compatible providers, but it must not treat `thinking_*` or `toolcall_*` partial events as normal assistant text. Raw `text_delta` chunks are buffered and flushed as a purple `Message:` block with gray guided lines instead of per-token bullets, preserving actual line breaks when present. Completed assistant turns also print one deduplicated `Usage:` block with token and cost counters when Pi exposes usage data. For `bash` tool events, console output also shows the invoked command plus a colored `[Success]` or `[Fail]` status line derived from the tool result text. Raw payload structure, partial `[COPILOT_JSON` marker fragments, and final JSON-wrapped review output remain suppressed; the full raw JSON stream remains available in the log file when `--log` is enabled
-- It parses Pi's JSONL stdout stream and waits for the `agent_end` event to extract the assistant's final text response
-- When the `agent_end` event includes a `usage` object, the runtime copies Pi's detailed token and cost counters (`input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`, and nested `cost`) into `ReviewResponseEntity.usage`
-- Pi usage extraction accepts usage counters from either `agent_end` or the latest assistant message event (`message_start` / `message_update` / `message_end` with singular `message` or plural `messages` payloads), and also falls back to reparsing raw stdout so provider-specific event shapes do not silently drop usage metrics from the summary path
-- The assistant response must contain the shared JSON wrapper in one line: `[COPILOT_JSON_START]{...}[COPILOT_JSON_END]`
-- Pi provider/auth failures can arrive entirely on stdout inside JSON events; stderr may remain empty even when the run fails
-- If Pi ends with an assistant-side provider error instead of review JSON, `app/services/pi.ts` surfaces that provider error message directly in `ReviewResponseEntity.errors`
+- Suppress a new inline review only when the same issue is already covered on the same file and exact same old/new line pair.
+- If the same issue appears on a different file or line pair, it is a new finding and should still be reported.
+- History must not inflate the summary walkthrough, change list, summary counts, or other summary prose.
 
-### GitHub Copilot CLI Runtime
+## Summary Construction
 
-When `--agent=github-copilot-cli` is selected:
+`app/utils/review-summary.ts` builds the final MR summary note in this order:
 
-- The app starts GitHub Copilot CLI with the shared tool allowlist and prompt flow used by the review workflow, including local Node.js access for deterministic diff-line computation when needed. The default allowlist is `read_file`, `list_directory`, `search_files`, `grep`, and `shell(node)`, and any `--tools` values are appended via additional `--allow-tool=<name>` flags after de-duplication
-- It forwards `--model` as `copilot --model <pattern>` and preserves provider prefixes like `openai/gpt-4o`
-- If the final model segment is an effort shorthand such as `sonnet:high`, the prefix becomes the model value and the suffix is translated to `copilot --effort <level>`
-- The older `--provider` CLI option is not used for this runtime
+1. `<!-- <prefix>-summary-marker -->`
+2. Rendered summary markdown in the requested display languages. Languages listed in `--collapsed-lang` render inside `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region. Plain `en` is treated as `en-GB` for the flag and plain `zh` is treated as `zh-CN` for the flag (for example `zh` -> `中文 🇨🇳`, `zh-CN` -> `中文（中国大陆） 🇨🇳`, `en` -> `English 🇬🇧`).
+3. Performance metrics section when available.
+4. Collapsed errors section when errors exist.
+5. The hidden review-history block:
 
-### Inline Review Positions
-
-- GitLab MR diffs are fetched page by page from `GET /projects/:id/merge_requests/:merge_request_iid/diffs` with `per_page=20`
-- Diff page counting is endpoint page counting, not changed-file counting: page 1 contains up to 20 diff entries, page 2 the next up to 20, and so on
-- If `--max-git-diff-page` is set and the fetch loop reaches that page limit, later pages are skipped and a warning is appended to the summary error block
-- Runtime writes each fetched diff page to its own temp unified diff file named `mr-diff.page-<n>.diff`
-- Those temp diff files always include `# gitlab-meta ...` comment lines for GitLab diff fields such as old/new path, mode values, and the `new_file` / `renamed_file` / `deleted_file` booleans
-- They also include standard extended Git diff headers when metadata is available, such as `old mode` / `new mode`, `new file mode`, `deleted file mode`, and `rename from` / `rename to`
-- Prompted review items are expected to include `diff_file` and `diff_line_code` so failed GitLab inline positions can be recomputed from the original diff page line text reference
-- If posting an inline review fails, the runtime retries once using a recomputed `file_path` / `new_line` / `old_line` derived from that diff-file reference
-- `diff_line_code` must be the exact diff line text as it appears in the page file, including the leading diff marker (` `, `+`, or `-`)
-- When duplicate `diff_line_code` values occur in the same diff file, recomputation tries the next later exact match first for repeated citations, then wraps to the earliest match if needed
-- Prompted review items may provide `new_line`, `old_line`, or both in the `reviews` array
-- Prompted review items must also provide a `rank` (`HIGH`, `MEDIUM`, or `LOW`); the runtime uses that rank to add badges in inline comments and summary bullets, but rank is not persisted in SQLite
-- Prompting keeps English summary badges fixed as the canonical `HIGH` / `MEDIUM` / `LOW` LaTeX flags, while translated summary blocks are instructed to reuse the same badge colors/template and translate only the rank word inside `\text{...}` for the target language
-- Inline review comments render the rank badge inline, followed by a normalized machine-readable model string derived from `response.model` when present, then a blank line and the multilingual review message body. The display form lowercases the model id, normalizes spaces to hyphens, and lowercases/compacts the effort suffix, for example `GPT-5.4 mini (xHigh)` -> `gpt-5.4-mini (xhigh)`. Summary bullets continue to use the shared inline rank-badge template.
-- The summary metrics section includes a `🧰 Agent` line between `Model` and `Time taken`. It is derived from `--agent` and the resolved runtime CLI binary path: Copilot uses `argv["agent-bin"] ?? COPILOT_BIN ?? "copilot"` with `-v`, while Pi uses `argv["agent-bin"] ?? PI_BIN ?? "pi"` with `--version`, rendering labels such as `GitHub Copilot CLI 1.0.54` and `Pi Coding Agent 0.75.5`. Version detection must inspect both stdout and stderr because the installed Pi CLI prints `--version` output to stderr in this environment.
-- When `ReviewResponseEntity.usage` is present, the summary metrics section also renders Pi's detailed token and cost counters, allowing Pi runs to show more detail than the coarse Copilot context-window metrics.
-- Summary markdown titles still use the shared prompt contract from `app/prompts.ts`, with `REVIEW_SUMMARY_TITLE` providing the full markdown heading (`# 📝 Code Review Summary by ${LLM name}`) and `REVIEW_SUMMARY_TITLE_TEXT` providing the title body text (`Code Review Summary by ${LLM name}`) for translation examples. Local rendering no longer parses or rewrites the returned header. The runtime renders each selected `summary.content` / `summary.translations[lang]` block exactly as returned by the LLM. Prompting must keep the markdown title prefix exactly as `# 📝 ` in every language and translate only the natural-language title text after that prefix, so summary titles do not duplicate or localize markdown symbols.
-- The summary prompt contract requires this section order: `## 📋 Walkthrough`, `## 🚧 Changes`, `## 🔍 Review Summary`, `## 💡 Other Suggestions`.
-- `## 📋 Walkthrough` must explain the MR's goal and how the implementation is assembled step by step in English; translated blocks must preserve the same structure in the target language.
-- `## 🚧 Changes` must break the MR into key steps. Each step should read naturally: start with a bold short step title, then a two-column table (`Layer / File(s)` and `Summary`) whose left cell names the relevant module/method/area plus file paths and whose right cell says what actually changed.
-- Prompt instructions for translated summaries must target `summary.translations[lang]` directly. They must not tell the model to append translated sections into `summary.content`, or collapsed English rendering can show mixed-language content when users request combinations such as `--lang zh-CN --c-lang en`.
-- The prompt always requires `summary.content` and each review `suggestion` to be in English. Any non-English languages requested through the merged `--lang` / `--collapsed-lang` set are requested from the LLM once and must be returned only through the JSON translation fields.
-- The prompt also requires the reviewer model to build the final response payload with local Node.js and Node's `JSON.stringify()` instead of hand-writing JSON text, and to immediately fix and rerun that same stringify step until it succeeds before returning the marker-wrapped response line.
-- The prompt no longer asks the reviewer model to emit a separate top-level `model` field. Instead, it asks only for the full human-readable model display name in the summary title, using the configured runtime model string as the source of truth for that title.
-- Local rendering now derives machine-readable metadata displays from `argv["model"]` instead of `response.model`. Standard models render as `<normalized-model-id> <kbd><effort></kbd>`, defaulting to `medium` when no explicit effort suffix is configured. Model-specific overrides belong in local code, not in the prompt contract.
-- The shared local model display is centralized in `app/utils/model-display.ts` as an eagerly computed `modelDisplayName` constant derived from `argv["model"]`. Summary metrics and inline review headers should reuse that constant directly instead of recomputing the same display string at each call site.
-- Current special local effort rule: the `mimo` series renders `thinking: enabled` when any explicit effort suffix is present in `--model`, and `thinking: disabled` when no explicit effort suffix is present.
-- `summary.translations` uses the same keyed language shape as review-item translations: `Record<string, string>`, for example `{ "zh-CN": "...", "ja": "..." }`.
-- Local rendering merges `--lang` and `--collapsed-lang`, de-duplicates them, excludes English from LLM translation targets, and then decides which languages to show normally versus inside `<details>` blocks.
-- Summary block selection reads `summary.translations` directly by the requested display-language key (case-insensitive), and summary display/collapse routing wraps the raw returned markdown in `<details>` when needed without parsing section headings or rewriting review bullets.
-- When `--should-teach-diff-compute` is enabled, the prompt includes a dedicated "How To Compute Correct Diff Line Numbers" block that teaches the reviewer model how to walk unified diff hunks and derive valid `old_line` / `new_line` values, explicitly allows local Node.js to verify that computation when helpful, and tells the model to prefer Node.js over Python or other language runtimes for local scripted operations
-- When `--extra-prompts` is set, the generated prompt appends that text in an "Additional required instructions" section and explicitly tells the reviewer model to obey it unless higher-priority system or repository rules conflict
-- The MR diff input is paginated through GitLab's `GET /projects/:id/merge_requests/:merge_request_iid/diffs` endpoint using `page` and `per_page`
-- Prompting tells the reviewer model to read all provided diff page files before deciding whether a changed file or diff line exists
-- Every provided review line must map to a valid diff position in the current MR diff
-- At least one of `new_line` or `old_line` must be present for every review item
-- `GitLabService.createReviewDiscussion()` posts exactly the provided `newLine` and/or `oldLine` fields to GitLab's diff position payload
-- SQLite review persistence still requires `new_line` under the current schema, so old-line-only reviews are posted to GitLab but skipped for DB storage
-- SQLite review persistence still ignores rank; rank affects rendering only and may be filtered at runtime by `--ignored-rank` before GitLab posting and summary generation
-
-### Log File Writing
-
-When `--log` flag is enabled (independent of `--debug`):
-
-1. **Log File Creation**
-   - Attempts to create a log file at: `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log`
-  - Logger module reads `argv["log"]` at module scope and initializes file logging before other application logging runs
-  - If `argv["log"] === true`: uses the current working directory
-  - If `argv["log"]` is a string: uses that directory
-   - Format: `yyyy-mm-dd.hh-mm-ss` (24-hour time)
-   - Example: `.gitlab-copilot-ci.2025-05-13.14-30-45.log`
-   - **Validation**: Before creating the log file:
-     - If directory does not exist: console warning "Log directory does not exist: ...", logging skipped
-     - If no write permission: console warning "No write permission in ...", logging skipped
-     - Execution continues with console-only output in both error cases
-
-2. **Log Capture**
-   - When log file is successfully created, all output is written to both:
-     - **Console** (stdout/stderr for real-time viewing)
-     - **Log file** (with log level prefixes for filtering)
-   - Log file entries include level prefixes:
-     - `[INFO]` for informational messages
-     - `[ERROR]` for errors
-     - `[WARN]` for warnings
-
-3. **Logger Implementation**
-  - Implementation uses a shared `logger` instance from `consola`
-  - File logging is added via a custom reporter that mirrors console output into the log file when enabled
-  - **Does NOT override console methods**
-  - Supports structured logging with automatic JSON serialization of non-string arguments in the file reporter
-  - Timestamp formatting: `Temporal.Now.plainDateTimeISO()` yields `yyyy-mm-dd.hh-mm-ss`
-
-4. **Usage Example**
-   ```bash
-  # Enable logging to cwd (flag with no value)
-   ./dist/gitlab-copilot-ci --log \
-     --gitlab-token YOUR_TOKEN \
-     --gitlab-url https://gitlab.com \
-     --project-id 123 \
-     --mr-iid 456
-
-   # Enable logging to a specific directory
-   ./dist/gitlab-copilot-ci --log /var/log/ci \
-     --gitlab-token YOUR_TOKEN \
-     --gitlab-url https://gitlab.com \
-     --project-id 123 \
-     --mr-iid 456
-
-   # Repeated values are allowed; only the first explicit path is used
-   ./dist/gitlab-copilot-ci --log /var/log/ci --log /tmp/ignored \
-     --gitlab-token YOUR_TOKEN \
-     --gitlab-url https://gitlab.com \
-     --project-id 123 \
-     --mr-iid 456
-
-   # Log file will be created: .gitlab-copilot-ci.2025-05-13.14-30-45.log
-   ```
-
-### SQLite Database & Migrations
-
-When `--db <path>` is provided:
-
-#### Migration System
-
-- **Migrations stored in**: `app/migrations/`
-  - SQL files (e.g., `0001_initial.sql`) define schema changes
-  - `app/migrations/index.ts` imports all migrations and provides `migrations: Migration[]` array
-- **Runtime DB queries stored in**: `app/services/sql/`
-  - `.sql` files are imported with `with { type: "text" }` in `app/services/db.ts`
-  - Current runtime statements cover `schema_migrations` bootstrap, `PRAGMA journal_mode = WAL`, review lookup by MR IID, and review upsert
-- **Tracking table**: `schema_migrations` (created automatically)
-  - Columns: `name TEXT PRIMARY KEY`, `applied_at INTEGER` (milliseconds via Temporal)
-- **Migration runner** (`DatabaseService.runMigrations` in `app/services/db.ts`)
-  - On database initialization, checks which migrations have been applied
-  - Runs pending migrations in order
-  - Records migration name and timestamp in `schema_migrations`
-  - Splits SQL statements by `;` to support multiple statements per migration
-
-#### Current Schema (0001_initial)
-
-```sql
-CREATE TABLE reviews (
-  id TEXT PRIMARY KEY,
-  file_path TEXT NOT NULL,
-  new_line INTEGER NOT NULL,
-  suggestion TEXT NOT NULL,        -- English suggestion only (no translations stored)
-  source_snippet TEXT,
-  mr_iid TEXT NOT NULL,
-  created_at INTEGER NOT NULL      -- milliseconds (Temporal.Now.instant().epochMilliseconds)
-);
-
-CREATE TABLE schema_migrations (
-  name TEXT PRIMARY KEY,
-  applied_at INTEGER NOT NULL
-);
+```md
+<!-- <prefix>-review-data-start -->
+<!--
+<base64 JSON array>
+-->
+<!-- <prefix>-review-data-end -->
 ```
 
-#### Database Initialization
-
-```typescript
-databaseService.initialize({ errors });
-// 1. Reads argv["db"] and opens SQLite when configured
-// 2. Sets PRAGMA journal_mode = WAL
-// 3. Calls DatabaseService.runMigrations({ database }) to apply pending migrations
-```
-
-#### Review Storage
-
-**Before**: Used `database.exec()` (deprecated in Bun)
-**Now**: Uses `database.run()` (scalar statements) and `database.query().run()` for parameterized queries
-
-- `databaseService.getStoredReviewsForMR()`: Returns `StoredReviewEntity[]` with English-only suggestions
-- `databaseService.storeReview()`: Inserts review with English suggestion stored in `suggestion` column (no secondary translations)
-- `databaseService.close()`: Closes the optional SQLite connection during shutdown and reports close failures into the shared error list
-- Review ID: `{mrIid}-{file_path}-{new_line}-{epochMilliseconds}`
-
-### SQLite Database & Migrations
-
-When `--db <path>` is provided:
-
-#### Migration System
-
-- **Migrations stored in**: `app/migrations/`
-  - SQL files (e.g., `0001_initial.sql`) define schema changes
-  - `app/migrations/index.ts` imports all migrations and provides `migrations: Migration[]` array
-- **Tracking table**: `schema_migrations` (created automatically)
-  - Columns: `name TEXT PRIMARY KEY`, `applied_at INTEGER` (milliseconds via Temporal)
-- **Migration runner** (`runMigrations` in `app/services/db.ts`)
-  - On database initialization, checks which migrations have been applied
-  - Runs pending migrations in order
-  - Records migration name and timestamp in `schema_migrations`
-  - Splits SQL statements by `;` to support multiple statements per migration
-
-#### Current Schema (0001_initial)
-
-```sql
-CREATE TABLE reviews (
-  id TEXT PRIMARY KEY,
-  file_path TEXT NOT NULL,
-  new_line INTEGER NOT NULL,
-  suggestion TEXT NOT NULL,        -- English suggestion only (no translations stored)
-  source_snippet TEXT,
-  mr_iid TEXT NOT NULL,
-  created_at INTEGER NOT NULL      -- milliseconds (Temporal.Now.instant().epochMilliseconds)
-);
-
-CREATE TABLE schema_migrations (
-  name TEXT PRIMARY KEY,
-  applied_at INTEGER NOT NULL
-);
-```
-
-#### Database Initialization
-
-```typescript
-const db = initializeDatabase(dbPath);
-// 1. Opens SQLite at dbPath
-// 2. Sets PRAGMA journal_mode = WAL
-// 3. Calls runMigrations(db) to apply any pending migrations
-```
-
-#### Review Storage
-
-**Before**: Used `database.exec()` (deprecated in Bun)
-**Now**: Uses `database.run()` (scalar statements) and `database.query().run()` for parameterized queries
-
-- `getStoredReviewsForMR()`: Returns `StoredReviewEntity[]` with English-only suggestions
-- `storeReview()`: Inserts review with English suggestion stored in `suggestion` column (no secondary translations)
-- Review ID: `{mrIid}-{file_path}-{new_line}-{epochMilliseconds}`
-
-### Multilingual Review Output
-
-With `--lang=zh-CN --lang=ja --lang=english --collapsed-lang=ja` option:
-
-1. **Copilot Prompt**
-   - Asks Copilot to provide translations only for the non-English requested languages
-  - Returns `ReviewItemEntity` with `translations: Record<string, string>` field
-   - Example: `{ suggestion: "use const instead of let", translations: { "zh-CN": "使用 const 而不是 let", "ja": "letではなくconstを使用します" } }`
-
-2. **Inline Comments**
-   - Only the requested display languages are shown
-   - English is shown only when explicitly requested, otherwise it is omitted
-   - Translations are rendered in `--lang` order
-   - Languages listed in `--collapsed-lang` are wrapped in GitLab `<details>` blocks
-   - Each inline review begins with a rank badge rendered from the review `rank`
-   - Example:
-     ```
-     $$\colorbox{#ff4d4f}{\color{white}{\text{HIGH}}}$$
-
-     use const instead of let
-
-     使用 const 而不是 let
-
-     <details>
-     <summary>ja</summary>
-
-     letではなくconstを使用します
-
-     </details>
-     ```
-
-3. **Summary Comment**
-   - Only the requested display languages are rendered
-   - English is shown only when explicitly requested
-   - Languages listed in `--collapsed-lang` are wrapped in GitLab `<details>` blocks
-   - Each section uses translated headers and content (Copilot generates these)
-   - Review bullets are rewritten by the runtime to inject rank badges and filtered review lists
-   - Example structure:
-     ```markdown
-     # 📝 Copilot Code Review (zh-CN)
-     ## 📋 拉取请求变更
-     ...
-
-     <details>
-     <summary>ja</summary>
-
-     # 📝 Copilot Code Review (ja)
-     ## 📋 プルリクエストの変更
-     ...
-
-     </details>
-     ```
-
-4. **Database Storage**
-  - `StoredReviewEntity` stores **English suggestion only** (no translations or rank)
-   - Translations are transient (used in current review, not persisted)
-   - Future LLM reviewers see only the English suggestion when loading previous reviews
-
-### Types
-
-**ReviewItemEntity** (request payload from Copilot):
-```typescript
-type ReviewItemEntity = {
-  file_path: string;
-  new_line: number;
-  old_line?: number;
-  rank?: "HIGH" | "MEDIUM" | "LOW";
-  suggestion: string;
-  translations?: Record<string, string>;  // e.g., { "zh-CN": "...", "ja": "..." }
-};
-```
-
-**StoredReviewEntity** (database record):
-```typescript
-type StoredReviewEntity = {
-  id: string;
-  file_path: string;
-  new_line: number;
-  old_line?: number;
-  suggestion: string;         // English only
-  source_snippet: string;
-  mr_iid: string;
-  created_at: number;         // milliseconds
-};
-```
-Note: `StoredReviewEntity` does **not** include `translations` — only English suggestions are persisted.
-
-**ReviewResponseEntity** (Copilot output):
-```typescript
-type ReviewResponseEntity = {
-  model?: string;             // LLM-reported model name, formatted like "gpt-5.4 (high)"
-  summary: {
-    content: string;                     // English markdown summary
-    translations?: Record<string, string>; // Full translated markdown blocks keyed by language
-  };
-  reviews: ReviewItemEntity[];      // Each may have translations and a rank
-  errors?: string[];
-  context?: { total_length?: number; used_length?: number; usage_percentage?: number; };
-  duration?: number;          // milliseconds
-};
-```
-
-
-
-1. **Fetch MR Details**: Get merge request info and full diff from GitLab API
-2. **Prepare Prompt**: Build comprehensive prompt including:
-   - MR title and description
-   - Diff snapshot
-   - Previous reviews from SQLite (if `--db` used)
-   - Repository context (read AGENTS.md, skills/*/SKILL.md)
-  - Instruction that non-inline findings stay inside the summary comment's `## 💡 Other Suggestions` section instead of being returned as structured review items
-3. **Call Copilot CLI**: Spawn GitHub Copilot process with:
-   - Read-only tools: `read_file`, `list_directory`, `search_files`, `grep`
-   - Disabled: file modification, shell execution
-4. **Parse Response**: Extract JSON marked with `[COPILOT_JSON_START]`
-5. **Load Existing Summary State**: Read the existing Copilot summary note and parse tracked discussion IDs from its embedded JSON
-6. **Cleanup Old**: Delete the old summary note, then resolve/delete previous tracked discussions not retained in the new review pass
-7. **Post Reviews**: Create inline discussions for each review item through `GitLabService.createReviewDiscussion()`
-8. **Post Summary**: Add a top-level summary comment with tracking data and performance metrics through `GitLabService.createSummaryNote()`
-
-### Handling Previous Reviews
-
-When an MR is updated:
-1. Load previous reviews from DB
-2. Pass to Copilot asking what's still valid
-3. Copilot includes valid ones in returned `reviews` array
-4. **Existing GitLab discussions**: Still cleaned up per standard flow (outdated = resolved, with-replies = resolved, clean = deleted)
-5. DB historical records preserved for reference
-
-### Version Information
-
-**CLI Option**: `--version` / `-v`
-
-**Output Format**: `${name} ${version} (${platform}-${arch}) - ${commit-hash}`
-
-**Version Handling Strategy**:
-
-- **Development**: When running `bun run app/main.ts --version`, version info is fetched at runtime:
-  - Version and name from `package.json`
-  - Platform/arch from Node.js `process.platform` and `process.arch`
-  - Commit SHA from `git rev-parse HEAD` (executed in real-time)
-
-- **Compiled Binary**: When building with `bun run build:*-*`, version info is baked into the binary:
-  - Bun's `--define` flag injects values at compile time: `__BUILD_VERSION__`, `__BUILD_PLATFORM__`, `__BUILD_COMMIT__`
-  - Binary's `--version` output shows the version/commit from the time of build
-  - No runtime git calls needed
-
-**Build Process** (`scripts/build-with-version.ts`):
-1. Reads `package.json` for version and name
-2. Executes `git rev-parse HEAD` to get current commit
-3. Constructs platform string (`${process.platform}-${process.arch}`)
-4. Calls `bun build` with `--define __BUILD_VERSION__`, `--define __BUILD_PLATFORM__`, `--define __BUILD_COMMIT__`
-5. Cleans up `.*.bun-build` temp files after build (replaces `clean-bun-build.ts` as separate step)
-
----
-
-## CI Runtime Details
-
-### Build & Release Pipeline
-
-```
-Commit to main
-    ↓
-test:biome + test:unit (parallel quality gates)
-    ↓
-release (ensure GitLab release exists)
-   ↓
-build (parallel, 6 platforms)
-    ↓
-build jobs upload versioned binaries to the release/package registry
-
-Create MR
-    ↓
-test:biome + test:unit (parallel quality gates)
-```
-
-### GitHub Actions CI
-
-- Workflow file: `.github/workflows/test-and-release.yml`
-- The `biome` and `unit-test` jobs run in parallel on every push to `main` and on pull requests targeting `main`
-- The `build` matrix job waits for both `biome` and `unit-test` to pass via `needs: [biome, unit-test]`
-
-### Build Platforms
-
-- `darwin-arm64` (macOS ARM64 / M-series)
-- `darwin-x64` (macOS Intel)
-- `linux-x64` (Linux x86-64)
-- `linux-arm64` (Linux ARM64)
-- `win-x64` (Windows x64)
-- `win-arm64` (Windows ARM64)
-
-### Version & Release Management
-
-- Version defined in `package.json`
-- Release tag format: `v{version}` (e.g., `v1.0.0`)
-- Build output filenames are platform-specific and unversioned, for example `gitlab-copilot-ci-darwin-arm64`, `gitlab-copilot-ci-win-x64.exe`, and `gitlab-copilot-ci-win-arm64.exe`
-- Release/package filenames are versioned. Windows release assets keep the `.exe` suffix, for example `gitlab-copilot-ci-{version}-{platform}` for non-Windows targets and `gitlab-copilot-ci-{version}-{platform}.exe` for Windows targets
-
-### Release Preparation
-
-In `scripts/ci/ensure-release.ts`, before the build stage:
-
-1. Read version from `package.json`
-2. Check whether `v{version}` already exists
-3. Write `release.env` as a GitLab dotenv artifact with `RELEASE_EXISTS`, `RELEASE_VERSION`, and `RELEASE_TAG`
-4. If it exists, later build and publish jobs exit early without creating or uploading anything
-5. If it does not exist, later jobs continue through build and publish
-
-### Per-Platform Build Preparation
-
-In `scripts/ci/build-and-publish.ts`, each build job:
-
-1. Reads `PLATFORM` and `BUILD_SCRIPT` from the CI matrix
-2. Reads the shared `RELEASE_EXISTS` flag from the `release.env` dotenv artifact
-3. If the release already exists, skip the build entirely
-4. If the release does not exist, run the platform build script
-5. Rename the build output to the versioned release filename and keep it in `dist/` as a GitLab artifact for the final publish job
-
-### Final Release Publish
-
-In `scripts/ci/publish-release.ts`, after all matrix builds succeed:
-
-1. Reads the shared `RELEASE_EXISTS` flag and exits early when the release already exists
-2. Collects all versioned binaries from `dist/`
-3. Uploads each binary to the GitLab generic package registry
-4. Builds a changelog from the GitLab repository commits API through the existing `@gitbeaker/rest` client between the previous release commit and `CI_COMMIT_SHA`, excluding release-commit messages like `chore: 🔖 release v1.0.5`, so the publish job does not require a local `git` binary in the runner image
-5. Creates the GitLab release once, with the changelog as the release description and the uploaded package URLs attached as release asset links
-
-### Build Artifacts
-
-- The `release:check` job publishes `release.env` as a GitLab dotenv artifact so later jobs can reuse the release-existence decision without re-querying GitLab
-- Build jobs publish only their own versioned binary from `dist/` as a GitLab job artifact, using the `RELEASE_VERSION` and `PLATFORM` variables to avoid archiving unrelated files
-- CI no longer preserves `dist/` via `GIT_CLEAN_FLAGS`, so stale binaries from earlier jobs do not accumulate into oversized artifact archives
-- The final `release:publish` job downloads those artifacts, uploads them to the generic package registry, and then creates the release with asset links
-
-### CI Build Cache
-
-To speed up dependency installation:
-- Set `BUN_INSTALL_CACHE` to `$CI_PROJECT_DIR/.bun/install/cache`
-- Set `npm_config_cache` to `$CI_PROJECT_DIR/.npm`
-- Create both directories before `bun install`
-- Cache `.bun/install/cache` (Bun's package cache) and `.npm` (npm's cache for `npm install -g bun`)
-- The CI runner may still report `No URL provided` when shared cache is not configured; that only means the cache stays local to the runner
-
----
-
-### Development Guidelines
-
-### Code Quality
-
-- Run `bun run lint` (Biome) locally and in CI
-- Errors block merges; warnings are advisory
-- Use `biome.jsonc` for formatting and linting rules
-- **noDefaultExport rule**: Applied to `app/**` except `app/types/sql.d.ts` (which requires default export for module declaration)
-
-### Dependency Management
-
-- Install with locked versions: `bun install -E <package>`
-- Keep `bun.lock` committed
-- Current runtime dependencies:
-  - `@gitbeaker/rest` — GitLab API client
-  - `yargs` — CLI argument parsing
-  - `temporal-polyfill` — Temporal date/time API
-
-### Type Checking
-
-- Run `bun tsgo` to check TypeScript errors
-- Type definitions are colocated by domain in `app/types/review.types.ts`, `app/services/db.types.ts`, and `app/services/gitlab.types.ts`
-- SQL module types in `app/types/sql.d.ts` (ambient declaration)
-
-### For LLM Maintainers
-
-**CRITICAL**: Whenever you implement a new feature or change the project structure:
-1. Update this `skills/project-guideline/SKILL.md` file to reflect the change
-2. Include:
-   - New CLI arguments (with defaults and descriptions)
-   - New SQLite tables or schema changes
-   - New runtime behavior or workflow changes
-   - New terminology or concepts
-   - Updated file paths or module organization
-3. Ensure the description stays accurate and complete
-4. Run `bun tsgo` and `bun run lint` before submitting changes
-
-This ensures all team members (human and AI) have a single source of truth.
-
-### Command Execution Behavior
-
-- Before running any command, briefly explain the operation that is about to execute
-- Keep the explanation short and specific to the command
-
-This keeps the skill in sync with the codebase so future LLMs have accurate context.
-
----
-
-## Key Files
-
-- `app/main.ts` — App runtime entry point (code review execution)
-- `app/migrations/` — Database migration files (SQL and registry)
-- `app/services/db.ts` — Database initialization with migration runner
-- `app/services/logger.ts` — Logging with Temporal timestamps
-- `app/services/*.types.ts` — Domain-local TypeScript entities and data types
-- `app/types/sql.d.ts` — SQL module declaration
-- `scripts/ci/ensure-release.ts` — Check whether the versioned GitLab release already exists and publish the result via `release.env`
-- `scripts/ci/build-and-publish.ts` — Per-platform build and rename step that prepares versioned binaries as CI artifacts
-- `scripts/ci/publish-release.ts` — Upload built binaries, generate the release changelog from the GitLab repository commits API via `@gitbeaker/rest`, and create the GitLab release with asset links without shelling out to `git`; when CI falls back to `CI_JOB_TOKEN`, raw package/release fetch calls must send `JOB-TOKEN` instead of `PRIVATE-TOKEN`
-- `.gitlab-ci.yml` — CI/CD pipeline definition
-- `package.json` — Version, dependencies, build scripts
-- `biome.jsonc` — Linter and formatter configuration (no-default-export rule excludes `app/types/sql.d.ts`)
-- `tsconfig.json` — TypeScript configuration
-- `AGENTS.md` — Project features and LLM maintenance instructions
-
----
-
-## Related Skills
-
-- `karpathy-guidelines`: Code style and best practices from Andrej Karpathy
+The history block must stay at the very end of the summary note.
+
+Prompting rules for the `## 🔍 Review Summary` section:
+- The summary template asks the model to mention the current commit using the shared markdown commit reference built from `CI_COMMIT_SHORT_SHA` and `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available.
+- After the inline-review list, the template includes a separator plus a subscript note that clarifies previous review-run suggestions are omitted from that section.
+
+## Inline Review Position Rules
+
+`GitLabService.createReviewDiscussion()` posts exactly the provided `newLine` and/or `oldLine` values. Keep this behavior in sync with the prompt contract.
+
+Important GitLab position rules:
+- `startSha` must equal `baseSha`.
+- Omit `oldLine` for newly added lines.
+- A review must include at least one of `new_line` or `old_line`.
+- Runtime posting now prefers `newLine` whenever both `new_line` and `old_line` are present on a single review item, so one inline thread is anchored to the new side instead of rendering twice in split diff views.
+- `diff_file` and `diff_line_code` are required in model output so the runtime can retry failed inline positions with a recomputed location.
+
+If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromDiffReference()`.
+
+## Provider Notes
+
+### GitHub Copilot CLI
+- Default allowlist: `read_file`, `list_directory`, `search_files`, `grep`, `shell(node)`.
+- `--model provider/model` passes through as-is.
+- Final `:effort` suffix is translated to `copilot --effort <level>`.
+
+### Pi
+- Default allowlist: `read,grep,find,ls,bash`.
+- Runs with `--mode json --no-session`.
+- Stdin must stay ignored to avoid hangs.
+- Provider failures may arrive entirely on stdout JSON events.
+
+## Logging
+
+`--log` is independent from `--debug`.
+
+- `--log`: write `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log` in the current directory.
+- `--log /path/to/dir`: write in the provided directory.
+- The parser resolves the runtime type to `true | string | undefined` via `array: true` plus `coerce`.
+
+## Development Commands
+
+- `bun run dev`
+- `bun run test`
+- `bun run tsgo`
+- `bun run lint`
+- `bun run biome`
+
+## Maintenance Notes
+
+Whenever behavior changes, update this skill so it remains a reliable source of truth.
+
+Required updates when behavior changes:
+- New or removed CLI arguments
+- Review marker semantics
+- Summary payload shape
+- Retry or debounce workflow changes
+- Module moves or renames

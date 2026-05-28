@@ -10,6 +10,7 @@ import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
+import { env } from "../utils/env";
 import { extractMarkedJsonText, parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
@@ -55,11 +56,11 @@ export const runCopilotReview = async ({
       }
     };
 
-    const env = withCliColorEnv({ env: { ...process.env } });
+    const childEnv = withCliColorEnv({ env: { ...process.env } });
     if (argv["copilot-github-token"]) {
-      env.COPILOT_GITHUB_TOKEN = argv["copilot-github-token"];
-      env.GH_TOKEN = argv["copilot-github-token"];
-      env.GITHUB_TOKEN = argv["copilot-github-token"];
+      childEnv.COPILOT_GITHUB_TOKEN = argv["copilot-github-token"];
+      childEnv.GH_TOKEN = argv["copilot-github-token"];
+      childEnv.GITHUB_TOKEN = argv["copilot-github-token"];
     }
 
     const modelSpec = parseModelSpec({
@@ -99,10 +100,10 @@ export const runCopilotReview = async ({
       copilotArgs.unshift("--effort");
     }
 
-    const agentBin = argv["agent-bin"] ?? process.env.COPILOT_BIN ?? "copilot";
+    const agentBin = argv["agent-bin"] ?? env.COPILOT_BIN ?? "copilot";
 
     const child = spawn(agentBin, copilotArgs, {
-      env,
+      env: childEnv,
       stdio: "pipe",
     });
 
