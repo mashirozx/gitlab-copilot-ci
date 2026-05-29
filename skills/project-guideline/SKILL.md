@@ -215,6 +215,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - Runs with `--mode json --no-session`.
 - Stdin must stay ignored to avoid hangs.
 - Provider failures may arrive entirely on stdout JSON events.
+- `app/services/pi.ts`, `app/utils/pi-message-formatter.ts`, and `app/utils/pi-usage-collector.ts` must treat Pi stdout JSON as untrusted at runtime: accept both singular `message` and plural `messages` payloads, guard iterable/content fields with `Array.isArray(...)`, and convert malformed post-exit payloads into logged review errors instead of crashing the Bun binary after `[Pi] Process exited with code 0`.
 
 ## Logging
 

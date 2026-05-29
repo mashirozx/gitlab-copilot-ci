@@ -38,8 +38,37 @@ type PiMessage = {
 
 type PiJsonEvent = {
   type?: string;
+  message?: PiMessage;
   messages?: PiMessage[];
   usage?: ReviewResponseEntity["usage"];
+};
+
+const isPiTextContentArray = (value: unknown): value is PiTextContent[] => {
+  return Array.isArray(value);
+};
+
+const getEventMessages = ({
+  event,
+}: {
+  event?: PiJsonEvent | null;
+}): PiMessage[] => {
+  if (!event) {
+    return [];
+  }
+
+  if (event.messages !== undefined && !Array.isArray(event.messages)) {
+    throw new Error(
+      "Invalid agent_end payload: messages must be an array when present",
+    );
+  }
+
+  const messages = event.messages ?? [];
+
+  if (event.message) {
+    return [...messages, event.message];
+  }
+
+  return messages;
 };
 
 const flushPiConsoleBuffer = ({
@@ -78,7 +107,13 @@ const extractAssistantText = ({
     return assistantMessage.content;
   }
 
-  return (assistantMessage.content ?? [])
+  if (!isPiTextContentArray(assistantMessage.content)) {
+    return "";
+  }
+
+  const content = assistantMessage.content;
+
+  return content
     .filter((item) => item.type === "text")
     .map((item) => item.text ?? "")
     .join("");
@@ -245,61 +280,62 @@ export const runPiReview = async ({
       trackPiStd();
       logger.info(`[Pi] Process exited with code ${code}`);
 
-      const agentEndEvent = getAgentEndEvent({ output: stdout });
-
-      if (!agentEndEvent) {
-        const duration = getElapsedMilliseconds({
-          startTimeMs: startTime,
-        });
-        const errMsg = `[Pi] Pi JSON mode exited before returning an agent_end event. Exit code: ${code}`;
-        logger.error(errMsg);
-        logger.info("[Pi] Full output:", stdout.trim() || stderr.trim());
-        resolve({
-          summary: {
-            content: "",
-            translations: {},
-          },
-          reviews: [],
-          duration,
-          errors: [errMsg],
-        });
-        return;
-      }
-
-      const assistantText = extractAssistantText({
-        messages: agentEndEvent.messages,
-      });
-      const assistantError = extractAssistantError({
-        messages: agentEndEvent.messages,
-      });
-      const jsonText = extractMarkedJsonText({
-        text: assistantText,
-        marker: REVIEW_RESPONSE_JSON_START_MARKER,
-        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
-      });
-
-      if (!jsonText) {
-        const errMsg = assistantError
-          ? `[Pi] Pi JSON mode returned an assistant error before review JSON was produced. Exit code: ${code}. Error: ${assistantError}`
-          : `[Pi] Pi JSON mode: no JSON found in assistant output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
-        logger.error(errMsg);
-        logger.info("[Pi] Assistant output:", assistantText);
-        const duration = getElapsedMilliseconds({
-          startTimeMs: startTime,
-        });
-        resolve({
-          summary: {
-            content: "",
-            translations: {},
-          },
-          reviews: [],
-          duration,
-          errors: [errMsg],
-        });
-        return;
-      }
-
       try {
+        const agentEndEvent = getAgentEndEvent({ output: stdout });
+
+        if (!agentEndEvent) {
+          const duration = getElapsedMilliseconds({
+            startTimeMs: startTime,
+          });
+          const errMsg = `[Pi] Pi JSON mode exited before returning an agent_end event. Exit code: ${code}`;
+          logger.error(errMsg);
+          logger.info("[Pi] Full output:", stdout.trim() || stderr.trim());
+          resolve({
+            summary: {
+              content: "",
+              translations: {},
+            },
+            reviews: [],
+            duration,
+            errors: [errMsg],
+          });
+          return;
+        }
+
+        const eventMessages = getEventMessages({ event: agentEndEvent });
+        const assistantText = extractAssistantText({
+          messages: eventMessages,
+        });
+        const assistantError = extractAssistantError({
+          messages: eventMessages,
+        });
+        const jsonText = extractMarkedJsonText({
+          text: assistantText,
+          marker: REVIEW_RESPONSE_JSON_START_MARKER,
+          endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
+        });
+
+        if (!jsonText) {
+          const errMsg = assistantError
+            ? `[Pi] Pi JSON mode returned an assistant error before review JSON was produced. Exit code: ${code}. Error: ${assistantError}`
+            : `[Pi] Pi JSON mode: no JSON found in assistant output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
+          logger.error(errMsg);
+          logger.info("[Pi] Assistant output:", assistantText);
+          const duration = getElapsedMilliseconds({
+            startTimeMs: startTime,
+          });
+          resolve({
+            summary: {
+              content: "",
+              translations: {},
+            },
+            reviews: [],
+            duration,
+            errors: [errMsg],
+          });
+          return;
+        }
+
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
@@ -318,10 +354,10 @@ export const runPiReview = async ({
           usage,
         });
       } catch (error) {
-        const errMsg = `[Pi] Pi JSON mode: failed to parse JSON response: ${error instanceof Error ? error.message : String(error)}`;
+        const errMsg = `[Pi] Pi JSON mode: failed to parse PI output after process exit: ${error instanceof Error ? error.message : String(error)}`;
         logger.error(errMsg);
         logger.error(error);
-        logger.info("[Pi] JSON text:", jsonText);
+        logger.info("[Pi] Full output:", stdout.trim() || stderr.trim());
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
