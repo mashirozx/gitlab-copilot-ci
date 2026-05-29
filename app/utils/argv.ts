@@ -2,7 +2,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import type { ReviewRankEntity } from "../types/review.types";
 import { env } from "./env";
-import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix.ts";
+import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix";
 import { getFormattedVersion } from "./version";
 
 const normalizeRankList = ({
@@ -99,7 +99,7 @@ export const argv = yargs(hideBin(process.argv))
   .option("html-marker-prefix", {
     alias: "html-marker-preffix",
     describe:
-      "Prefix used to build HTML markers that identify CLI-generated GitLab MR comments: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data-start, <prefix>-review-data-end, <prefix>-reviewing-marker",
+      "Prefix used to build HTML markers that identify CLI-generated GitLab MR comments: <prefix>-review-marker, <prefix>-summary-marker, <prefix>-review-data-start, <prefix>-review-data-end, <prefix>-reviewing-marker. Useful when multiple runs of the tool with different configurations may be commenting on the same MR, to avoid marker name collisions. Defaults to 'copilot'.",
     type: "string",
     default: "copilot",
     coerce: (arg: string | undefined) =>

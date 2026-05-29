@@ -2,41 +2,7 @@
 
 A Bun-based GitLab CI review binary that analyzes merge request diffs with either GitHub Copilot CLI or Pi, posts inline GitLab discussions, and maintains a top-level summary note.
 
-## Installation
-
-```bash
-bun install
-```
-
-## Building
-
-### Build for Your Platform
-
-Build for your current platform (requires Bun installed):
-
-```bash
-# macOS (Apple Silicon M1/M2/M3)
-bun run build:darwin-arm64
-
-# macOS (Intel x86_64)
-bun run build:darwin-x64
-
-# Linux (x86_64)
-bun run build:linux-x64
-
-# Linux (ARM64)
-bun run build:linux-arm64
-
-# Windows (x86_64)
-bun run build:win-x64
-
-# Windows (ARM64)
-bun run build:win-arm64
-```
-
 ## Binary Artifacts
-
-After building, binaries are available at:
 
 | Platform | Architecture | Path | Usage |
 |----------|--------------|------|-------|
@@ -71,12 +37,12 @@ Options:
                                  (parsed as shell-like tokens)
   --model                        Model name (default: gpt-5.4)
                                  Supports provider prefixes like openai/gpt-4o and effort suffixes like sonnet:high
-  --copilot-github-token         GitHub token for Copilot authentication
+  --copilot-github-token         Optional GitHub token with Copilot access for headless authentication
                                  (default: COPILOT_GITHUB_TOKEN, GH_TOKEN, or GITHUB_TOKEN)
   --project-id                   GitLab project ID (default: CI_PROJECT_ID)
   --mr-iid                       GitLab merge request IID (default: CI_MERGE_REQUEST_IID)
   --max-git-diff-page            Maximum number of GitLab merge request diff pages to fetch
-                                 (positive integer; default: unlimited)
+                                 (positive integer; default: unlimited; GitLab currently returns 20 diff entries per page)
   --max-history-length           Maximum number of review runs kept in summary-embedded history
                                  (positive integer; default: 2)
   --process-max-pending-time     Maximum minutes to wait for an in-progress review marker
@@ -84,8 +50,10 @@ Options:
   --html-marker-prefix           Prefix used for markers that identify CLI-generated GitLab MR reviews/comments
                                  Generated markers: <prefix>-review-marker, <prefix>-summary-marker,
                                  <prefix>-review-data-start, <prefix>-review-data-end, <prefix>-reviewing-marker
-                                 Default: copilot. Prefix must use lowercase kebab-case, for example xiaomi-mimo-code-review
-  -d, --debug                    Debug mode: generate mock reviews only (default: false)
+                                 Default: copilot. Prefix must use lowercase kebab-case, for example xiaomi-mimo-code-review.
+                                 Use distinct prefixes when multiple review configurations may comment on the same MR
+  -d, --debug                    Debug mode: review only from the diff and skip reading local repository files
+                                 (default: false)
   --log                          Enable log file writing
                                  - --log: write to current directory
                                  - --log /path/to/dir: write to specified directory
@@ -96,15 +64,16 @@ Options:
   --instruction-files            Repository instruction entry file paths passed through to the review prompt
                                  repeatable, e.g. --instruction-files AGENTS.md --instruction-files .github/copilot.md
   --extra-prompts                Extra prompt text appended to the generated review prompt
+                                 if provided, the model must obey it
   --should-teach-diff-compute    Include prompt instructions for manual diff line-number computation
                                  (default: false)
   --tools                        Additional agent tools to allow beyond the built-in defaults
-                                 repeatable, e.g. --tools node --tools bash
+                                 repeatable, e.g. --tools sh --tools read_file
   --lang                         Display language(s) for review output
                                  repeatable, e.g. --lang=zh-CN --lang=ja --lang=english
                                  if omitted, output defaults to English only
   --collapsed-lang, --c-lang     Display language(s) that should be wrapped in GitLab <details> blocks
-                                 these languages are still requested even when not repeated in --lang
+                                 for both inline reviews and the summary note
   --ignored-rank                 Review rank(s) to ask the LLM to omit from inline reviews and the summary note
                                  allowed values: HIGH, MEDIUM, LOW
   -v, --version                  Show version information and exit
@@ -114,10 +83,7 @@ Options:
 ### Required Arguments
 
 Must provide:
-- `--gitlab-token` (or `GITLAB_TOKEN` env var)
-- `--gitlab-url` (or `CI_SERVER_URL` env var)
-- `--project-id` (or `CI_PROJECT_ID` env var)
-- `--mr-iid` (or `CI_MERGE_REQUEST_IID` env var)
+- `--agent`: the agent provider to use for code review, either `github-copilot-cli` or `pi`
 
 ### Example GitLab CI/CD Configuration
 
@@ -132,18 +98,22 @@ code-review:
   variables:
     # note that CI_JOB_TOKEN does not have permissions to post MR comments,
     # so a personal/repository access token with api scope is necessary here
-    GITLAB_TOKEN: "$GITLAB_TOKEN"
+    GITLAB_TOKEN: "$YOUR_GITLAB_TOKEN" # required
     # when using GitHub Copilot CLI as agent, a GitHub token is also required
     # for authentication
-    GH_TOKEN: "$GH_TOKEN"
+    GH_TOKEN: "$YOUR_GH_TOKEN" # optional
     # For Pi agent, set the necessary environment variables for used provider
     # run `pi --help` for details
+    GEMINI_API_KEY: "$YOUR_GEMINI_API_KEY" # optional
   script:
     - ./gitlab-copilot-ci \
-        --gitlab-token "$GITLAB_TOKEN" \
-        --gitlab-url "$CI_SERVER_URL" \
-        --project-id "$CI_PROJECT_ID" \
-        --mr-iid "$CI_MERGE_REQUEST_IID"
+        --agent "pi" \ # required
+        --model "google/gemini-3.5-flash:xhigh" \ # optional
+        --lang en --c-lang zh-CN \ # optional
+        --instruction-files CLAUDE.md --instruction-files CODE-REVIEW_RULE.md \ # optional
+        --extra-prompts "Focus on security implications and edge cases." \ # optional
+        --ignored-rank LOW \ # optional
+        --html-marker-prefix "xiaomi-mimo-code-review" # optional
 ```
 
 ### Model Syntax
@@ -163,51 +133,19 @@ The `--model` argument accepts the same model strings used by Pi, including prov
 
 For `github-copilot-cli`, the suffix after the final `:` is treated as the effort level and forwarded to the Copilot CLI `--effort` flag. For `pi`, the model string is passed through unchanged.
 
-### Logging Example
-
-```bash
-./gitlab-copilot-ci \
-  --log /var/log/ci \
-  --gitlab-token YOUR_TOKEN \
-  --gitlab-url https://gitlab.com \
-  --project-id 123 \
-  --mr-iid 456
-```
-
-`--log` also works without a value to log into the current directory. Internally, the parser uses `array: true` plus `coerce` so the runtime value becomes `true | string | undefined`.
-
-Log files are created as: `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log`
-
-### Prompt Customization Example
-
-```bash
-./gitlab-copilot-ci \
-  --gitlab-token YOUR_TOKEN \
-  --gitlab-url https://gitlab.com \
-  --project-id 123 \
-  --mr-iid 456 \
-  --instruction-files AGENTS.md \
-  --instruction-files .github/copilot.md \
-  --extra-prompts "Prioritize security and data-loss risks." \
-  --should-teach-diff-compute
-```
-
-### Asking The LLM To Omit Low-Priority Findings
-
-```bash
-./gitlab-copilot-ci \
-  --gitlab-token YOUR_TOKEN \
-  --gitlab-url https://gitlab.com \
-  --project-id 123 \
-  --mr-iid 456 \
-  --ignored-rank LOW
-```
-
 ## Development
 
 ```bash
 # Run in development mode
 bun run dev
+
+# Build local binaries
+bun run build:darwin-arm64
+bun run build:darwin-x64
+bun run build:linux-x64
+bun run build:linux-arm64
+bun run build:win-x64
+bun run build:win-arm64
 
 # Lint code
 bun run lint
