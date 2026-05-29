@@ -416,13 +416,29 @@ const formatInfoLine = ({
   return `${colorize({ text: "○", color })} ${ellipsize({ text })}\n`;
 };
 
+const isPiConsoleMessageArray = (
+  value: unknown,
+): value is PiConsoleMessage[] => {
+  return Array.isArray(value);
+};
+
+const isPiConsoleContentItemArray = (
+  value: unknown,
+): value is PiConsoleContentItem[] => {
+  return Array.isArray(value);
+};
+
 const getEventMessages = ({
   event,
 }: {
   event: PiConsoleEvent;
 }): PiConsoleMessage[] => {
+  const messages = isPiConsoleMessageArray(event.messages)
+    ? event.messages
+    : [];
+
   return [
-    ...(event.messages ?? []),
+    ...messages,
     ...(event.assistantMessageEvent?.partial
       ? [event.assistantMessageEvent.partial]
       : []),
@@ -447,7 +463,13 @@ const getAssistantTextFromMessages = ({
     return assistantMessage.content;
   }
 
-  return (assistantMessage.content ?? [])
+  if (!isPiConsoleContentItemArray(assistantMessage.content)) {
+    return "";
+  }
+
+  const content = assistantMessage.content;
+
+  return content
     .filter((item) => item.type === "text")
     .map((item) => item.text ?? "")
     .join("")

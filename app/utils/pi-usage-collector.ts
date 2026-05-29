@@ -16,6 +16,10 @@ type PiUsageMessage = {
   usage?: ReviewResponseEntity["usage"];
 };
 
+const isPiUsageMessageArray = (value: unknown): value is PiUsageMessage[] => {
+  return Array.isArray(value);
+};
+
 const toOptionalNumber = ({
   value,
 }: {
@@ -81,7 +85,12 @@ export const getPiUsage = ({
     return undefined;
   }
 
-  const assistantMessage = [...(event.messages ?? [])]
+  const messages = isPiUsageMessageArray(event.messages) ? event.messages : [];
+
+  const assistantMessage = [
+    ...messages,
+    ...(event.message ? [event.message] : []),
+  ]
     .reverse()
     .find((message) => message.role === "assistant");
 
@@ -89,7 +98,6 @@ export const getPiUsage = ({
     event.usage,
     assistantMessage?.usage,
     event.assistantMessageEvent?.partial?.usage,
-    event.message?.usage,
   ]
     .map((usage) => normalizePiUsage({ usage }))
     .find((usage) => usage !== undefined);

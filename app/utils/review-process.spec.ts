@@ -42,11 +42,13 @@ mock.module("../services/gitlab", () => ({
 
 mock.module("../services/logger", () => ({
   logger: loggerMock,
+  writeLogStream: (_message: unknown): void => {},
 }));
 
 mock.module("./argv", () => ({
   argv: {
     agent: "github-copilot-cli",
+    "agent-args": undefined,
     "agent-bin": undefined,
     "collapsed-lang": [],
     "gitlab-token": "test-gitlab-token",
@@ -58,6 +60,7 @@ mock.module("./argv", () => ({
     "mr-iid": "1",
     "process-max-pending-time": 1,
     "project-id": "1",
+    tools: [],
   },
 }));
 
