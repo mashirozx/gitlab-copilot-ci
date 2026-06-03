@@ -1,6 +1,15 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { DiscussionSchema } from "@gitbeaker/rest";
 
+const loggerMock = {
+  debug: (..._args: unknown[]) => {},
+  error: (..._args: unknown[]) => {},
+  info: (..._args: unknown[]) => {},
+  start: (..._args: unknown[]) => {},
+  success: (..._args: unknown[]) => {},
+  warn: (..._args: unknown[]) => {},
+};
+
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
@@ -56,6 +65,10 @@ mock.module("@gitbeaker/rest", () => ({
       })),
     };
   },
+}));
+
+mock.module("./logger", () => ({
+  logger: loggerMock,
 }));
 
 mock.module("../utils/argv", () => ({

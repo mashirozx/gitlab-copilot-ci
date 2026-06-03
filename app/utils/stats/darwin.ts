@@ -10,25 +10,35 @@ export const parseDarwinPsOutput = ({
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-    .map((line) => {
+    .flatMap((line) => {
       const match = line.match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)$/);
 
       if (!match) {
-        return null;
+        return [];
       }
 
       const [, pidText, ppidText, rssKbText, cpuTimeText] = match;
 
-      return {
-        pid: Number(pidText),
-        ppid: Number(ppidText),
-        rssBytes: Number(rssKbText) * 1024,
-        cpuTimeMicros: parsePsCpuTimeToMicros({
-          text: cpuTimeText,
-        }),
-      } satisfies RuntimeProcessSample;
-    })
-    .filter((entry): entry is RuntimeProcessSample => entry !== null);
+      if (
+        pidText === undefined ||
+        ppidText === undefined ||
+        rssKbText === undefined ||
+        cpuTimeText === undefined
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          pid: Number(pidText),
+          ppid: Number(ppidText),
+          rssBytes: Number(rssKbText) * 1024,
+          cpuTimeMicros: parsePsCpuTimeToMicros({
+            text: cpuTimeText,
+          }),
+        } satisfies RuntimeProcessSample,
+      ];
+    });
 };
 
 export const darwinRuntimeStatsBackend: RuntimeStatsBackend = {

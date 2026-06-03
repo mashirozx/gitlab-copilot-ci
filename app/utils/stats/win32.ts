@@ -39,28 +39,28 @@ export const parseWin32ProcessJson = ({
     | WindowsProcessRecord[];
   const records = Array.isArray(parsedValue) ? parsedValue : [parsedValue];
 
-  return records
-    .map((record) => {
-      const pid = toNumber({ value: record.ProcessId });
-      const ppid = toNumber({ value: record.ParentProcessId });
+  return records.flatMap((record) => {
+    const pid = toNumber({ value: record.ProcessId });
+    const ppid = toNumber({ value: record.ParentProcessId });
 
-      if (pid === undefined || ppid === undefined) {
-        return null;
-      }
+    if (pid === undefined || ppid === undefined) {
+      return [];
+    }
 
-      const userModeTime = toNumber({ value: record.UserModeTime }) ?? 0;
-      const kernelModeTime = toNumber({ value: record.KernelModeTime }) ?? 0;
+    const userModeTime = toNumber({ value: record.UserModeTime }) ?? 0;
+    const kernelModeTime = toNumber({ value: record.KernelModeTime }) ?? 0;
 
-      return {
+    return [
+      {
         pid,
         ppid,
         rssBytes: toNumber({ value: record.WorkingSetSize }),
         cpuTimeMicros: Math.round((userModeTime + kernelModeTime) / 10),
         readBytes: toNumber({ value: record.ReadTransferCount }),
         writeBytes: toNumber({ value: record.WriteTransferCount }),
-      } satisfies RuntimeProcessSample;
-    })
-    .filter((entry): entry is RuntimeProcessSample => entry !== null);
+      } satisfies RuntimeProcessSample,
+    ];
+  });
 };
 
 const runWindowsShell = (): string => {
