@@ -18,6 +18,10 @@ type PiConsoleContentItem = {
   type?: string;
   text?: string;
   thinking?: string;
+  id?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
+  partialArgs?: string;
 };
 
 type PiConsoleMessage = {
@@ -284,9 +288,22 @@ const getToolLabel = ({
 
   if (name === "grep") {
     const query =
-      typeof args?.query === "string"
-        ? quote({ text: args.query })
-        : '"pattern"';
+      getFirstString({
+        values: [
+          typeof args?.query === "string"
+            ? quote({ text: args.query })
+            : undefined,
+          typeof args?.pattern === "string"
+            ? quote({ text: args.pattern })
+            : undefined,
+          typeof args?.regex === "string"
+            ? quote({ text: args.regex })
+            : undefined,
+          typeof args?.value === "string"
+            ? quote({ text: args.value })
+            : undefined,
+        ],
+      }) ?? '"pattern"';
     const scope = getPathArg({
       args,
       keys: ["path", "include", "includePattern", "cwd"],
@@ -444,6 +461,76 @@ const getEventMessages = ({
       : []),
     ...(event.message ? [event.message] : []),
   ];
+};
+
+const mergeToolArgs = ({
+  baseArgs,
+  nextArgs,
+}: {
+  baseArgs?: Record<string, unknown>;
+  nextArgs?: Record<string, unknown>;
+}): Record<string, unknown> | undefined => {
+  if (!baseArgs && !nextArgs) {
+    return undefined;
+  }
+
+  return {
+    ...(baseArgs ?? {}),
+    ...(nextArgs ?? {}),
+  };
+};
+
+const getToolCallArgsFromPartial = ({
+  partialArgs,
+}: {
+  partialArgs?: string;
+}): Record<string, unknown> | undefined => {
+  if (typeof partialArgs !== "string" || partialArgs.length === 0) {
+    return undefined;
+  }
+
+  const parsed = tryParseJson<Record<string, unknown>>({ text: partialArgs });
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
+const updatePendingToolCallsFromMessages = ({
+  pendingToolCalls,
+  messages,
+}: {
+  pendingToolCalls: Map<string, PendingToolCall>;
+  messages: PiConsoleMessage[];
+}): void => {
+  for (const message of messages) {
+    if (!isPiConsoleContentItemArray(message.content)) {
+      continue;
+    }
+
+    for (const item of message.content) {
+      if (item.type !== "toolCall" || typeof item.id !== "string") {
+        continue;
+      }
+
+      const cachedToolCall = pendingToolCalls.get(item.id);
+      const argsFromPartial = getToolCallArgsFromPartial({
+        partialArgs: item.partialArgs,
+      });
+
+      pendingToolCalls.set(item.id, {
+        toolName: item.name ?? cachedToolCall?.toolName,
+        args: mergeToolArgs({
+          baseArgs: mergeToolArgs({
+            baseArgs: cachedToolCall?.args,
+            nextArgs: item.arguments,
+          }),
+          nextArgs: argsFromPartial,
+        }),
+      });
+    }
+  }
 };
 
 const getAssistantTextFromMessages = ({
@@ -730,6 +817,11 @@ export const createPiMessageFormatter = (): {
       return `${ellipsize({ text: trimToSingleLine({ text: line }) })}\n`;
     }
 
+    updatePendingToolCallsFromMessages({
+      pendingToolCalls,
+      messages: getEventMessages({ event }),
+    });
+
     const partialEventType = event.assistantMessageEvent?.type;
     const bufferedMessageOutput =
       pendingAssistantMessage.length > 0 &&
@@ -844,9 +936,13 @@ export const createPiMessageFormatter = (): {
 
     if (event.type === "tool_execution_start") {
       if (event.toolCallId) {
+        const cachedToolCall = pendingToolCalls.get(event.toolCallId);
         pendingToolCalls.set(event.toolCallId, {
-          toolName: event.toolName,
-          args: event.args,
+          toolName: event.toolName ?? cachedToolCall?.toolName,
+          args: mergeToolArgs({
+            baseArgs: cachedToolCall?.args,
+            nextArgs: event.args,
+          }),
         });
       }
 

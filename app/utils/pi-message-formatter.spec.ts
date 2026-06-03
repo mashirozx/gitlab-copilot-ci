@@ -600,4 +600,64 @@ describe("createPiMessageFormatter", () => {
     expect(output).toContain("Read ");
     expect(output).toContain("\u001b[33mapp/main.ts\u001b[0m");
   });
+
+  test("renders grep pattern from streamed tool call args", () => {
+    const formatter = createPiMessageFormatter();
+
+    formatter.formatLine({
+      line: JSON.stringify({
+        type: "session",
+        cwd: "/Users/mashiro/Code/gitlab-copilot-ci",
+      }),
+    });
+
+    formatter.formatLine({
+      line: JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "toolcall_delta",
+          partial: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "grep-1",
+                name: "grep",
+                arguments: {
+                  pattern: "contract_number",
+                  path: "/Users/mashiro/Code/gitlab-copilot-ci/src/services/violation",
+                },
+                partialArgs:
+                  '{"pattern":"contract_number","path":"/Users/mashiro/Code/gitlab-copilot-ci/src/services/violation"}',
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    formatter.formatLine({
+      line: JSON.stringify({
+        type: "tool_execution_start",
+        toolCallId: "grep-1",
+        toolName: "grep",
+        args: {},
+      }),
+    });
+
+    const output = formatter.formatLine({
+      line: JSON.stringify({
+        type: "tool_execution_end",
+        toolCallId: "grep-1",
+        result: {
+          content: [{ text: "a\nb" }],
+        },
+      }),
+    });
+
+    expect(output).toContain(
+      'Grep "contract_number" in src/services/violation',
+    );
+    expect(output).toContain("2 lines found");
+  });
 });
