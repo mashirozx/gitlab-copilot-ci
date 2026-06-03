@@ -10,10 +10,12 @@ import { withCliColorEnv } from "../utils/cli-env";
 import { env } from "../utils/env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
 import { createPiMessageFormatter } from "../utils/pi-message-formatter";
+import { getPiUsage } from "../utils/pi-usage-collector";
 import {
-  extractPiUsageFromOutput,
-  getPiUsage,
-} from "../utils/pi-usage-collector";
+  appendRecentOutputLine,
+  flushLoggedStreamBuffer,
+  getRecentProcessOutputText,
+} from "../utils/std-handler.ts";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
 
@@ -43,8 +45,51 @@ type PiJsonEvent = {
   usage?: ReviewResponseEntity["usage"];
 };
 
+type PiRuntimeState = {
+  agentEndEvent: PiJsonEvent | null;
+  usage?: ReviewResponseEntity["usage"];
+  stdoutTail: string[];
+  stderrTail: string[];
+};
+
 const isPiTextContentArray = (value: unknown): value is PiTextContent[] => {
   return Array.isArray(value);
+};
+
+const consumePiStdoutLine = ({
+  line,
+  state,
+}: {
+  line: string;
+  state: PiRuntimeState;
+}): void => {
+  appendRecentOutputLine({
+    tail: state.stdoutTail,
+    line,
+  });
+
+  const trimmedLine = line.trim();
+
+  if (!trimmedLine) {
+    return;
+  }
+
+  const event = tryParseJson<PiJsonEvent>({ text: trimmedLine });
+
+  if (event === null) {
+    logger.warn(`[Pi] Failed to parse JSON event line: ${trimmedLine}`);
+    return;
+  }
+
+  const usage = getPiUsage({ event });
+
+  if (usage) {
+    state.usage = usage;
+  }
+
+  if (event.type === "agent_end") {
+    state.agentEndEvent = event;
+  }
 };
 
 const getEventMessages = ({
@@ -143,31 +188,6 @@ const extractAssistantError = ({
   return assistantMessage.errorMessage;
 };
 
-const getAgentEndEvent = ({
-  output,
-}: {
-  output: string;
-}): PiJsonEvent | null => {
-  const events = output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .flatMap((line) => {
-      const event = tryParseJson<PiJsonEvent>({ text: line });
-
-      if (event === null) {
-        logger.warn(`[Pi] Failed to parse JSON event line: ${line}`);
-        return [];
-      }
-
-      return [event];
-    });
-
-  return (
-    [...events].reverse().find((event) => event.type === "agent_end") ?? null
-  );
-};
-
 export const runPiReview = async ({
   prompt,
 }: {
@@ -178,10 +198,16 @@ export const runPiReview = async ({
   return new Promise((resolve) => {
     const consoleFormatter = createPiMessageFormatter();
     const startTime = getNowEpochMilliseconds();
-    let stdout = "";
-    let stderr = "";
     let stdoutConsoleBuffer = "";
     let stderrConsoleBuffer = "";
+    let stdoutEventBuffer = "";
+    let stderrLogBuffer = "";
+    const piRuntimeState: PiRuntimeState = {
+      agentEndEvent: null,
+      usage: undefined,
+      stdoutTail: [],
+      stderrTail: [],
+    };
     const allowedTools = getAllowedTools();
     const piArgs = [
       "--mode",
@@ -190,20 +216,6 @@ export const runPiReview = async ({
       "--tools",
       allowedTools.join(","),
     ];
-
-    const trackPiStd = () => {
-      if (stdout) {
-        writeLogStream(
-          `[Pi:out] ==== Pi Output Start ====\n\n${stdout}\n\n[Pi:out]==== Pi Output End ====\n`,
-        );
-      }
-
-      if (stderr) {
-        writeLogStream(
-          `[Pi:err] ==== Pi Error Output Start ====\n\n${stderr}\n\n[Pi:err]==== Pi Error Output End ====\n`,
-        );
-      }
-    };
 
     const childEnv: NodeJS.ProcessEnv = withCliColorEnv({
       env: {
@@ -236,23 +248,45 @@ export const runPiReview = async ({
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      stdout += text;
       stdoutConsoleBuffer += text;
       stdoutConsoleBuffer = flushPiConsoleBuffer({
         buffer: stdoutConsoleBuffer,
         consoleFormatter,
         write: (formattedText) => process.stdout.write(formattedText),
       });
+
+      stdoutEventBuffer += text;
+      stdoutEventBuffer = flushLoggedStreamBuffer({
+        buffer: stdoutEventBuffer,
+        prefix: "Pi:out",
+        writeLog: writeLogStream,
+        consumeLine: (line) =>
+          consumePiStdoutLine({
+            line,
+            state: piRuntimeState,
+          }),
+      });
     });
 
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      stderr += text;
       stderrConsoleBuffer += text;
       stderrConsoleBuffer = flushPiConsoleBuffer({
         buffer: stderrConsoleBuffer,
         consoleFormatter,
         write: (formattedText) => process.stderr.write(formattedText),
+      });
+
+      stderrLogBuffer += text;
+      stderrLogBuffer = flushLoggedStreamBuffer({
+        buffer: stderrLogBuffer,
+        prefix: "Pi:err",
+        writeLog: writeLogStream,
+        consumeLine: (line) =>
+          appendRecentOutputLine({
+            tail: piRuntimeState.stderrTail,
+            line,
+          }),
       });
     });
 
@@ -277,19 +311,42 @@ export const runPiReview = async ({
         );
       }
 
-      trackPiStd();
+      if (stdoutEventBuffer) {
+        writeLogStream(`[Pi:out] ${stdoutEventBuffer}`);
+        consumePiStdoutLine({
+          line: stdoutEventBuffer,
+          state: piRuntimeState,
+        });
+      }
+
+      if (stderrLogBuffer) {
+        writeLogStream(`[Pi:err] ${stderrLogBuffer}`);
+        appendRecentOutputLine({
+          tail: piRuntimeState.stderrTail,
+          line: stderrLogBuffer,
+        });
+      }
+
       logger.info(`[Pi] Process exited with code ${code}`);
 
       try {
-        const agentEndEvent = getAgentEndEvent({ output: stdout });
+        const agentEndEvent = piRuntimeState.agentEndEvent;
 
         if (!agentEndEvent) {
           const duration = getElapsedMilliseconds({
             startTimeMs: startTime,
           });
           const errMsg = `[Pi] Pi JSON mode exited before returning an agent_end event. Exit code: ${code}`;
+          const recentOutput = getRecentProcessOutputText({
+            stdoutTail: piRuntimeState.stdoutTail,
+            stderrTail: piRuntimeState.stderrTail,
+          });
           logger.error(errMsg);
-          logger.info("[Pi] Full output:", stdout.trim() || stderr.trim());
+
+          if (recentOutput) {
+            logger.info("[Pi] Recent output:", recentOutput);
+          }
+
           resolve({
             summary: {
               content: "",
@@ -341,11 +398,9 @@ export const runPiReview = async ({
         });
         const result = parseJson<ReviewResponseEntity>({ text: jsonText });
         const usage =
+          piRuntimeState.usage ??
           getPiUsage({
             event: agentEndEvent,
-          }) ??
-          extractPiUsageFromOutput({
-            output: stdout,
           });
 
         resolve({
@@ -355,9 +410,17 @@ export const runPiReview = async ({
         });
       } catch (error) {
         const errMsg = `[Pi] Pi JSON mode: failed to parse PI output after process exit: ${error instanceof Error ? error.message : String(error)}`;
+        const recentOutput = getRecentProcessOutputText({
+          stdoutTail: piRuntimeState.stdoutTail,
+          stderrTail: piRuntimeState.stderrTail,
+        });
         logger.error(errMsg);
         logger.error(error);
-        logger.info("[Pi] Full output:", stdout.trim() || stderr.trim());
+
+        if (recentOutput) {
+          logger.info("[Pi] Recent output:", recentOutput);
+        }
+
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });

@@ -82,11 +82,12 @@ Rules:
 | `app/prompts.ts` | Builds the review prompt, including diff-reading instructions, duplicate-suppression history, translation requirements, and diff-position guidance |
 | `app/services/gitlab.ts` | GitLab API wrapper for MR fetch, diff pagination, note lookup/creation/deletion, history parsing, and inline discussion creation |
 | `app/services/gitlab.types.ts` | GitLab-facing entities, review-history payload types, MR note types, and diff result types |
-| `app/services/copilot.ts` | GitHub Copilot CLI invocation and response parsing |
-| `app/services/pi.ts` | Pi invocation, event-stream parsing, human-readable console formatting, and usage extraction |
+| `app/services/copilot.ts` | GitHub Copilot CLI invocation and Copilot-specific response handling |
+| `app/services/pi.ts` | Pi invocation, Pi-event interpretation, human-readable console formatting, and usage extraction |
 | `app/services/logger.ts` | Shared `consola` logger and optional file logging |
 | `app/utils/argv.ts` | CLI argument parsing via yargs |
 | `app/utils/env.ts` | Shared live getters for runtime environment variables so modules can import a central env helper without snapshotting `process.env` at import time |
+| `app/utils/std-handler.ts` | Shared stdout/stderr helpers for incremental log streaming, recent-output tails, and marked-JSON capture |
 | `app/utils/diff-files.ts` | Writes paginated unified diff files and can recompute positions from `diff_file` / `diff_line_code` references |
 | `app/utils/review-helpers.ts` | Pure helpers for review line/location formatting |
 | `app/utils/review-output.ts` | Normalizes model output and renders inline review comment bodies |
@@ -209,12 +210,15 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - Default allowlist: `read_file`, `list_directory`, `search_files`, `grep`, `shell(node)`.
 - `--model provider/model` passes through as-is.
 - Final `:effort` suffix is translated to `copilot --effort <level>`.
+- Generic stdout/stderr stream logging and marker-block capture live in `app/utils/std-handler.ts`; `app/services/copilot.ts` should keep only Copilot-specific argument building, process orchestration, and result parsing.
 
 ### Pi
 - Default allowlist: `read,grep,find,ls,bash`.
 - Runs with `--mode json --no-session`.
 - Stdin must stay ignored to avoid hangs.
 - Provider failures may arrive entirely on stdout JSON events.
+- Generic stdout/stderr stream logging and recent-output tails live in `app/utils/std-handler.ts`; `app/services/pi.ts` should keep only Pi-specific JSONL event interpretation and final review extraction.
+- Stdout JSONL is parsed incrementally during `data` events; the runtime keeps the latest useful `agent_end` event plus usage snapshots instead of reparsing the full stdout buffer on process close.
 - `app/services/pi.ts`, `app/utils/pi-message-formatter.ts`, and `app/utils/pi-usage-collector.ts` must treat Pi stdout JSON as untrusted at runtime: accept both singular `message` and plural `messages` payloads, guard iterable/content fields with `Array.isArray(...)`, and convert malformed post-exit payloads into logged review errors instead of crashing the Bun binary after `[Pi] Process exited with code 0`.
 
 ## Logging

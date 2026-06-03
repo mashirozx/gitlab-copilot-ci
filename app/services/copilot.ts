@@ -11,8 +11,15 @@ import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { env } from "../utils/env";
-import { extractMarkedJsonText, parseJson } from "../utils/json";
+import { parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
+import {
+  appendRecentOutputLine,
+  consumeMarkedJsonChunk,
+  createMarkedJsonCaptureState,
+  flushLoggedStreamBuffer,
+  getRecentProcessOutputText,
+} from "../utils/std-handler.ts";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
 
@@ -36,25 +43,12 @@ export const runCopilotReview = async ({
 
   return new Promise((resolve) => {
     const startTime = getNowEpochMilliseconds();
-    let stdout = "";
-    let stderr = "";
-    // Pause line by line tracking
-    // let stdoutLineBuffer = "";
-    // let stderrLineBuffer = "";
-
-    const trackCopilotStd = () => {
-      if (stdout) {
-        writeLogStream(
-          `[Copilot:out] ==== Copilot Output Start ====\n\n${stdout}\n\n[Copilot:out]==== Copilot Output End ====\n`,
-        );
-      }
-
-      if (stderr) {
-        writeLogStream(
-          `[Copilot:err] ==== Copilot Error Output Start ====\n\n${stderr}\n\n[Copilot:err]==== Copilot Error Output End ====\n`,
-        );
-      }
-    };
+    let stdoutLogBuffer = "";
+    let stderrLogBuffer = "";
+    const stdoutTail: string[] = [];
+    const stderrTail: string[] = [];
+    const stdoutJsonCapture = createMarkedJsonCaptureState();
+    const stderrJsonCapture = createMarkedJsonCaptureState();
 
     const childEnv = withCliColorEnv({ env: { ...process.env } });
     if (argv["copilot-github-token"]) {
@@ -110,24 +104,45 @@ export const runCopilotReview = async ({
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       process.stdout.write(text);
-      stdout += text;
-      // stdoutLineBuffer += text;
-      // const lines = stdoutLineBuffer.split("\n");
-      // for (const line of lines) {
-      //   logger.log(`[Copilot:out] ${line}`);
-      // }
-      // stdoutLineBuffer = lines[lines.length - 1] ?? "";
+      consumeMarkedJsonChunk({
+        state: stdoutJsonCapture,
+        text,
+        startMarker: REVIEW_RESPONSE_JSON_START_MARKER,
+        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
+      });
+      stdoutLogBuffer += text;
+      stdoutLogBuffer = flushLoggedStreamBuffer({
+        buffer: stdoutLogBuffer,
+        prefix: "Copilot:out",
+        writeLog: writeLogStream,
+        consumeLine: (line) =>
+          appendRecentOutputLine({
+            tail: stdoutTail,
+            line,
+          }),
+      });
     });
 
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       process.stderr.write(text);
-      stderr += text;
-      // stderrLineBuffer += text;
-      // const lines = stderrLineBuffer.split("\n");
-      // for (const line of lines) {
-      //   logger.log(`[Copilot:err] ${line}`);
-      // }
+      consumeMarkedJsonChunk({
+        state: stderrJsonCapture,
+        text,
+        startMarker: REVIEW_RESPONSE_JSON_START_MARKER,
+        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
+      });
+      stderrLogBuffer += text;
+      stderrLogBuffer = flushLoggedStreamBuffer({
+        buffer: stderrLogBuffer,
+        prefix: "Copilot:err",
+        writeLog: writeLogStream,
+        consumeLine: (line) =>
+          appendRecentOutputLine({
+            tail: stderrTail,
+            line,
+          }),
+      });
     });
 
     child.on("spawn", () => {
@@ -135,20 +150,39 @@ export const runCopilotReview = async ({
     });
 
     child.on("close", (code) => {
-      trackCopilotStd();
+      if (stdoutLogBuffer) {
+        writeLogStream(`[Copilot:out] ${stdoutLogBuffer}`);
+        appendRecentOutputLine({
+          tail: stdoutTail,
+          line: stdoutLogBuffer,
+        });
+      }
+
+      if (stderrLogBuffer) {
+        writeLogStream(`[Copilot:err] ${stderrLogBuffer}`);
+        appendRecentOutputLine({
+          tail: stderrTail,
+          line: stderrLogBuffer,
+        });
+      }
+
       logger.info(`[Copilot] Process exited with code ${code}`);
 
-      const text = stdout.trim() || stderr.trim();
-      const jsonText = extractMarkedJsonText({
-        text,
-        marker: REVIEW_RESPONSE_JSON_START_MARKER,
-        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
-      });
+      const jsonText =
+        stdoutJsonCapture.markedJson ?? stderrJsonCapture.markedJson;
 
       if (!jsonText) {
         const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
+        const recentOutput = getRecentProcessOutputText({
+          stdoutTail,
+          stderrTail,
+        });
         logger.error(`[Copilot] ${errMsg}`);
-        logger.info("[Copilot] Full output:", text);
+
+        if (recentOutput) {
+          logger.info("[Copilot] Recent output:", recentOutput);
+        }
+
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
