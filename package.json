@@ -1,6 +1,6 @@
 {
   "name": "gitlab-copilot-ci",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "type": "module",
   "module": "app/main.ts",
   "private": true,
