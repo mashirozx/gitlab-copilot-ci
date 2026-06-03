@@ -187,30 +187,30 @@ export const buildPerformanceMetricsSection = ({
     return "";
   }
 
-  let section = "\n\n---\n\n## 📊 Model Usage & Performance Matrix\n";
+  let content = "";
 
   if (modelDisplayName) {
-    section += `- 🤖 **Model**: ${modelDisplayName}\n`;
+    content += `- 🤖 **Model**: ${modelDisplayName}\n`;
   }
 
   if (agentDisplay) {
-    section += `- 🧰 **Agent**: ${agentDisplay}\n`;
+    content += `- 🧰 **Agent**: ${agentDisplay}\n`;
   }
 
   if (response.duration) {
-    section += `- ⏱️ **Time taken**: ${formatDurationAsHms({ durationMs: response.duration })} (${response.duration}ms)\n`;
+    content += `- ⏱️ **Time taken**: ${formatDurationAsHms({ durationMs: response.duration })} (${response.duration}ms)\n`;
   }
 
   if (response.runtimeStats?.platform) {
-    section += `- 🖥️ **Runtime stats platform**: ${response.runtimeStats.platform}\n`;
+    content += `- 🖥️ **Runtime stats platform**: ${response.runtimeStats.platform}\n`;
   }
 
   if (response.runtimeStats?.parent.peakRssBytes !== undefined) {
-    section += `- 🧠 **Parent peak RSS**: ${formatBytes({ bytes: response.runtimeStats.parent.peakRssBytes })}\n`;
+    content += `- 🧠 **Parent peak RSS**: ${formatBytes({ bytes: response.runtimeStats.parent.peakRssBytes })}\n`;
   }
 
   if (response.runtimeStats?.parent.peakHeapUsedBytes !== undefined) {
-    section += `- 🧱 **Parent peak heap**: ${formatBytes({ bytes: response.runtimeStats.parent.peakHeapUsedBytes })}\n`;
+    content += `- 🧱 **Parent peak heap**: ${formatBytes({ bytes: response.runtimeStats.parent.peakHeapUsedBytes })}\n`;
   }
 
   if (
@@ -226,70 +226,73 @@ export const buildPerformanceMetricsSection = ({
         : null,
     ].filter((part): part is string => part !== null);
 
-    section += `- ⚙️ **Parent CPU time**: ${cpuParts.join(", ")}\n`;
+    content += `- ⚙️ **Parent CPU time**: ${cpuParts.join(", ")}\n`;
   }
 
   if (response.runtimeStats?.agent.peakTreeRssBytes !== undefined) {
-    section += `- 🌲 **Agent peak tree RSS**: ${formatBytes({ bytes: response.runtimeStats.agent.peakTreeRssBytes })}\n`;
+    content += `- 🌲 **Agent peak tree RSS**: ${formatBytes({ bytes: response.runtimeStats.agent.peakTreeRssBytes })}\n`;
   }
 
   if (response.runtimeStats?.agent.peakTreeCpuPercent !== undefined) {
-    section += `- 🔥 **Agent peak tree CPU**: ${response.runtimeStats.agent.peakTreeCpuPercent}%\n`;
+    content += `- 🔥 **Agent peak tree CPU**: ${response.runtimeStats.agent.peakTreeCpuPercent}%\n`;
   }
 
   if (response.runtimeStats?.agent.peakProcessCount !== undefined) {
-    section += `- 🧵 **Agent peak process count**: ${response.runtimeStats.agent.peakProcessCount}\n`;
+    content += `- 🧵 **Agent peak process count**: ${response.runtimeStats.agent.peakProcessCount}\n`;
   }
 
   if (response.runtimeStats?.agent.totalReadBytes !== undefined) {
-    section += `- 📀 **Agent read bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalReadBytes })}\n`;
+    content += `- 📀 **Agent read bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalReadBytes })}\n`;
   }
 
   if (response.runtimeStats?.agent.totalWriteBytes !== undefined) {
-    section += `- 💾 **Agent write bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalWriteBytes })}\n`;
+    content += `- 💾 **Agent write bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalWriteBytes })}\n`;
   }
 
   if (response.runtimeStats?.capabilities.notes?.length) {
-    section += `- ℹ️ **Runtime stats note**: ${response.runtimeStats.capabilities.notes.join(" ")}\n`;
+    content += `- ℹ️ **Runtime stats note**: ${response.runtimeStats.capabilities.notes.join(" ")}\n`;
   }
 
   if (response.context?.total_length !== undefined) {
-    section += `- 🌕 **Context window**: ${response.context.total_length}\n`;
+    content += `- 🌕 **Context window**: ${response.context.total_length}\n`;
   }
 
   if (response.context?.used_length !== undefined) {
-    section += `- 🌑 **Context used**: ${response.context.used_length}\n`;
+    content += `- 🌑 **Context used**: ${response.context.used_length}\n`;
   }
 
   if (response.context?.usage_percentage !== undefined) {
-    section += `- 🌓 **Context usage**: ${response.context.usage_percentage}%\n`;
+    content += `- 🌓 **Context usage**: ${response.context.usage_percentage}%\n`;
   }
 
   if (response.usage?.input !== undefined) {
-    section += `- 📥 **Input tokens**: ${response.usage.input}\n`;
+    content += `- 📥 **Input tokens**: ${response.usage.input}\n`;
   }
 
   if (response.usage?.output !== undefined) {
-    section += `- 📤 **Output tokens**: ${response.usage.output}\n`;
+    content += `- 📤 **Output tokens**: ${response.usage.output}\n`;
   }
 
   if (response.usage?.cacheRead !== undefined) {
-    section += `- 📚 **Cache read tokens**: ${response.usage.cacheRead}\n`;
+    content += `- 📚 **Cache read tokens**: ${response.usage.cacheRead}\n`;
   }
 
   if (response.usage?.cacheWrite !== undefined) {
-    section += `- ✍️ **Cache write tokens**: ${response.usage.cacheWrite}\n`;
+    content += `- ✍️ **Cache write tokens**: ${response.usage.cacheWrite}\n`;
   }
 
   if (response.usage?.totalTokens !== undefined) {
-    section += `- 🔢 **Total tokens**: ${response.usage.totalTokens}\n`;
+    content += `- 🔢 **Total tokens**: ${response.usage.totalTokens}\n`;
   }
 
   if (response.usage?.cost?.total !== undefined) {
-    section += `- 💸 **Total cost**: ${response.usage.cost.total}\n`;
+    content += `- 💸 **Total cost**: ${response.usage.cost.total}\n`;
   }
 
-  return section;
+  return `\n\n---\n\n${buildDetailsBlock({
+    summary: "📊 Model Usage & Performance Matrix",
+    content: content.trimEnd(),
+  })}`;
 };
 
 export const buildErrorsSummarySection = ({

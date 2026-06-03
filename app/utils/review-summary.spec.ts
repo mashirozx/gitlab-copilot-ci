@@ -463,9 +463,15 @@ describe("buildPerformanceMetricsSection", () => {
       agentDisplay: "Pi Coding Agent 0.75.5",
     });
 
+    expect(section).toContain(
+      "<summary>📊 Model Usage & Performance Matrix</summary>",
+    );
     expect(section).toContain("- 📥 **Input tokens**: 513");
     expect(section).toContain("- 📤 **Output tokens**: 74");
     expect(section).toContain("- 📚 **Cache read tokens**: 1024");
+    expect(section).toContain(
+      "<summary>📊 Model Usage & Performance Matrix</summary>",
+    );
     expect(section).toContain("- ✍️ **Cache write tokens**: 0");
     expect(section).toContain("- 🔢 **Total tokens**: 1611");
     expect(section).toContain("- 💸 **Total cost**: 0");
@@ -504,6 +510,9 @@ describe("buildPerformanceMetricsSection", () => {
       agentDisplay: "Pi Coding Agent 0.75.5",
     });
 
+    expect(section).toContain(
+      "<summary>📊 Model Usage & Performance Matrix</summary>",
+    );
     expect(section).toContain("- 🖥️ **Runtime stats platform**: darwin");
     expect(section).toContain("- 🧠 **Parent peak RSS**: 4.00 MB");
     expect(section).toContain("- 🌲 **Agent peak tree RSS**: 8.00 MB");
@@ -511,6 +520,7 @@ describe("buildPerformanceMetricsSection", () => {
     expect(section).toContain("- 📀 **Agent read bytes**: 1.00 KB");
     expect(section).toContain("- 💾 **Agent write bytes**: 2.00 KB");
     expect(section).toContain("runtime note");
+    expect(section).not.toContain("## 📊 Model Usage & Performance Matrix");
   });
 });
 
