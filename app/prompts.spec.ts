@@ -26,7 +26,7 @@ const loadPromptsModule = async ({
       "instruction-files": [],
       "extra-prompts": undefined,
       "ignored-rank": [],
-      "max-history-length": 2,
+      "max-history-length": 12,
       "should-teach-diff-compute": false,
       model: "gpt-5.4",
       tools: [],

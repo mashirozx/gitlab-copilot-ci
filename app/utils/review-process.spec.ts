@@ -55,7 +55,7 @@ mock.module("./argv", () => ({
     "gitlab-url": "https://gitlab.example.com",
     "html-marker-prefix": "copilot",
     lang: [],
-    "max-history-length": 2,
+    "max-history-length": 12,
     model: undefined,
     "mr-iid": "1",
     "process-max-pending-time": 1,

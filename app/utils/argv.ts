@@ -137,10 +137,10 @@ export const argv = yargs(hideBin(process.argv))
     describe:
       "Maximum number of prior review runs to keep in the summary-embedded review history. Older runs are discarded first.",
     type: "number",
-    default: 2,
+    default: 12,
     coerce: (arg: number | undefined) => {
       if (arg === undefined) {
-        return 2;
+        return 12;
       }
 
       if (!Number.isInteger(arg) || arg <= 0) {

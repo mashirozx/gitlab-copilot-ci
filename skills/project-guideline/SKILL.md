@@ -122,7 +122,7 @@ Rules:
 - `--project-id`: defaults to `CI_PROJECT_ID`.
 - `--mr-iid`: defaults to `CI_MERGE_REQUEST_IID`.
 - `--max-git-diff-page`: positive integer page limit for paginated MR diff fetches. Default: unlimited.
-- `--max-history-length`: positive integer cap for the number of review runs kept in the encoded summary history. Default: `2`.
+- `--max-history-length`: positive integer cap for the number of review runs kept in the encoded summary history. Default: `12`.
 - `--process-max-pending-time`: positive integer number of minutes to wait for an existing reviewing marker before skipping the current run. Default: `30`.
 - `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
 - `--debug` / `-d`: generate mock reviews only.

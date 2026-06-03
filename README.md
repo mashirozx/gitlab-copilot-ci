@@ -44,7 +44,7 @@ Options:
   --max-git-diff-page            Maximum number of GitLab merge request diff pages to fetch
                                  (positive integer; default: unlimited; GitLab currently returns 20 diff entries per page)
   --max-history-length           Maximum number of review runs kept in summary-embedded history
-                                 (positive integer; default: 2)
+                                 (positive integer; default: 12)
   --process-max-pending-time     Maximum minutes to wait for an in-progress review marker
                                  before skipping the current run (positive integer; default: 30)
   --html-marker-prefix           Prefix used for markers that identify CLI-generated GitLab MR reviews/comments
