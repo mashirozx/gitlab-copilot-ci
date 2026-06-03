@@ -29,6 +29,7 @@ This statement confirms that the LLM has read and understands the project guidel
    - New runtime behavior or workflow changes
    - New terminology or concepts
    - Updated file paths or module organization
-3. **Keep the skill accurate and complete** — future LLMs will rely on it for context
+3. **Update `README.md` whenever CLI arguments change** so the published options documentation stays in sync with `app/utils/argv.ts`
+4. **Keep the skill accurate and complete** — future LLMs will rely on it for context
 
 This ensures all team members (human and AI) have a single source of truth for how the project works.

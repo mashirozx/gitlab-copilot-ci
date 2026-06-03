@@ -141,6 +141,9 @@ Rules:
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
 
+Documentation maintenance rule:
+- Whenever `app/utils/argv.ts` changes the CLI argument surface, defaults, aliases, or descriptions, update `README.md` in the same change so the published options table stays synchronized with the implementation.
+
 ## Review Workflow
 
 `app/main.ts` follows this sequence:
