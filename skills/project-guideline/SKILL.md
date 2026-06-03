@@ -30,6 +30,12 @@ keywords:
 - **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`.
 - **Validation Gates**: Both GitHub Actions and GitLab CI run `bun run lint`, `bun run test`, and `bun run tsgo` before build/release steps proceed.
 
+### Investigation Workflow
+
+- When behavior is uncertain, prefer a live investigation with `test.ts` before guessing.
+- `test.ts` is the repo's playground for real GitLab API experiments.
+- Load the real MR/project/token environment from `test.sh` when using that playground so the investigation matches CI and live GitLab behavior.
+
 ## Terminology
 
 ### Review vs. Summary
@@ -72,7 +78,10 @@ Rules:
 - Summary-only `## 💡 Other Suggestions` content is not stored.
 - History is trimmed to the latest `--max-history-length` runs.
 - Before prompt generation and before the next summary note is written, the runtime fetches all merge-request discussion pages from GitLab and removes any stored history entries whose discussion is already resolved.
+- If a stored history discussion id no longer exists in the live merge-request discussions payload, treat it as deleted and remove it from stored history as well.
+- If the live discussion still exists but the stored `note_id` no longer appears in that discussion's notes, treat the original review note as deleted and remove that history item.
 - When reconciling stored history against live GitLab discussions, prefer each diff note's `resolved` boolean. Older/nullish fallback fields such as `resolved_at`, `resolved_by`, `resolved_by_id`, and `resolved_by_push` are only fallback signals when `resolved` is absent.
+- History reconciliation logs should report three counts separately: removed resolved review items, removed deleted review items, and kept existing unresolved review items.
 - Resolved historical inline discussions must never be embedded into the prompt duplicate-suppression section and must never remain in the hidden base64 review-history payload.
 - The next run flattens prior `content` items and passes them to the prompt only to suppress duplicate inline findings on the same file and exact old/new line pair.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.

@@ -104,29 +104,72 @@ export const isDiscussionResolved = ({
   });
 };
 
-export const filterResolvedReviewHistory = ({
+export const filterExistingUnresolvedReviewHistory = ({
   reviewHistory,
   discussions,
 }: {
   reviewHistory: ReviewHistoryRunEntity[];
   discussions: DiscussionSchema[];
-}): ReviewHistoryRunEntity[] => {
-  const discussionResolutionById = new Map(
+}): {
+  reviewHistory: ReviewHistoryRunEntity[];
+  removedResolvedCount: number;
+  removedDeletedCount: number;
+  existingUnresolvedCount: number;
+} => {
+  const discussionStateById = new Map(
     discussions.map((discussion) => [
       discussion.id,
-      isDiscussionResolved({ discussion }),
+      {
+        isResolved: isDiscussionResolved({ discussion }),
+        noteIds: new Set(
+          discussion.notes
+            ?.map((note) => note.id)
+            .filter((noteId): noteId is number => typeof noteId === "number") ??
+            [],
+        ),
+      },
     ]),
   );
 
-  return reviewHistory
+  let removedResolvedCount = 0;
+  let removedDeletedCount = 0;
+  let existingUnresolvedCount = 0;
+
+  const filteredReviewHistory = reviewHistory
     .map((run) => ({
       ...run,
-      discussions: run.discussions.filter(
-        (discussion) =>
-          discussionResolutionById.get(discussion.discussion_id) !== true,
-      ),
+      discussions: run.discussions.filter((discussion) => {
+        const liveDiscussion = discussionStateById.get(
+          discussion.discussion_id,
+        );
+
+        if (!liveDiscussion) {
+          removedDeletedCount += 1;
+          return false;
+        }
+
+        if (liveDiscussion.isResolved) {
+          removedResolvedCount += 1;
+          return false;
+        }
+
+        if (!liveDiscussion.noteIds.has(Number(discussion.note_id))) {
+          removedDeletedCount += 1;
+          return false;
+        }
+
+        existingUnresolvedCount += 1;
+        return true;
+      }),
     }))
     .filter((run) => run.discussions.length > 0);
+
+  return {
+    reviewHistory: filteredReviewHistory,
+    removedResolvedCount,
+    removedDeletedCount,
+    existingUnresolvedCount,
+  };
 };
 
 export const buildDiscussionPosition = ({
@@ -349,17 +392,19 @@ export class GitLabService {
 
     const discussions = await this.getMergeRequestDiscussions();
 
-    const filteredHistory = filterResolvedReviewHistory({
+    const {
+      reviewHistory: filteredHistory,
+      removedResolvedCount,
+      removedDeletedCount,
+      existingUnresolvedCount,
+    } = filterExistingUnresolvedReviewHistory({
       reviewHistory,
       discussions,
     });
-    const removedDiscussionCount =
-      reviewHistory.flatMap((run) => run.discussions).length -
-      filteredHistory.flatMap((run) => run.discussions).length;
 
-    if (removedDiscussionCount > 0) {
+    if (removedResolvedCount > 0 || removedDeletedCount > 0) {
       logger.info(
-        `[GitLab] Removed ${removedDiscussionCount} resolved historical review item(s) from summary history`,
+        `[GitLab] Review history reconciliation: removed ${removedResolvedCount} resolved item(s), removed ${removedDeletedCount} deleted item(s), kept ${existingUnresolvedCount} existing unresolved item(s)`,
       );
     }
 

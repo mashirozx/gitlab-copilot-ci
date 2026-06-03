@@ -22,15 +22,18 @@ const mergeRequestDiscussionsAll = mock(
 
 const buildDiscussion = ({
   id,
+  noteId,
   resolved,
 }: {
   id: string;
+  noteId: number;
   resolved: boolean;
 }): DiscussionSchema => ({
   id,
   individual_note: false,
   notes: [
     {
+      id: noteId,
       resolvable: true,
       resolved,
       resolved_at: resolved ? "2026-06-03T12:00:00Z" : null,
@@ -97,8 +100,11 @@ process.argv = [
   process.env.CI_MERGE_REQUEST_IID,
 ];
 
-const { buildDiscussionPosition, GitLabService, filterResolvedReviewHistory } =
-  await import(`./gitlab?test=${Date.now()}`);
+const {
+  buildDiscussionPosition,
+  GitLabService,
+  filterExistingUnresolvedReviewHistory,
+} = await import(`./gitlab?test=${Date.now()}`);
 
 describe("buildDiscussionPosition", () => {
   test("prefers the new side when both diff line numbers are present", () => {
@@ -155,15 +161,15 @@ describe("buildDiscussionPosition", () => {
   });
 });
 
-describe("filterResolvedReviewHistory", () => {
-  test("removes only discussions marked resolved by GitLab", () => {
-    const filtered = filterResolvedReviewHistory({
+describe("filterExistingUnresolvedReviewHistory", () => {
+  test("removes resolved and deleted discussions from history", () => {
+    const filtered = filterExistingUnresolvedReviewHistory({
       reviewHistory: [
         {
           discussions: [
             {
               discussion_id: "discussion-open",
-              note_id: "note-open",
+              note_id: "101",
               content: {
                 suggestion: "Keep me",
                 file_path: "src/open.ts",
@@ -173,7 +179,7 @@ describe("filterResolvedReviewHistory", () => {
             },
             {
               discussion_id: "discussion-resolved",
-              note_id: "note-resolved",
+              note_id: "102",
               content: {
                 suggestion: "Drop me",
                 file_path: "src/resolved.ts",
@@ -185,7 +191,7 @@ describe("filterResolvedReviewHistory", () => {
               discussion_id: "discussion-missing",
               note_id: "note-missing",
               content: {
-                suggestion: "Status unknown, keep me",
+                suggestion: "Discussion was deleted, drop me",
                 file_path: "src/missing.ts",
                 old_line: null,
                 new_line: 30,
@@ -197,51 +203,48 @@ describe("filterResolvedReviewHistory", () => {
       discussions: [
         buildDiscussion({
           id: "discussion-open",
+          noteId: 101,
           resolved: false,
         }),
         buildDiscussion({
           id: "discussion-resolved",
+          noteId: 102,
           resolved: true,
         }),
       ],
     });
 
-    expect(filtered).toEqual([
-      {
-        discussions: [
-          {
-            discussion_id: "discussion-open",
-            note_id: "note-open",
-            content: {
-              suggestion: "Keep me",
-              file_path: "src/open.ts",
-              old_line: null,
-              new_line: 10,
-            },
-          },
-          {
-            discussion_id: "discussion-missing",
-            note_id: "note-missing",
-            content: {
-              suggestion: "Status unknown, keep me",
-              file_path: "src/missing.ts",
-              old_line: null,
-              new_line: 30,
-            },
-          },
-        ],
-      },
-    ]);
-  });
-
-  test("keeps unresolved discussions when GitLab omits resolved_by_id", () => {
-    const filtered = filterResolvedReviewHistory({
+    expect(filtered).toEqual({
       reviewHistory: [
         {
           discussions: [
             {
               discussion_id: "discussion-open",
-              note_id: "note-open",
+              note_id: "101",
+              content: {
+                suggestion: "Keep me",
+                file_path: "src/open.ts",
+                old_line: null,
+                new_line: 10,
+              },
+            },
+          ],
+        },
+      ],
+      removedResolvedCount: 1,
+      removedDeletedCount: 1,
+      existingUnresolvedCount: 1,
+    });
+  });
+
+  test("keeps unresolved discussions when GitLab omits resolved_by_id", () => {
+    const filtered = filterExistingUnresolvedReviewHistory({
+      reviewHistory: [
+        {
+          discussions: [
+            {
+              discussion_id: "discussion-open",
+              note_id: "201",
               content: {
                 suggestion: "Keep me",
                 file_path: "src/open.ts",
@@ -251,7 +254,7 @@ describe("filterResolvedReviewHistory", () => {
             },
             {
               discussion_id: "discussion-resolved",
-              note_id: "note-resolved",
+              note_id: "202",
               content: {
                 suggestion: "Drop me",
                 file_path: "src/resolved.ts",
@@ -268,6 +271,7 @@ describe("filterResolvedReviewHistory", () => {
           individual_note: false,
           notes: [
             {
+              id: 201,
               resolvable: true,
               resolved: false,
               resolved_at: null,
@@ -280,6 +284,7 @@ describe("filterResolvedReviewHistory", () => {
           individual_note: false,
           notes: [
             {
+              id: 202,
               resolvable: true,
               resolved: true,
               resolved_at: "2026-06-03T12:00:00Z",
@@ -293,22 +298,70 @@ describe("filterResolvedReviewHistory", () => {
       ] as DiscussionSchema[],
     });
 
-    expect(filtered).toEqual([
-      {
-        discussions: [
-          {
-            discussion_id: "discussion-open",
-            note_id: "note-open",
-            content: {
-              suggestion: "Keep me",
-              file_path: "src/open.ts",
-              old_line: null,
-              new_line: 10,
+    expect(filtered).toEqual({
+      reviewHistory: [
+        {
+          discussions: [
+            {
+              discussion_id: "discussion-open",
+              note_id: "201",
+              content: {
+                suggestion: "Keep me",
+                file_path: "src/open.ts",
+                old_line: null,
+                new_line: 10,
+              },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      removedResolvedCount: 1,
+      removedDeletedCount: 0,
+      existingUnresolvedCount: 1,
+    });
+  });
+
+  test("removes history items when the original review note was deleted but the discussion still exists", () => {
+    const filtered = filterExistingUnresolvedReviewHistory({
+      reviewHistory: [
+        {
+          discussions: [
+            {
+              discussion_id: "discussion-open",
+              note_id: "note-original",
+              content: {
+                suggestion: "Drop me because the original note is gone",
+                file_path: "src/open.ts",
+                old_line: null,
+                new_line: 10,
+              },
+            },
+          ],
+        },
+      ],
+      discussions: [
+        {
+          id: "discussion-open",
+          individual_note: false,
+          notes: [
+            {
+              id: 999,
+              resolvable: true,
+              resolved: false,
+              resolved_at: null,
+              resolved_by_push: false,
+            },
+          ] as unknown as DiscussionSchema["notes"],
+        },
+      ] as DiscussionSchema[],
+    });
+
+    expect(filtered).toEqual({
+      reviewHistory: [],
+      removedResolvedCount: 0,
+      removedDeletedCount: 1,
+      existingUnresolvedCount: 0,
+    });
   });
 });
 
@@ -317,6 +370,7 @@ describe("GitLabService.getUnresolvedReviewHistoryFromSummary", () => {
     const fillerDiscussions = Array.from({ length: 99 }, (_, index) =>
       buildDiscussion({
         id: `filler-${index + 1}`,
+        noteId: index + 1000,
         resolved: false,
       }),
     );
@@ -326,6 +380,7 @@ describe("GitLabService.getUnresolvedReviewHistoryFromSummary", () => {
       .mockResolvedValueOnce([
         buildDiscussion({
           id: "discussion-open",
+          noteId: 301,
           resolved: false,
         }),
         ...fillerDiscussions,
@@ -333,6 +388,7 @@ describe("GitLabService.getUnresolvedReviewHistoryFromSummary", () => {
       .mockResolvedValueOnce([
         buildDiscussion({
           id: "discussion-resolved-page-2",
+          noteId: 302,
           resolved: true,
         }),
       ]);
@@ -343,7 +399,7 @@ describe("GitLabService.getUnresolvedReviewHistoryFromSummary", () => {
           discussions: [
             {
               discussion_id: "discussion-open",
-              note_id: "note-open",
+              note_id: "301",
               content: {
                 suggestion: "Keep me",
                 file_path: "src/open.ts",
@@ -353,7 +409,7 @@ describe("GitLabService.getUnresolvedReviewHistoryFromSummary", () => {
             },
             {
               discussion_id: "discussion-resolved-page-2",
-              note_id: "note-resolved-page-2",
+              note_id: "302",
               content: {
                 suggestion: "Drop me",
                 file_path: "src/resolved.ts",
@@ -380,7 +436,7 @@ ${encodedHistory}
         discussions: [
           {
             discussion_id: "discussion-open",
-            note_id: "note-open",
+            note_id: "301",
             content: {
               suggestion: "Keep me",
               file_path: "src/open.ts",
