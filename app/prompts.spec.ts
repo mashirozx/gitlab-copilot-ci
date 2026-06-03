@@ -120,7 +120,7 @@ describe("buildCopilotPrompt", () => {
     );
   });
 
-  test("includes the commit reference and review-summary footer note in the template", async () => {
+  test("includes the commit reference in the template", async () => {
     const { buildCopilotPrompt } = await loadPromptsModule();
     const prompt = buildCopilotPrompt({
       diffFilePaths: ["mr-diff.page-1.diff"],
@@ -133,11 +133,33 @@ describe("buildCopilotPrompt", () => {
     expect(prompt).toContain(
       "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):",
     );
-    expect(prompt).toContain(
-      "***\n\n<sub>Suggestions from previous review runs are not listed here.</sub>",
+    expect(prompt).not.toContain(
+      "<sub>Suggestions from previous review runs are not listed here.</sub>",
     );
     expect(prompt).toContain(
       'Keep the markdown commit reference from "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):" unchanged and translate only the surrounding prose.',
+    );
+  });
+
+  test("includes the review-history exclusion note only when history exists", async () => {
+    const { buildCopilotPrompt } = await loadPromptsModule();
+    const prompt = buildCopilotPrompt({
+      diffFilePaths: ["mr-diff.page-1.diff"],
+      title: "Test MR",
+      description: null,
+      historyItems: [
+        {
+          file_path: "app/main.ts",
+          new_line: 42,
+          old_line: null,
+          suggestion: "Existing suggestion",
+        },
+      ],
+      debugMode: false,
+    });
+
+    expect(prompt).toContain(
+      "***\n\n<sub>Suggestions from previous review runs are not listed here.</sub>",
     );
   });
 

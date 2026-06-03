@@ -200,7 +200,7 @@ The history block must stay at the very end of the summary note.
 
 Prompting rules for the `## 🔍 Review Summary` section:
 - The summary template asks the model to mention the current commit using the shared markdown commit reference built from `CI_COMMIT_SHORT_SHA` and `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available.
-- After the inline-review list, the template includes a separator plus a subscript note that clarifies previous review-run suggestions are omitted from that section.
+- After the inline-review list, the template includes the separator plus the subscript history-exclusion note only when prior inline review history was passed into the prompt for duplicate suppression.
 
 ## Inline Review Position Rules
 

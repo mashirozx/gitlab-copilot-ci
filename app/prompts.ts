@@ -21,12 +21,20 @@ const buildTranslationsSpec = (langs: string[]): string => {
   return `, "translations": { ${fields} }`;
 };
 
-const buildTranslationsSectionInstructions = (langs: string[]): string => {
+const buildTranslationsSectionInstructions = ({
+  langs,
+  hasReviewHistory,
+}: {
+  langs: string[];
+  hasReviewHistory: boolean;
+}): string => {
   if (langs.length === 0) return "";
 
   const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE_TEXT;
   const reviewSummaryLeadLine = buildReviewSummaryLeadLine();
-  const reviewSummaryFooterNote = buildReviewSummaryFooterNote();
+  const reviewSummaryHistoryNote = hasReviewHistory
+    ? buildReviewHistoryExclusionNote()
+    : "";
 
   return langs
     .map(
@@ -39,7 +47,7 @@ Preserve the exact English section structure for each corresponding section. If 
 Include translated equivalents of the Walkthrough, Changes, Review Summary, and Other Suggestions section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
 Keep the markdown commit reference from "${reviewSummaryLeadLine}" unchanged and translate only the surrounding prose.
-After the inline-review list, keep the same separator and subscript note structure as "${reviewSummaryFooterNote}", translated naturally while preserving the HTML and markdown structure.
+${reviewSummaryHistoryNote ? `After the inline-review list, keep the same separator and subscript note structure as "${reviewSummaryHistoryNote}", translated naturally while preserving the HTML and markdown structure.` : ""}
 The Other Suggestions section may be a bullet list, numbered list, or a short paragraph, but it must remain in the comment markdown rather than the reviews JSON array.
 If there are no suggestions, write the localized equivalent of "✨ No issues found!".`,
     )
@@ -50,7 +58,7 @@ const buildReviewSummaryLeadLine = (): string => {
   return `Found X review suggestion(s) in the changes from ${buildCurrentCommitReference()}:`;
 };
 
-const buildReviewSummaryFooterNote = (): string => {
+const buildReviewHistoryExclusionNote = (): string => {
   return "<sub>Suggestions from previous review runs are not listed here.</sub>";
 };
 
@@ -131,17 +139,21 @@ const buildChangesSummaryTemplate = (): string => {
   return `${heading}\n\n${content}`;
 };
 
-const buildReviewSummaryTemplate = (): string => {
+const buildReviewSummaryTemplate = ({
+  hasReviewHistory,
+}: {
+  hasReviewHistory: boolean;
+}): string => {
   const heading = "## 🔍 Review Summary";
+  const historyNote = hasReviewHistory
+    ? `\n\n***\n\n${buildReviewHistoryExclusionNote()}`
+    : "";
   const content = `${buildReviewSummaryLeadLine()}
 
 [List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]
 
 If no suggestions, instead write: ✨ No issues found!
-
-***
-
-${buildReviewSummaryFooterNote()}`;
+${historyNote}`;
 
   if (argv["collapse-review-summary"]) {
     return `${heading}\n\n${buildDetailsBlock({
@@ -166,6 +178,7 @@ export const buildCopilotPrompt = ({
   historyItems?: ReviewHistoryContentEntity[];
   debugMode: boolean;
 }): string => {
+  const hasReviewHistory = Boolean(historyItems && historyItems.length > 0);
   const langs = getPromptTranslationLangs({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
@@ -180,10 +193,10 @@ export const buildCopilotPrompt = ({
   const mrDescription = description?.trim()
     ? `\n\n## Pull Request Description\n${description.trim()}`
     : "";
+  const reviewHistoryItems = historyItems ?? [];
 
-  const reviewHistorySection =
-    historyItems && historyItems.length > 0
-      ? `
+  const reviewHistorySection = hasReviewHistory
+    ? `
 
 ## Previous Inline Review History (duplicate suppression only)
 
@@ -194,7 +207,7 @@ The following inline review comments were already posted by earlier CI runs.
 - If a similar issue appears on a different file or different line pair, you should still create a new review item for it.
 - If you are unsure whether a history item describes the same issue, prefer treating it as different instead of suppressing a new finding.
 
-${historyItems
+${reviewHistoryItems
   .map(
     (review, idx) => `
 ### Previous Review ${idx + 1}
@@ -205,7 +218,7 @@ ${historyItems
   )
   .join("\n")}
 `
-      : "";
+    : "";
 
   const debugPrompt = debugMode
     ? `
@@ -231,7 +244,10 @@ ${historyItems
     : "";
 
   const translationsSpec = buildTranslationsSpec(langs);
-  const translationsSections = buildTranslationsSectionInstructions(langs);
+  const translationsSections = buildTranslationsSectionInstructions({
+    langs,
+    hasReviewHistory,
+  });
   const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE;
   const diffLineNumberGuidance = shouldTeachDiffCompute
     ? buildDiffLineNumberGuidance()
@@ -264,7 +280,7 @@ ${walkthroughSectionTemplate}
 
 ${buildChangesSummaryTemplate()}
 
-${buildReviewSummaryTemplate()}
+${buildReviewSummaryTemplate({ hasReviewHistory })}
 
 ${otherSuggestionsSectionTemplate}`;
 
