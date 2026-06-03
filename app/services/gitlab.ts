@@ -32,6 +32,72 @@ const requireArg = ({
   return value;
 };
 
+const getBooleanProperty = ({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>;
+  key: string;
+}): boolean | undefined => {
+  const property = value[key];
+
+  return typeof property === "boolean" ? property : undefined;
+};
+
+export const isDiscussionResolved = ({
+  discussion,
+}: {
+  discussion: DiscussionSchema;
+}): boolean => {
+  const directResolved = getBooleanProperty({
+    value: discussion,
+    key: "resolved",
+  });
+
+  if (directResolved !== undefined) {
+    return directResolved;
+  }
+
+  const resolvableNotes =
+    discussion.notes?.filter((note) => note.resolvable) ?? [];
+
+  if (resolvableNotes.length === 0) {
+    return false;
+  }
+
+  return resolvableNotes.every(
+    (note) =>
+      note.resolved_at !== null ||
+      note.resolved_by_id !== null ||
+      note.resolved_by_push === true,
+  );
+};
+
+export const filterResolvedReviewHistory = ({
+  reviewHistory,
+  discussions,
+}: {
+  reviewHistory: ReviewHistoryRunEntity[];
+  discussions: DiscussionSchema[];
+}): ReviewHistoryRunEntity[] => {
+  const discussionResolutionById = new Map(
+    discussions.map((discussion) => [
+      discussion.id,
+      isDiscussionResolved({ discussion }),
+    ]),
+  );
+
+  return reviewHistory
+    .map((run) => ({
+      ...run,
+      discussions: run.discussions.filter(
+        (discussion) =>
+          discussionResolutionById.get(discussion.discussion_id) !== true,
+      ),
+    }))
+    .filter((run) => run.discussions.length > 0);
+};
+
 export const buildDiscussionPosition = ({
   mergeRequest,
   review,
@@ -63,6 +129,7 @@ export const buildDiscussionPosition = ({
 
 export class GitLabService {
   private readonly diffPageSize = 20;
+  private readonly discussionPageSize = 100;
   private readonly maxGitDiffPage =
     argv["max-git-diff-page"] ?? Number.POSITIVE_INFINITY;
   private readonly client: Gitlab;
@@ -104,6 +171,35 @@ export class GitLabService {
 
   private getMergeRequestNotes = async (): Promise<MergeRequestNoteSchema[]> =>
     this.client.MergeRequestNotes.all(this.projectId, this.mrIid);
+
+  private getMergeRequestDiscussions = async (): Promise<
+    DiscussionSchema[]
+  > => {
+    const discussions: DiscussionSchema[] = [];
+
+    for (let page = 1; ; page += 1) {
+      const pageDiscussions = await this.client.MergeRequestDiscussions.all(
+        this.projectId,
+        this.mrIid,
+        {
+          page,
+          perPage: this.discussionPageSize,
+        },
+      );
+
+      if (pageDiscussions.length === 0) {
+        break;
+      }
+
+      discussions.push(...pageDiscussions);
+
+      if (pageDiscussions.length < this.discussionPageSize) {
+        break;
+      }
+    }
+
+    return discussions;
+  };
 
   getMergeRequestDiffs = async (): Promise<MergeRequestDiffsResultDataType> => {
     const pages: MergeRequestDiffPageDataType[] = [];
@@ -207,6 +303,35 @@ export class GitLabService {
       );
       return [];
     }
+  };
+
+  getUnresolvedReviewHistoryFromSummary = async ({
+    noteBody,
+  }: {
+    noteBody: string;
+  }): Promise<ReviewHistoryRunEntity[]> => {
+    const reviewHistory = this.getReviewHistoryFromSummary({ noteBody });
+
+    if (reviewHistory.length === 0) {
+      return [];
+    }
+
+    const discussions = await this.getMergeRequestDiscussions();
+    const filteredHistory = filterResolvedReviewHistory({
+      reviewHistory,
+      discussions,
+    });
+    const removedDiscussionCount =
+      reviewHistory.flatMap((run) => run.discussions).length -
+      filteredHistory.flatMap((run) => run.discussions).length;
+
+    if (removedDiscussionCount > 0) {
+      logger.info(
+        `[GitLab] Removed ${removedDiscussionCount} resolved historical review item(s) from summary history`,
+      );
+    }
+
+    return filteredHistory;
   };
 
   deleteMergeRequestNote = async ({ noteId }: { noteId: number }) =>

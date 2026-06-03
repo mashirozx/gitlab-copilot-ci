@@ -70,6 +70,8 @@ Rules:
 - Only successfully posted inline discussions are stored.
 - Summary-only `## 💡 Other Suggestions` content is not stored.
 - History is trimmed to the latest `--max-history-length` runs.
+- Before prompt generation and before the next summary note is written, the runtime fetches all merge-request discussion pages from GitLab and removes any stored history entries whose discussion is already resolved.
+- Resolved historical inline discussions must never be embedded into the prompt duplicate-suppression section and must never remain in the hidden base64 review-history payload.
 - The next run flattens prior `content` items and passes them to the prompt only to suppress duplicate inline findings on the same file and exact old/new line pair.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
 
@@ -157,7 +159,7 @@ Documentation maintenance rule:
 4. Fetch the merge request and compare `process.env.CI_COMMIT_SHA` to `mr.diff_refs.head_sha`.
 5. If the MR head moved to a different commit, log a warning and exit successfully without reviewing.
 6. Post a new reviewing-marker note that references the current commit (`CI_COMMIT_SHORT_SHA` / `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available).
-7. Load the existing summary note, decode the review-history block if present, flatten prior discussion content, and feed it into the prompt only for duplicate suppression.
+7. Load the existing summary note, decode the review-history block if present, fetch all merge-request discussion pages from GitLab, drop any resolved stored discussions from that history snapshot, then flatten only the unresolved discussion content for prompt duplicate suppression.
 8. Fetch paginated MR diffs and write one temp file per page: `mr-diff.page-<n>.diff`.
 9. Run the configured agent (`github-copilot-cli` or `pi`) with the generated prompt.
 10. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the normalized response before final resolve.
@@ -165,7 +167,7 @@ Documentation maintenance rule:
 12. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
 13. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
 14. Normalize the response and post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
-15. Replace the prior summary note with a new one that contains the updated markdown plus the trimmed encoded history block.
+15. Replace the prior summary note with a new one that contains the updated markdown plus the trimmed encoded history block, storing only unresolved historical inline discussions along with the newly created discussions from the current run.
 16. Delete the reviewing-marker note in a `finally` block, even if the review run fails.
 
 ### Duplicate Suppression Semantics
@@ -175,6 +177,7 @@ Prompt history is not a request to repeat or validate older comments. It is only
 - Suppress a new inline review only when the same issue is already covered on the same file and exact same old/new line pair.
 - If the same issue appears on a different file or line pair, it is a new finding and should still be reported.
 - History must not inflate the summary walkthrough, change list, summary counts, or other summary prose.
+- Resolved historical discussions are excluded from this suppression list because the runtime removes them after reconciling stored history against the live merge-request discussion state from GitLab.
 
 ## Summary Construction
 

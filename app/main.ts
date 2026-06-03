@@ -70,7 +70,7 @@ const main = async () => {
   try {
     const existingSummaryNote = await gitlabService.getExistingSummaryNote();
     const reviewHistory = existingSummaryNote
-      ? gitlabService.getReviewHistoryFromSummary({
+      ? await gitlabService.getUnresolvedReviewHistoryFromSummary({
           noteBody: existingSummaryNote.body,
         })
       : [];
@@ -79,7 +79,7 @@ const main = async () => {
     );
 
     logger.info(
-      `[GitLab] Loaded ${historyItems.length} prior inline review item(s) from ${reviewHistory.length} summary history run(s)`,
+      `[GitLab] Loaded ${historyItems.length} active prior inline review item(s) from ${reviewHistory.length} summary history run(s)`,
     );
 
     const {
