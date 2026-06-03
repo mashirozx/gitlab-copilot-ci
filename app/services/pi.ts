@@ -11,6 +11,7 @@ import { env } from "../utils/env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
 import { createPiMessageFormatter } from "../utils/pi-message-formatter";
 import { getPiUsage } from "../utils/pi-usage-collector";
+import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
   appendRecentOutputLine,
   consumeStdoutPrintBudget,
@@ -249,6 +250,18 @@ export const runPiReview = async ({
       env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    const runtimeStatsCollector = startRuntimeStatsCollector({
+      rootPid: child.pid ?? null,
+    });
+
+    const finalizeResult = async ({
+      result,
+    }: {
+      result: ReviewResponseEntity;
+    }): Promise<void> => {
+      result.runtimeStats = await runtimeStatsCollector.stop();
+      resolve(result);
+    };
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
@@ -366,14 +379,16 @@ export const runPiReview = async ({
             logger.info("[Pi] Recent output:", recentOutput);
           }
 
-          resolve({
-            summary: {
-              content: "",
-              translations: {},
+          void finalizeResult({
+            result: {
+              summary: {
+                content: "",
+                translations: {},
+              },
+              reviews: [],
+              duration,
+              errors: [errMsg],
             },
-            reviews: [],
-            duration,
-            errors: [errMsg],
           });
           return;
         }
@@ -400,14 +415,16 @@ export const runPiReview = async ({
           const duration = getElapsedMilliseconds({
             startTimeMs: startTime,
           });
-          resolve({
-            summary: {
-              content: "",
-              translations: {},
+          void finalizeResult({
+            result: {
+              summary: {
+                content: "",
+                translations: {},
+              },
+              reviews: [],
+              duration,
+              errors: [errMsg],
             },
-            reviews: [],
-            duration,
-            errors: [errMsg],
           });
           return;
         }
@@ -422,10 +439,12 @@ export const runPiReview = async ({
             event: agentEndEvent,
           });
 
-        resolve({
-          ...result,
-          duration,
-          usage,
+        void finalizeResult({
+          result: {
+            ...result,
+            duration,
+            usage,
+          },
         });
       } catch (error) {
         const errMsg = `[Pi] Pi JSON mode: failed to parse PI output after process exit: ${error instanceof Error ? error.message : String(error)}`;
@@ -443,14 +462,16 @@ export const runPiReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        resolve({
-          summary: {
-            content: "",
-            translations: {},
+        void finalizeResult({
+          result: {
+            summary: {
+              content: "",
+              translations: {},
+            },
+            reviews: [],
+            duration,
+            errors: [errMsg],
           },
-          reviews: [],
-          duration,
-          errors: [errMsg],
         });
       }
     });
@@ -462,14 +483,16 @@ export const runPiReview = async ({
       const duration = getElapsedMilliseconds({
         startTimeMs: startTime,
       });
-      resolve({
-        summary: {
-          content: "",
-          translations: {},
+      void finalizeResult({
+        result: {
+          summary: {
+            content: "",
+            translations: {},
+          },
+          reviews: [],
+          duration,
+          errors: [errMsg],
         },
-        reviews: [],
-        duration,
-        errors: [errMsg],
       });
     });
   });

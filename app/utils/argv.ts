@@ -150,6 +150,12 @@ export const argv = yargs(hideBin(process.argv))
       return arg;
     },
   })
+  .option("collect-runtime-stats", {
+    describe:
+      "Collect best-effort parent and agent runtime stats while the review agent runs. Uses OS-specific samplers for macOS, Linux, and Windows.",
+    type: "boolean",
+    default: false,
+  })
   .option("max-history-length", {
     describe:
       "Maximum number of prior review runs to keep in the summary-embedded review history. Older runs are discarded first.",

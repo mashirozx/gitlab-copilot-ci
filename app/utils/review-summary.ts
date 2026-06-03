@@ -84,6 +84,27 @@ export const formatDurationAsHms = ({
   return [h && `${h}h`, m && `${m}m`, `${s}s`].filter(Boolean).join(" ");
 };
 
+const formatBytes = ({ bytes }: { bytes: number }): string => {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+};
+
+const formatCpuMicrosAsSeconds = ({
+  cpuMicros,
+}: {
+  cpuMicros: number;
+}): string => {
+  return `${(cpuMicros / 1_000_000).toFixed(2)}s`;
+};
+
 export const getAgentDisplayLabel = ({
   agent = argv["agent"] as "github-copilot-cli" | "pi",
   getCommandOutput = ({
@@ -160,6 +181,7 @@ export const buildPerformanceMetricsSection = ({
     !modelDisplayName &&
     !response.context &&
     !response.usage &&
+    !response.runtimeStats &&
     !agentDisplay
   ) {
     return "";
@@ -177,6 +199,58 @@ export const buildPerformanceMetricsSection = ({
 
   if (response.duration) {
     section += `- ⏱️ **Time taken**: ${formatDurationAsHms({ durationMs: response.duration })} (${response.duration}ms)\n`;
+  }
+
+  if (response.runtimeStats?.platform) {
+    section += `- 🖥️ **Runtime stats platform**: ${response.runtimeStats.platform}\n`;
+  }
+
+  if (response.runtimeStats?.parent.peakRssBytes !== undefined) {
+    section += `- 🧠 **Parent peak RSS**: ${formatBytes({ bytes: response.runtimeStats.parent.peakRssBytes })}\n`;
+  }
+
+  if (response.runtimeStats?.parent.peakHeapUsedBytes !== undefined) {
+    section += `- 🧱 **Parent peak heap**: ${formatBytes({ bytes: response.runtimeStats.parent.peakHeapUsedBytes })}\n`;
+  }
+
+  if (
+    response.runtimeStats?.parent.cpuUserMicros !== undefined ||
+    response.runtimeStats?.parent.cpuSystemMicros !== undefined
+  ) {
+    const cpuParts = [
+      response.runtimeStats.parent.cpuUserMicros !== undefined
+        ? `${formatCpuMicrosAsSeconds({ cpuMicros: response.runtimeStats.parent.cpuUserMicros })} user`
+        : null,
+      response.runtimeStats.parent.cpuSystemMicros !== undefined
+        ? `${formatCpuMicrosAsSeconds({ cpuMicros: response.runtimeStats.parent.cpuSystemMicros })} system`
+        : null,
+    ].filter((part): part is string => part !== null);
+
+    section += `- ⚙️ **Parent CPU time**: ${cpuParts.join(", ")}\n`;
+  }
+
+  if (response.runtimeStats?.agent.peakTreeRssBytes !== undefined) {
+    section += `- 🌲 **Agent peak tree RSS**: ${formatBytes({ bytes: response.runtimeStats.agent.peakTreeRssBytes })}\n`;
+  }
+
+  if (response.runtimeStats?.agent.peakTreeCpuPercent !== undefined) {
+    section += `- 🔥 **Agent peak tree CPU**: ${response.runtimeStats.agent.peakTreeCpuPercent}%\n`;
+  }
+
+  if (response.runtimeStats?.agent.peakProcessCount !== undefined) {
+    section += `- 🧵 **Agent peak process count**: ${response.runtimeStats.agent.peakProcessCount}\n`;
+  }
+
+  if (response.runtimeStats?.agent.totalReadBytes !== undefined) {
+    section += `- 📀 **Agent read bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalReadBytes })}\n`;
+  }
+
+  if (response.runtimeStats?.agent.totalWriteBytes !== undefined) {
+    section += `- 💾 **Agent write bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalWriteBytes })}\n`;
+  }
+
+  if (response.runtimeStats?.capabilities.notes?.length) {
+    section += `- ℹ️ **Runtime stats note**: ${response.runtimeStats.capabilities.notes.join(" ")}\n`;
   }
 
   if (response.context?.total_length !== undefined) {

@@ -13,6 +13,7 @@ import { withCliColorEnv } from "../utils/cli-env";
 import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
+import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
   appendRecentOutputLine,
   consumeMarkedJsonChunk,
@@ -104,6 +105,18 @@ export const runCopilotReview = async ({
       env: childEnv,
       stdio: "pipe",
     });
+    const runtimeStatsCollector = startRuntimeStatsCollector({
+      rootPid: child.pid ?? null,
+    });
+
+    const finalizeResult = async ({
+      result,
+    }: {
+      result: ReviewResponseEntity;
+    }): Promise<void> => {
+      result.runtimeStats = await runtimeStatsCollector.stop();
+      resolve(result);
+    };
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
@@ -206,14 +219,16 @@ export const runCopilotReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        resolve({
-          summary: {
-            content: "",
-            translations: {},
+        void finalizeResult({
+          result: {
+            summary: {
+              content: "",
+              translations: {},
+            },
+            reviews: [],
+            duration,
+            errors: [errMsg],
           },
-          reviews: [],
-          duration,
-          errors: [errMsg],
         });
         return;
       }
@@ -232,7 +247,7 @@ export const runCopilotReview = async ({
               "[Copilot] Parsed result:",
               JSON.stringify(result, null, 2),
             );
-            resolve(result);
+            void finalizeResult({ result });
           })
           .catch((err) => {
             const errMsg = `[Copilot] Copilot CLI: failed to get context info: ${err instanceof Error ? err.message : String(err)}`;
@@ -243,7 +258,7 @@ export const runCopilotReview = async ({
               "[Copilot] Parsed result:",
               JSON.stringify(result, null, 2),
             );
-            resolve(result);
+            void finalizeResult({ result });
           });
       } catch (e) {
         const errMsg = `[Copilot] Copilot CLI: failed to parse JSON response: ${e instanceof Error ? e.message : String(e)}`;
@@ -253,14 +268,16 @@ export const runCopilotReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        resolve({
-          summary: {
-            content: "",
-            translations: {},
+        void finalizeResult({
+          result: {
+            summary: {
+              content: "",
+              translations: {},
+            },
+            reviews: [],
+            duration,
+            errors: [errMsg],
           },
-          reviews: [],
-          duration,
-          errors: [errMsg],
         });
       }
     });
@@ -272,14 +289,16 @@ export const runCopilotReview = async ({
       const duration = getElapsedMilliseconds({
         startTimeMs: startTime,
       });
-      resolve({
-        summary: {
-          content: "",
-          translations: {},
+      void finalizeResult({
+        result: {
+          summary: {
+            content: "",
+            translations: {},
+          },
+          reviews: [],
+          duration,
+          errors: [errMsg],
         },
-        reviews: [],
-        duration,
-        errors: [errMsg],
       });
     });
   });

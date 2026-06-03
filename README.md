@@ -23,6 +23,8 @@ Each run can:
 - post inline discussions on valid diff positions
 - publish a summary note that includes review findings, optional translations, model or agent timing metadata, and embedded review-history data for duplicate suppression
 
+When `--collect-runtime-stats` is enabled, the summary performance matrix also includes best-effort parent and agent runtime usage for the current OS sampler.
+
 ### CLI Arguments
 
 | Option | Type | Default | Description |
@@ -41,6 +43,7 @@ Each run can:
 | `--debug`, `-d` | `boolean` | `false` | Review only from the diff and skip reading local repository files. |
 | `--log` | `array` | none | Enable log file writing. Pass without a value to write to the current directory, or provide a path such as `--log /path/to/dir`. |
 | `--max-stdout-size` | `number` | `100` | Maximum GitLab CI job log size in MB used to cap live agent stdout printing. Console stdout stops once printed output reaches `max(--max-stdout-size - 10, 0)` MB, matching GitLab's job log size ceiling guidance: https://docs.gitlab.com/administration/cicd/job_logs/#maximum-log-file-size |
+| `--collect-runtime-stats` | `boolean` | `false` | Collect best-effort runtime stats for the Bun parent process and the spawned review agent. Uses OS-specific samplers for macOS, Linux, and Windows; Linux and Windows can also report best-effort agent read/write byte totals, while macOS reports memory and CPU without per-process disk I/O bytes. |
 | `--max-history-length` | `number` | `12` | Maximum number of prior review runs to keep in the summary-embedded review history. Older runs are discarded first. |
 | `--process-max-pending-time` | `number` | `30` | Maximum number of minutes to wait for an existing in-progress review marker before skipping this run. |
 | `--instruction-files` | `array` | `[]` | Repository instruction entry file paths to pass through to the LLM review prompt. Repeatable, for example `--instruction-files AGENTS.md --instruction-files .github/copilot.md`. |

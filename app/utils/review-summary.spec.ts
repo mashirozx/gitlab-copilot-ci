@@ -470,6 +470,48 @@ describe("buildPerformanceMetricsSection", () => {
     expect(section).toContain("- 🔢 **Total tokens**: 1611");
     expect(section).toContain("- 💸 **Total cost**: 0");
   });
+
+  test("renders runtime stats when they are available", () => {
+    const section = buildPerformanceMetricsSection({
+      response: {
+        summary: { content: "", translations: {} },
+        reviews: [],
+        runtimeStats: {
+          platform: "darwin",
+          sampleCount: 3,
+          sampleIntervalMs: 500,
+          parent: {
+            peakRssBytes: 4 * 1024 * 1024,
+            peakHeapUsedBytes: 2 * 1024 * 1024,
+            cpuUserMicros: 1_500_000,
+            cpuSystemMicros: 500_000,
+          },
+          agent: {
+            peakTreeRssBytes: 8 * 1024 * 1024,
+            peakTreeCpuPercent: 75.5,
+            peakProcessCount: 2,
+            totalReadBytes: 1024,
+            totalWriteBytes: 2048,
+          },
+          capabilities: {
+            childMemory: "best-effort",
+            childCpu: "best-effort",
+            childDiskIo: "unsupported",
+            notes: ["runtime note"],
+          },
+        },
+      },
+      agentDisplay: "Pi Coding Agent 0.75.5",
+    });
+
+    expect(section).toContain("- 🖥️ **Runtime stats platform**: darwin");
+    expect(section).toContain("- 🧠 **Parent peak RSS**: 4.00 MB");
+    expect(section).toContain("- 🌲 **Agent peak tree RSS**: 8.00 MB");
+    expect(section).toContain("- 🔥 **Agent peak tree CPU**: 75.5%");
+    expect(section).toContain("- 📀 **Agent read bytes**: 1.00 KB");
+    expect(section).toContain("- 💾 **Agent write bytes**: 2.00 KB");
+    expect(section).toContain("runtime note");
+  });
 });
 
 describe("review history summary data", () => {

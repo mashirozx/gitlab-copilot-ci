@@ -38,5 +38,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # local test script
 test.sh
 test.ts
+demo/
 
 TODOS.md

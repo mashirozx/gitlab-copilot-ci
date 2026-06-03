@@ -13,8 +13,9 @@ mock.module("./argv", () => ({
 }));
 
 const { argv } = await import("./argv");
-const { consumeStdoutPrintBudget, createStdoutPrintBudgetState } =
-  await import("./std-handler");
+const { consumeStdoutPrintBudget, createStdoutPrintBudgetState } = await import(
+  "./std-handler"
+);
 
 describe("consumeStdoutPrintBudget", () => {
   test("keeps printing while total stdout stays below the safety threshold", () => {

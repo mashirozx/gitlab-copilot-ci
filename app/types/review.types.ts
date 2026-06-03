@@ -31,6 +31,37 @@ export type ReviewUsageEntity = {
   };
 };
 
+export type RuntimeStatsAvailabilityEntity =
+  | "best-effort"
+  | "supported"
+  | "unsupported";
+
+export type ReviewRuntimeStatsEntity = {
+  platform: NodeJS.Platform;
+  sampleCount: number;
+  sampleIntervalMs: number;
+  parent: {
+    peakRssBytes?: number;
+    peakHeapUsedBytes?: number;
+    peakExternalBytes?: number;
+    cpuUserMicros?: number;
+    cpuSystemMicros?: number;
+  };
+  agent: {
+    peakTreeRssBytes?: number;
+    peakTreeCpuPercent?: number;
+    peakProcessCount?: number;
+    totalReadBytes?: number;
+    totalWriteBytes?: number;
+  };
+  capabilities: {
+    childMemory: RuntimeStatsAvailabilityEntity;
+    childCpu: RuntimeStatsAvailabilityEntity;
+    childDiskIo: RuntimeStatsAvailabilityEntity;
+    notes?: string[];
+  };
+};
+
 export type ReviewResponseEntity = {
   summary: ReviewSummaryEntity;
   reviews: ReviewItemEntity[];
@@ -42,4 +73,5 @@ export type ReviewResponseEntity = {
   };
   usage?: ReviewUsageEntity;
   duration?: number;
+  runtimeStats?: ReviewRuntimeStatsEntity;
 };

@@ -98,6 +98,7 @@ Rules:
 | `app/utils/model-display.ts` | Shared normalized model display string for summaries and inline reviews |
 | `app/utils/pi-message-formatter.ts` | Human-readable Pi console event formatter |
 | `app/utils/pi-usage-collector.ts` | Pi usage extraction helpers |
+| `app/utils/stats/*.ts` | OS-specific runtime stats samplers plus the shared collector that records parent and agent usage during agent execution |
 | `app/utils/json.ts` | Safe JSON extraction/parsing helpers |
 | `app/utils/cli-env.ts` | Shared CLI environment helpers |
 | `app/types/review.types.ts` | Shared review/summary/usage payload types |
@@ -128,6 +129,7 @@ Rules:
 - `--debug` / `-d`: generate mock reviews only.
 - `--log`: enable file logging; supports bare flag or a directory path.
 - `--max-stdout-size`: finite number GitLab CI job log size in MB. Default: `100`. Live agent stdout printing stops once accumulated stdout reaches `max(--max-stdout-size - 10, 0)` MB so the process leaves headroom below GitLab's maximum job log file size, while values below `10` suppress stdout immediately.
+- `--collect-runtime-stats`: collect best-effort runtime stats for the Bun parent process and the spawned review agent while the agent runs. Default: `false`.
 - `--log-level`: logger verbosity.
 - `--instruction-files`: repeatable list of repository instruction entry files passed through to the prompt.
 - `--extra-prompts`: appended prompt text.
@@ -158,12 +160,13 @@ Documentation maintenance rule:
 7. Load the existing summary note, decode the review-history block if present, flatten prior discussion content, and feed it into the prompt only for duplicate suppression.
 8. Fetch paginated MR diffs and write one temp file per page: `mr-diff.page-<n>.diff`.
 9. Run the configured agent (`github-copilot-cli` or `pi`) with the generated prompt.
-10. Before any GitLab writes, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
-11. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
-12. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
-13. Normalize the response and post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
-14. Replace the prior summary note with a new one that contains the updated markdown plus the trimmed encoded history block.
-15. Delete the reviewing-marker note in a `finally` block, even if the review run fails.
+10. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the normalized response before final resolve.
+11. Before any GitLab writes, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
+12. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
+13. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
+14. Normalize the response and post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
+15. Replace the prior summary note with a new one that contains the updated markdown plus the trimmed encoded history block.
+16. Delete the reviewing-marker note in a `finally` block, even if the review run fails.
 
 ### Duplicate Suppression Semantics
 
@@ -181,6 +184,7 @@ Prompt history is not a request to repeat or validate older comments. It is only
 2. Rendered summary markdown in the requested display languages. Languages listed in `--collapsed-lang` render inside `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region. Plain `en` is treated as `en-GB` for the flag and plain `zh` is treated as `zh-CN` for the flag (for example `zh` -> `中文 🇨🇳`, `zh-CN` -> `中文（中国大陆） 🇨🇳`, `en` -> `English 🇬🇧`).
   - Section-level collapsing for `🚧 Changes` and `🔍 Review Summary` is prompt-driven. When `--collapse-changes-summary` or `--collapse-review-summary` is enabled, `app/prompts.ts` asks the model to emit the normal `##` heading first, then a nested `<details>` block with summary label `Details` for the section body, including translated summary blocks; `app/utils/review-summary.ts` does not rewrite those sections at render time.
 3. Performance metrics section when available.
+  - When `response.runtimeStats` exists, render runtime platform, peak parent memory, parent CPU time, peak agent tree memory, peak agent tree CPU, peak process count, agent read/write bytes when available, and backend notes.
 4. Collapsed errors section when errors exist.
 5. The hidden review-history block:
 
@@ -218,6 +222,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - `--model provider/model` passes through as-is.
 - Final `:effort` suffix is translated to `copilot --effort <level>`.
 - Generic stdout/stderr stream logging and marker-block capture live in `app/utils/std-handler.ts`; `app/services/copilot.ts` should keep only Copilot-specific argument building, process orchestration, and result parsing.
+- Agent runtime stats collection is provider-agnostic and lives in `app/utils/stats/`; `app/services/copilot.ts` should only start and stop the shared collector around the spawned child process.
 - Copilot stdout still feeds marker capture and file logging after the console print budget is exhausted; only live terminal printing is suppressed.
 
 ### Pi
@@ -226,9 +231,18 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - Stdin must stay ignored to avoid hangs.
 - Provider failures may arrive entirely on stdout JSON events.
 - Generic stdout/stderr stream logging and recent-output tails live in `app/utils/std-handler.ts`; `app/services/pi.ts` should keep only Pi-specific JSONL event interpretation and final review extraction.
+- Agent runtime stats collection is provider-agnostic and lives in `app/utils/stats/`; `app/services/pi.ts` should only start and stop the shared collector around the spawned child process.
 - Stdout JSONL is parsed incrementally during `data` events; the runtime keeps the latest useful `agent_end` event plus usage snapshots instead of reparsing the full stdout buffer on process close.
 - `app/services/pi.ts`, `app/utils/pi-message-formatter.ts`, and `app/utils/pi-usage-collector.ts` must treat Pi stdout JSON as untrusted at runtime: accept both singular `message` and plural `messages` payloads, guard iterable/content fields with `Array.isArray(...)`, and convert malformed post-exit payloads into logged review errors instead of crashing the Bun binary after `[Pi] Process exited with code 0`.
 - Pi stdout still feeds JSONL event parsing and file logging after the console print budget is exhausted; only live terminal printing is suppressed.
+
+## Runtime Stats Backends
+
+- `app/utils/stats/darwin.ts`: samples agent RSS and cumulative CPU time from `ps`; per-process disk I/O bytes are unsupported.
+- `app/utils/stats/linux.ts`: samples agent RSS and cumulative CPU time from `ps`, plus read/write byte counters from `/proc/<pid>/io`.
+- `app/utils/stats/win32.ts`: samples Win32 process counters through PowerShell `Get-CimInstance Win32_Process`, including working set, cumulative user/kernel CPU time, and transfer counts.
+- `app/utils/stats/index.ts`: shared collector that samples parent Bun usage from `process.memoryUsage()` and `process.resourceUsage()`, builds the agent subprocess tree, tracks peak memory/CPU/process count, and preserves the highest observed read/write counters for seen agent PIDs.
+- Platform-specific unit tests must run only on the current OS and skip the others.
 
 ## Logging
 
