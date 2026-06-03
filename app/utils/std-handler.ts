@@ -1,4 +1,9 @@
 import { argv } from "./argv";
+import {
+  formatStdoutSize,
+  getStdoutPrintBudgetBytes,
+  STDOUT_PRINT_SAFETY_MARGIN_RATIO,
+} from "./stdout-size";
 
 type MarkedJsonCaptureState = {
   buffer: string;
@@ -13,11 +18,10 @@ type StdoutPrintBudgetState = {
 };
 
 const MAX_RECENT_OUTPUT_LINES = 20;
-export const STDOUT_PRINT_HEADROOM_MB = 10;
-const BYTES_PER_MB = 1024 * 1024;
-
-const getStdoutPrintBudgetMb = (): number => {
-  return Math.max(argv["max-stdout-size"] - STDOUT_PRINT_HEADROOM_MB, 0);
+const getStdoutPrintBudgetBytesFromArgv = (): number => {
+  return getStdoutPrintBudgetBytes({
+    maxStdoutSizeBytes: argv["max-stdout-size"],
+  });
 };
 
 export const createMarkedJsonCaptureState = (): MarkedJsonCaptureState => {
@@ -56,7 +60,7 @@ export const consumeStdoutPrintBudget = ({
     };
   }
 
-  const printLimitBytes = getStdoutPrintBudgetMb() * BYTES_PER_MB;
+  const printLimitBytes = getStdoutPrintBudgetBytesFromArgv();
 
   if (state.totalBytes >= printLimitBytes) {
     state.isSuppressed = true;
@@ -77,10 +81,10 @@ export const getStdoutPrintSuppressedWarning = ({
 }: {
   agentName: string;
 }): string => {
-  const maxStdoutSizeMb = argv["max-stdout-size"];
-  const printBudgetMb = getStdoutPrintBudgetMb();
+  const maxStdoutSizeBytes = argv["max-stdout-size"];
+  const printBudgetBytes = getStdoutPrintBudgetBytesFromArgv();
 
-  return `[${agentName}] Agent stdout reached ${printBudgetMb}MB of console print budget (${maxStdoutSizeMb}MB GitLab CI job log limit minus ${STDOUT_PRINT_HEADROOM_MB}MB safety margin, clamped at 0MB). Suppressing further agent stdout printing to avoid GitLab CI job log truncation.`;
+  return `[${agentName}] Agent stdout reached ${formatStdoutSize({ bytes: printBudgetBytes })} of console print budget (${formatStdoutSize({ bytes: maxStdoutSizeBytes })} GitLab CI job log limit with a ${STDOUT_PRINT_SAFETY_MARGIN_RATIO * 100}% safety margin). Suppressing further agent stdout printing to avoid GitLab CI job log truncation.`;
 };
 
 export const appendRecentOutputLine = ({

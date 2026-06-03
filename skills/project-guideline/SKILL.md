@@ -128,7 +128,7 @@ Rules:
 - `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
 - `--debug` / `-d`: generate mock reviews only.
 - `--log`: enable file logging; supports bare flag or a directory path.
-- `--max-stdout-size`: finite number GitLab CI job log size in MB. Default: `100`. Live agent stdout printing stops once accumulated stdout reaches `max(--max-stdout-size - 10, 0)` MB so the process leaves headroom below GitLab's maximum job log file size, while values below `10` suppress stdout immediately.
+- `--max-stdout-size`: byte-size string with case-insensitive `b`, `kb`, or `mb` suffixes. Default: `100mb`. Live agent stdout printing stops once accumulated stdout reaches `80%` of that byte limit, measured with `Buffer.byteLength(...)`, so the process keeps a `20%` safety margin below GitLab's maximum job log file size.
 - `--collect-runtime-stats`: collect best-effort runtime stats for the Bun parent process and the spawned review agent while the agent runs. Default: `false`.
 - `--log-level`: logger verbosity.
 - `--instruction-files`: repeatable list of repository instruction entry files passed through to the prompt.
@@ -251,7 +251,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - `--log`: write `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log` in the current directory.
 - `--log /path/to/dir`: write in the provided directory.
 - The parser resolves the runtime type to `true | string | undefined` via `array: true` plus `coerce`.
-- `--max-stdout-size`: defaults to `100` MB to match GitLab's default maximum job log file size. Live agent stdout printing stops at `max(--max-stdout-size - 10, 0)` MB and emits a warning once so CI logs keep headroom before GitLab truncates them.
+- `--max-stdout-size`: defaults to `100mb` to match GitLab's default maximum job log file size. Live agent stdout printing stops at `80%` of that parsed byte limit and emits a warning once so CI logs keep a `20%` headroom before GitLab truncates them.
 
 ## Development Commands
 
@@ -260,6 +260,13 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - `bun run tsgo`
 - `bun run lint`
 - `bun run biome`
+
+## Commit Message Format
+
+- Commit messages follow Conventional Commits via `@commitlint/config-conventional`.
+- The subject must start with an emoji followed by a space.
+- Preferred shape: `<type>: <emoji> <summary>`.
+- Example: `feat: ✨ improve stdout print budget handling`.
 
 ## Maintenance Notes
 

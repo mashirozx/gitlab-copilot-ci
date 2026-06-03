@@ -3,6 +3,7 @@ import { hideBin } from "yargs/helpers";
 import type { ReviewRankEntity } from "../types/review.types";
 import { env } from "./env";
 import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix";
+import { parseStdoutSize } from "./stdout-size";
 import { getFormattedVersion } from "./version";
 
 const normalizeRankList = ({
@@ -135,19 +136,21 @@ export const argv = yargs(hideBin(process.argv))
   })
   .option("max-stdout-size", {
     describe:
-      "Maximum GitLab CI job log size in MB used to cap live agent stdout printing. Console stdout stops once printed output reaches 10MB below this limit.",
-    type: "number",
-    default: 100,
-    coerce: (arg: number | undefined) => {
+      "Maximum GitLab CI job log size used to cap live agent stdout printing. Accepts case-insensitive size suffixes like 100mb, 512kb, or 42b.",
+    type: "string",
+    default: "100mb",
+    coerce: (arg: string | undefined) => {
       if (arg === undefined) {
-        return 100;
+        return parseStdoutSize({
+          value: "100mb",
+          optionName: "--max-stdout-size",
+        });
       }
 
-      if (!Number.isFinite(arg)) {
-        throw new Error("--max-stdout-size must be a finite number");
-      }
-
-      return arg;
+      return parseStdoutSize({
+        value: arg,
+        optionName: "--max-stdout-size",
+      });
     },
   })
   .option("collect-runtime-stats", {

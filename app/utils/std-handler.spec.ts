@@ -8,7 +8,7 @@ mock.module("./argv", () => ({
     "copilot-github-token": undefined,
     tools: [],
     model: "gpt-5.4",
-    "max-stdout-size": 11,
+    "max-stdout-size": 1024 * 1024,
   },
 }));
 
@@ -35,7 +35,7 @@ describe("consumeStdoutPrintBudget", () => {
 
   test("suppresses the chunk that reaches the threshold and warns only once", () => {
     const state = createStdoutPrintBudgetState();
-    const thresholdChunk = "a".repeat(1024 * 1024);
+    const thresholdChunk = "a".repeat(900 * 1024);
 
     const firstResult = consumeStdoutPrintBudget({
       state,
@@ -57,11 +57,11 @@ describe("consumeStdoutPrintBudget", () => {
     expect(state.isSuppressed).toBeTrue();
   });
 
-  test("treats values below the headroom as a zero print budget", async () => {
+  test("suppresses immediately when the configured byte limit rounds down to a zero print budget", async () => {
     const originalMaxStdoutSize = argv["max-stdout-size"];
 
     try {
-      argv["max-stdout-size"] = 5;
+      argv["max-stdout-size"] = 1;
       const state = createStdoutPrintBudgetState();
 
       const result = consumeStdoutPrintBudget({
@@ -72,6 +72,28 @@ describe("consumeStdoutPrintBudget", () => {
       expect(result).toEqual({
         shouldPrint: false,
         warningReachedLimit: true,
+      });
+    } finally {
+      argv["max-stdout-size"] = originalMaxStdoutSize;
+    }
+  });
+
+  test("measures multibyte stdout using byte size instead of character count", () => {
+    const originalMaxStdoutSize = argv["max-stdout-size"];
+
+    try {
+      argv["max-stdout-size"] = 9;
+      const state = createStdoutPrintBudgetState();
+
+      const result = consumeStdoutPrintBudget({
+        state,
+        text: "界界",
+      });
+
+      expect(state.totalBytes).toBe(6);
+      expect(result).toEqual({
+        shouldPrint: true,
+        warningReachedLimit: false,
       });
     } finally {
       argv["max-stdout-size"] = originalMaxStdoutSize;

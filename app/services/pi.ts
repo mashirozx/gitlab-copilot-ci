@@ -139,6 +139,33 @@ const flushPiConsoleBuffer = ({
   return trailing;
 };
 
+const writeBudgetedStdout = ({
+  state,
+  text,
+  agentName,
+}: {
+  state: ReturnType<typeof createStdoutPrintBudgetState>;
+  text: string;
+  agentName: string;
+}): void => {
+  const stdoutBudgetResult = consumeStdoutPrintBudget({
+    state,
+    text,
+  });
+
+  if (stdoutBudgetResult.warningReachedLimit) {
+    logger.warn(
+      getStdoutPrintSuppressedWarning({
+        agentName,
+      }),
+    );
+  }
+
+  if (stdoutBudgetResult.shouldPrint) {
+    process.stdout.write(text);
+  }
+};
+
 const extractAssistantText = ({
   messages,
 }: {
@@ -265,27 +292,17 @@ export const runPiReview = async ({
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      const stdoutBudgetResult = consumeStdoutPrintBudget({
-        state: stdoutPrintBudget,
-        text,
-      });
-
-      if (stdoutBudgetResult.warningReachedLimit) {
-        logger.warn(
-          getStdoutPrintSuppressedWarning({
+      stdoutConsoleBuffer += text;
+      stdoutConsoleBuffer = flushPiConsoleBuffer({
+        buffer: stdoutConsoleBuffer,
+        consoleFormatter,
+        write: (formattedText) =>
+          writeBudgetedStdout({
+            state: stdoutPrintBudget,
+            text: formattedText,
             agentName: "Pi",
           }),
-        );
-      }
-
-      if (stdoutBudgetResult.shouldPrint) {
-        stdoutConsoleBuffer += text;
-        stdoutConsoleBuffer = flushPiConsoleBuffer({
-          buffer: stdoutConsoleBuffer,
-          consoleFormatter,
-          write: (formattedText) => process.stdout.write(formattedText),
-        });
-      }
+      });
 
       stdoutEventBuffer += text;
       stdoutEventBuffer = flushLoggedStreamBuffer({
@@ -328,11 +345,13 @@ export const runPiReview = async ({
 
     child.on("close", (code) => {
       if (stdoutConsoleBuffer) {
-        process.stdout.write(
-          consoleFormatter.formatLine({
+        writeBudgetedStdout({
+          state: stdoutPrintBudget,
+          text: consoleFormatter.formatLine({
             line: stdoutConsoleBuffer,
           }),
-        );
+          agentName: "Pi",
+        });
       }
 
       if (stderrConsoleBuffer) {

@@ -1,36 +1,41 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
 process.env.CI_MERGE_REQUEST_IID ??= "1";
 
-const loadGitLabModule = async () => {
-  mock.module("../utils/argv", () => ({
-    argv: {
-      "gitlab-token": process.env.GITLAB_TOKEN,
-      "gitlab-url": process.env.CI_SERVER_URL,
-      "project-id": process.env.CI_PROJECT_ID,
-      "mr-iid": process.env.CI_MERGE_REQUEST_IID,
-      "max-git-diff-page": undefined,
-      lang: [],
-      "collapsed-lang": [],
-      "html-marker-prefix": "copilot",
-    },
-  }));
+const originalArgv = [...process.argv];
 
-  return import(`./gitlab?test=${Date.now()}`);
-};
+mock.module("../utils/argv", () => ({
+  argv: {
+    "collapsed-lang": [],
+    "gitlab-token": process.env.GITLAB_TOKEN,
+    "gitlab-url": process.env.CI_SERVER_URL,
+    "html-marker-prefix": "copilot",
+    lang: [],
+    "mr-iid": process.env.CI_MERGE_REQUEST_IID,
+    "project-id": process.env.CI_PROJECT_ID,
+  },
+}));
 
-afterEach(() => {
-  mock.restore();
-  mock.clearAllMocks();
-});
+process.argv = [
+  originalArgv[0] ?? "bun",
+  originalArgv[1] ?? "test",
+  "--gitlab-token",
+  process.env.GITLAB_TOKEN,
+  "--gitlab-url",
+  process.env.CI_SERVER_URL,
+  "--project-id",
+  process.env.CI_PROJECT_ID,
+  "--mr-iid",
+  process.env.CI_MERGE_REQUEST_IID,
+];
+
+const { buildDiscussionPosition } = await import(`./gitlab?test=${Date.now()}`);
 
 describe("buildDiscussionPosition", () => {
-  test("prefers the new side when both diff line numbers are present", async () => {
-    const { buildDiscussionPosition } = await loadGitLabModule();
-
+  test("prefers the new side when both diff line numbers are present", () => {
     expect(
       buildDiscussionPosition({
         mergeRequest: {
@@ -57,9 +62,7 @@ describe("buildDiscussionPosition", () => {
     });
   });
 
-  test("uses the old side when the review only targets a removed line", async () => {
-    const { buildDiscussionPosition } = await loadGitLabModule();
-
+  test("uses the old side when the review only targets a removed line", () => {
     expect(
       buildDiscussionPosition({
         mergeRequest: {

@@ -10,25 +10,6 @@ process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
 process.env.CI_MERGE_REQUEST_IID ??= "1";
 
-const originalArgv = [...process.argv];
-
-process.argv = [
-  originalArgv[0] ?? "bun",
-  originalArgv[1] ?? "test",
-  "--gitlab-token",
-  process.env.GITLAB_TOKEN,
-  "--gitlab-url",
-  process.env.CI_SERVER_URL,
-  "--project-id",
-  process.env.CI_PROJECT_ID,
-  "--mr-iid",
-  process.env.CI_MERGE_REQUEST_IID,
-  "--max-stdout-size",
-  "11",
-  "--agent",
-  "github-copilot-cli",
-];
-
 const loggerMock = {
   debug: (..._args: unknown[]) => {},
   error: (..._args: unknown[]) => {},
@@ -57,6 +38,19 @@ let nextChildFactory = (): MockChildProcess => createMockChildProcess();
 mock.module("./logger", () => ({
   logger: loggerMock,
   writeLogStream: writeLogStreamMock,
+}));
+
+mock.module("../utils/argv", () => ({
+  argv: {
+    agent: "github-copilot-cli",
+    "agent-args": undefined,
+    "agent-bin": undefined,
+    "collect-runtime-stats": false,
+    "copilot-github-token": undefined,
+    model: "gpt-5.4",
+    tools: [],
+    "max-stdout-size": 1024 * 1024,
+  },
 }));
 
 mock.module("node:child_process", () => ({
@@ -111,7 +105,7 @@ describe("runCopilotReview", () => {
       expect(result.summary.content).toBe("ok");
       expect(stdoutWriteCalls).toEqual([]);
       expect(warnCalls).toHaveLength(1);
-      expect(warnCalls[0]).toContain("Agent stdout reached 1MB");
+      expect(warnCalls[0]).toContain("20% safety margin");
       expect(warnCalls[0]).toContain(
         "Suppressing further agent stdout printing",
       );
