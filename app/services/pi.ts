@@ -13,8 +13,11 @@ import { createPiMessageFormatter } from "../utils/pi-message-formatter";
 import { getPiUsage } from "../utils/pi-usage-collector";
 import {
   appendRecentOutputLine,
+  consumeStdoutPrintBudget,
+  createStdoutPrintBudgetState,
   flushLoggedStreamBuffer,
   getRecentProcessOutputText,
+  getStdoutPrintSuppressedWarning,
 } from "../utils/std-handler.ts";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
@@ -202,6 +205,7 @@ export const runPiReview = async ({
     let stderrConsoleBuffer = "";
     let stdoutEventBuffer = "";
     let stderrLogBuffer = "";
+    const stdoutPrintBudget = createStdoutPrintBudgetState();
     const piRuntimeState: PiRuntimeState = {
       agentEndEvent: null,
       usage: undefined,
@@ -248,12 +252,27 @@ export const runPiReview = async ({
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      stdoutConsoleBuffer += text;
-      stdoutConsoleBuffer = flushPiConsoleBuffer({
-        buffer: stdoutConsoleBuffer,
-        consoleFormatter,
-        write: (formattedText) => process.stdout.write(formattedText),
+      const stdoutBudgetResult = consumeStdoutPrintBudget({
+        state: stdoutPrintBudget,
+        text,
       });
+
+      if (stdoutBudgetResult.warningReachedLimit) {
+        logger.warn(
+          getStdoutPrintSuppressedWarning({
+            agentName: "Pi",
+          }),
+        );
+      }
+
+      if (stdoutBudgetResult.shouldPrint) {
+        stdoutConsoleBuffer += text;
+        stdoutConsoleBuffer = flushPiConsoleBuffer({
+          buffer: stdoutConsoleBuffer,
+          consoleFormatter,
+          write: (formattedText) => process.stdout.write(formattedText),
+        });
+      }
 
       stdoutEventBuffer += text;
       stdoutEventBuffer = flushLoggedStreamBuffer({

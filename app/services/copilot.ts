@@ -16,9 +16,12 @@ import { parseModelSpec } from "../utils/model-name-parser";
 import {
   appendRecentOutputLine,
   consumeMarkedJsonChunk,
+  consumeStdoutPrintBudget,
   createMarkedJsonCaptureState,
+  createStdoutPrintBudgetState,
   flushLoggedStreamBuffer,
   getRecentProcessOutputText,
+  getStdoutPrintSuppressedWarning,
 } from "../utils/std-handler.ts";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
@@ -49,6 +52,7 @@ export const runCopilotReview = async ({
     const stderrTail: string[] = [];
     const stdoutJsonCapture = createMarkedJsonCaptureState();
     const stderrJsonCapture = createMarkedJsonCaptureState();
+    const stdoutPrintBudget = createStdoutPrintBudgetState();
 
     const childEnv = withCliColorEnv({ env: { ...process.env } });
     if (argv["copilot-github-token"]) {
@@ -103,7 +107,23 @@ export const runCopilotReview = async ({
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      process.stdout.write(text);
+      const stdoutBudgetResult = consumeStdoutPrintBudget({
+        state: stdoutPrintBudget,
+        text,
+      });
+
+      if (stdoutBudgetResult.warningReachedLimit) {
+        logger.warn(
+          getStdoutPrintSuppressedWarning({
+            agentName: "Copilot",
+          }),
+        );
+      }
+
+      if (stdoutBudgetResult.shouldPrint) {
+        process.stdout.write(text);
+      }
+
       consumeMarkedJsonChunk({
         state: stdoutJsonCapture,
         text,

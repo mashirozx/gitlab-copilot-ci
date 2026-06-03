@@ -40,6 +40,7 @@ Each run can:
 | `--html-marker-prefix` | `string` | `copilot` | Prefix used to build the HTML markers that identify CLI-generated MR comments. Alias: `--html-marker-preffix`. Generates `<prefix>-review-marker`, `<prefix>-summary-marker`, `<prefix>-review-data-start`, `<prefix>-review-data-end`, and `<prefix>-reviewing-marker`. |
 | `--debug`, `-d` | `boolean` | `false` | Review only from the diff and skip reading local repository files. |
 | `--log` | `array` | none | Enable log file writing. Pass without a value to write to the current directory, or provide a path such as `--log /path/to/dir`. |
+| `--max-stdout-size` | `number` | `100` | Maximum GitLab CI job log size in MB used to cap live agent stdout printing. Console stdout stops once printed output reaches `max(--max-stdout-size - 10, 0)` MB, matching GitLab's job log size ceiling guidance: https://docs.gitlab.com/administration/cicd/job_logs/#maximum-log-file-size |
 | `--max-history-length` | `number` | `12` | Maximum number of prior review runs to keep in the summary-embedded review history. Older runs are discarded first. |
 | `--process-max-pending-time` | `number` | `30` | Maximum number of minutes to wait for an existing in-progress review marker before skipping this run. |
 | `--instruction-files` | `array` | `[]` | Repository instruction entry file paths to pass through to the LLM review prompt. Repeatable, for example `--instruction-files AGENTS.md --instruction-files .github/copilot.md`. |

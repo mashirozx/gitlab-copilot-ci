@@ -133,6 +133,23 @@ export const argv = yargs(hideBin(process.argv))
       }
     },
   })
+  .option("max-stdout-size", {
+    describe:
+      "Maximum GitLab CI job log size in MB used to cap live agent stdout printing. Console stdout stops once printed output reaches 10MB below this limit.",
+    type: "number",
+    default: 100,
+    coerce: (arg: number | undefined) => {
+      if (arg === undefined) {
+        return 100;
+      }
+
+      if (!Number.isFinite(arg)) {
+        throw new Error("--max-stdout-size must be a finite number");
+      }
+
+      return arg;
+    },
+  })
   .option("max-history-length", {
     describe:
       "Maximum number of prior review runs to keep in the summary-embedded review history. Older runs are discarded first.",

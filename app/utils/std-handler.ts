@@ -1,3 +1,5 @@
+import { argv } from "./argv";
+
 type MarkedJsonCaptureState = {
   buffer: string;
   capturedParts: string[];
@@ -5,7 +7,18 @@ type MarkedJsonCaptureState = {
   isCapturing: boolean;
 };
 
+type StdoutPrintBudgetState = {
+  totalBytes: number;
+  isSuppressed: boolean;
+};
+
 const MAX_RECENT_OUTPUT_LINES = 20;
+export const STDOUT_PRINT_HEADROOM_MB = 10;
+const BYTES_PER_MB = 1024 * 1024;
+
+const getStdoutPrintBudgetMb = (): number => {
+  return Math.max(argv["max-stdout-size"] - STDOUT_PRINT_HEADROOM_MB, 0);
+};
 
 export const createMarkedJsonCaptureState = (): MarkedJsonCaptureState => {
   return {
@@ -14,6 +27,60 @@ export const createMarkedJsonCaptureState = (): MarkedJsonCaptureState => {
     markedJson: null,
     isCapturing: false,
   };
+};
+
+export const createStdoutPrintBudgetState = (): StdoutPrintBudgetState => {
+  return {
+    totalBytes: 0,
+    isSuppressed: false,
+  };
+};
+
+export const consumeStdoutPrintBudget = ({
+  state,
+  text,
+}: {
+  state: StdoutPrintBudgetState;
+  text: string;
+}): {
+  shouldPrint: boolean;
+  warningReachedLimit: boolean;
+} => {
+  const chunkBytes = Buffer.byteLength(text);
+  state.totalBytes += chunkBytes;
+
+  if (state.isSuppressed) {
+    return {
+      shouldPrint: false,
+      warningReachedLimit: false,
+    };
+  }
+
+  const printLimitBytes = getStdoutPrintBudgetMb() * BYTES_PER_MB;
+
+  if (state.totalBytes >= printLimitBytes) {
+    state.isSuppressed = true;
+    return {
+      shouldPrint: false,
+      warningReachedLimit: true,
+    };
+  }
+
+  return {
+    shouldPrint: true,
+    warningReachedLimit: false,
+  };
+};
+
+export const getStdoutPrintSuppressedWarning = ({
+  agentName,
+}: {
+  agentName: string;
+}): string => {
+  const maxStdoutSizeMb = argv["max-stdout-size"];
+  const printBudgetMb = getStdoutPrintBudgetMb();
+
+  return `[${agentName}] Agent stdout reached ${printBudgetMb}MB of console print budget (${maxStdoutSizeMb}MB GitLab CI job log limit minus ${STDOUT_PRINT_HEADROOM_MB}MB safety margin, clamped at 0MB). Suppressing further agent stdout printing to avoid GitLab CI job log truncation.`;
 };
 
 export const appendRecentOutputLine = ({
@@ -122,4 +189,4 @@ export const getRecentProcessOutputText = ({
   return lines.join("\n").trim();
 };
 
-export type { MarkedJsonCaptureState };
+export type { MarkedJsonCaptureState, StdoutPrintBudgetState };

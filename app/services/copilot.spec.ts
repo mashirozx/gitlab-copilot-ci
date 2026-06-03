@@ -26,7 +26,7 @@ process.argv = [
   "--max-stdout-size",
   "11",
   "--agent",
-  "pi",
+  "github-copilot-cli",
 ];
 
 const loggerMock = {
@@ -60,16 +60,15 @@ mock.module("./logger", () => ({
 }));
 
 mock.module("node:child_process", () => ({
-  execSync: () => "test-commit\n",
   spawn: () => nextChildFactory(),
-  spawnSync: () => ({
-    status: 0,
-    stdout: "",
-    stderr: "",
-  }),
 }));
 
-const { runPiReview } = await import(`./pi?test=${Date.now()}`);
+mock.module("node:fs", () => ({
+  readdirSync: () => [],
+  readFileSync: () => "",
+}));
+
+const { runCopilotReview } = await import(`./copilot?test=${Date.now()}`);
 
 afterEach(() => {
   mock.restore();
@@ -77,69 +76,7 @@ afterEach(() => {
   nextChildFactory = (): MockChildProcess => createMockChildProcess();
 });
 
-describe("runPiReview", () => {
-  test("returns the exact parse error when agent_end.messages is malformed", async () => {
-    const child = createMockChildProcess();
-    nextChildFactory = () => child;
-
-    const reviewPromise = runPiReview({
-      prompt: "review this diff",
-    });
-
-    child.emit("spawn");
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        `${JSON.stringify({
-          type: "agent_end",
-          messages: {
-            role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`,
-          },
-        })}\n`,
-      ),
-    );
-    child.emit("close", 0);
-
-    const result = await reviewPromise;
-
-    expect(result.reviews).toEqual([]);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors?.[0]).toBe(
-      "[Pi] Pi JSON mode: failed to parse PI output after process exit: Invalid agent_end payload: messages must be an array when present",
-    );
-  });
-
-  test("accepts singular agent_end.message payloads", async () => {
-    const child = createMockChildProcess();
-    nextChildFactory = () => child;
-
-    const reviewPromise = runPiReview({
-      prompt: "review this diff",
-    });
-
-    child.emit("spawn");
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        `${JSON.stringify({
-          type: "agent_end",
-          message: {
-            role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`,
-          },
-        })}\n`,
-      ),
-    );
-    child.emit("close", 0);
-
-    const result = await reviewPromise;
-
-    expect(result.errors).toBeUndefined();
-    expect(result.summary.content).toBe("ok");
-    expect(result.reviews).toEqual([]);
-  });
-
+describe("runCopilotReview", () => {
   test("warns and stops printing agent stdout once the safety threshold is reached", async () => {
     const child = createMockChildProcess();
     const stdoutWriteCalls: string[] = [];
@@ -159,24 +96,13 @@ describe("runPiReview", () => {
     };
 
     try {
-      const reviewPromise = runPiReview({
+      const reviewPromise = runCopilotReview({
         prompt: "review this diff",
       });
-      const largeAssistantContent = `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
+      const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
 
       child.emit("spawn");
-      child.stdout.emit(
-        "data",
-        Buffer.from(
-          `${JSON.stringify({
-            type: "agent_end",
-            message: {
-              role: "assistant",
-              content: largeAssistantContent,
-            },
-          })}\n`,
-        ),
-      );
+      child.stdout.emit("data", Buffer.from(jsonText));
       child.emit("close", 0);
 
       const result = await reviewPromise;

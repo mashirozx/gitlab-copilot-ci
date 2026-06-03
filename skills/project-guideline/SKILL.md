@@ -127,6 +127,7 @@ Rules:
 - `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
 - `--debug` / `-d`: generate mock reviews only.
 - `--log`: enable file logging; supports bare flag or a directory path.
+- `--max-stdout-size`: finite number GitLab CI job log size in MB. Default: `100`. Live agent stdout printing stops once accumulated stdout reaches `max(--max-stdout-size - 10, 0)` MB so the process leaves headroom below GitLab's maximum job log file size, while values below `10` suppress stdout immediately.
 - `--log-level`: logger verbosity.
 - `--instruction-files`: repeatable list of repository instruction entry files passed through to the prompt.
 - `--extra-prompts`: appended prompt text.
@@ -217,6 +218,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - `--model provider/model` passes through as-is.
 - Final `:effort` suffix is translated to `copilot --effort <level>`.
 - Generic stdout/stderr stream logging and marker-block capture live in `app/utils/std-handler.ts`; `app/services/copilot.ts` should keep only Copilot-specific argument building, process orchestration, and result parsing.
+- Copilot stdout still feeds marker capture and file logging after the console print budget is exhausted; only live terminal printing is suppressed.
 
 ### Pi
 - Default allowlist: `read,grep,find,ls,bash`.
@@ -226,6 +228,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - Generic stdout/stderr stream logging and recent-output tails live in `app/utils/std-handler.ts`; `app/services/pi.ts` should keep only Pi-specific JSONL event interpretation and final review extraction.
 - Stdout JSONL is parsed incrementally during `data` events; the runtime keeps the latest useful `agent_end` event plus usage snapshots instead of reparsing the full stdout buffer on process close.
 - `app/services/pi.ts`, `app/utils/pi-message-formatter.ts`, and `app/utils/pi-usage-collector.ts` must treat Pi stdout JSON as untrusted at runtime: accept both singular `message` and plural `messages` payloads, guard iterable/content fields with `Array.isArray(...)`, and convert malformed post-exit payloads into logged review errors instead of crashing the Bun binary after `[Pi] Process exited with code 0`.
+- Pi stdout still feeds JSONL event parsing and file logging after the console print budget is exhausted; only live terminal printing is suppressed.
 
 ## Logging
 
@@ -234,6 +237,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - `--log`: write `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log` in the current directory.
 - `--log /path/to/dir`: write in the provided directory.
 - The parser resolves the runtime type to `true | string | undefined` via `array: true` plus `coerce`.
+- `--max-stdout-size`: defaults to `100` MB to match GitLab's default maximum job log file size. Live agent stdout printing stops at `max(--max-stdout-size - 10, 0)` MB and emits a warning once so CI logs keep headroom before GitLab truncates them.
 
 ## Development Commands
 
