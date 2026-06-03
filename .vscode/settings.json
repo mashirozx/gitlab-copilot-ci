@@ -12,6 +12,7 @@
   },
   "eslint.enable": false,
   "chat.tools.terminal.autoApprove": {
-    "bun": true
+    "bun": true,
+    "git commit": true
   }
 }
