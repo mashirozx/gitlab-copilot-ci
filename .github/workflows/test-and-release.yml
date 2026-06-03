@@ -45,11 +45,27 @@ jobs:
       - name: ✅ Run unit tests
         run: bun run test
 
+  tsgo:
+    name: tsgo
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - *setup-bun-step
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: ✅ Run tsgo
+        run: bun run tsgo
+
   build:
     name: Build for ${{ matrix.target }}
     needs:
       - biome
       - unit-test
+      - tsgo
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:

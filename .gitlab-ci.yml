@@ -47,6 +47,16 @@ test:unit:
   script:
     - bun run test
 
+test:tsgo:
+  extends:
+    - .prepare
+  stage: test
+  only:
+    - main
+    - merge_requests
+  script:
+    - bun run tsgo
+
 release:check:
   extends:
     - .prepare

@@ -28,6 +28,7 @@ keywords:
 - **Context**: This repository's own CI builds and publishes release binaries.
 - **Purpose**: Validate, package, and publish `gitlab-copilot-ci` artifacts.
 - **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`.
+- **Validation Gates**: Both GitHub Actions and GitLab CI run `bun run lint`, `bun run test`, and `bun run tsgo` before build/release steps proceed.
 
 ## Terminology
 
