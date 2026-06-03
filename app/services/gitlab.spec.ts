@@ -32,6 +32,7 @@ const buildDiscussion = ({
   notes: [
     {
       resolvable: true,
+      resolved,
       resolved_at: resolved ? "2026-06-03T12:00:00Z" : null,
       resolved_by_id: resolved ? 1 : null,
       resolved_by_push: false,
@@ -226,6 +227,83 @@ describe("filterResolvedReviewHistory", () => {
               file_path: "src/missing.ts",
               old_line: null,
               new_line: 30,
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("keeps unresolved discussions when GitLab omits resolved_by_id", () => {
+    const filtered = filterResolvedReviewHistory({
+      reviewHistory: [
+        {
+          discussions: [
+            {
+              discussion_id: "discussion-open",
+              note_id: "note-open",
+              content: {
+                suggestion: "Keep me",
+                file_path: "src/open.ts",
+                old_line: null,
+                new_line: 10,
+              },
+            },
+            {
+              discussion_id: "discussion-resolved",
+              note_id: "note-resolved",
+              content: {
+                suggestion: "Drop me",
+                file_path: "src/resolved.ts",
+                old_line: null,
+                new_line: 20,
+              },
+            },
+          ],
+        },
+      ],
+      discussions: [
+        {
+          id: "discussion-open",
+          individual_note: false,
+          notes: [
+            {
+              resolvable: true,
+              resolved: false,
+              resolved_at: null,
+              resolved_by_push: false,
+            },
+          ] as unknown as DiscussionSchema["notes"],
+        },
+        {
+          id: "discussion-resolved",
+          individual_note: false,
+          notes: [
+            {
+              resolvable: true,
+              resolved: true,
+              resolved_at: "2026-06-03T12:00:00Z",
+              resolved_by: {
+                id: 1,
+              },
+              resolved_by_push: false,
+            },
+          ] as unknown as DiscussionSchema["notes"],
+        },
+      ] as DiscussionSchema[],
+    });
+
+    expect(filtered).toEqual([
+      {
+        discussions: [
+          {
+            discussion_id: "discussion-open",
+            note_id: "note-open",
+            content: {
+              suggestion: "Keep me",
+              file_path: "src/open.ts",
+              old_line: null,
+              new_line: 10,
             },
           },
         ],

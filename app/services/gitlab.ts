@@ -44,6 +44,14 @@ const getBooleanProperty = ({
   return typeof property === "boolean" ? property : undefined;
 };
 
+const hasNonNullProperty = ({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>;
+  key: string;
+}): boolean => value[key] !== null && value[key] !== undefined;
+
 export const isDiscussionResolved = ({
   discussion,
 }: {
@@ -65,12 +73,35 @@ export const isDiscussionResolved = ({
     return false;
   }
 
-  return resolvableNotes.every(
-    (note) =>
-      note.resolved_at !== null ||
-      note.resolved_by_id !== null ||
-      note.resolved_by_push === true,
-  );
+  return resolvableNotes.every((note) => {
+    const resolved = getBooleanProperty({
+      value: note as Record<string, unknown>,
+      key: "resolved",
+    });
+
+    if (resolved !== undefined) {
+      return resolved;
+    }
+
+    return (
+      hasNonNullProperty({
+        value: note as Record<string, unknown>,
+        key: "resolved_at",
+      }) ||
+      hasNonNullProperty({
+        value: note as Record<string, unknown>,
+        key: "resolved_by",
+      }) ||
+      hasNonNullProperty({
+        value: note as Record<string, unknown>,
+        key: "resolved_by_id",
+      }) ||
+      getBooleanProperty({
+        value: note as Record<string, unknown>,
+        key: "resolved_by_push",
+      }) === true
+    );
+  });
 };
 
 export const filterResolvedReviewHistory = ({
@@ -317,6 +348,7 @@ export class GitLabService {
     }
 
     const discussions = await this.getMergeRequestDiscussions();
+
     const filteredHistory = filterResolvedReviewHistory({
       reviewHistory,
       discussions,

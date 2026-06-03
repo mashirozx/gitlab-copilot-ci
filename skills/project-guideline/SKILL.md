@@ -72,6 +72,7 @@ Rules:
 - Summary-only `## 💡 Other Suggestions` content is not stored.
 - History is trimmed to the latest `--max-history-length` runs.
 - Before prompt generation and before the next summary note is written, the runtime fetches all merge-request discussion pages from GitLab and removes any stored history entries whose discussion is already resolved.
+- When reconciling stored history against live GitLab discussions, prefer each diff note's `resolved` boolean. Older/nullish fallback fields such as `resolved_at`, `resolved_by`, `resolved_by_id`, and `resolved_by_push` are only fallback signals when `resolved` is absent.
 - Resolved historical inline discussions must never be embedded into the prompt duplicate-suppression section and must never remain in the hidden base64 review-history payload.
 - The next run flattens prior `content` items and passes them to the prompt only to suppress duplicate inline findings on the same file and exact old/new line pair.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
