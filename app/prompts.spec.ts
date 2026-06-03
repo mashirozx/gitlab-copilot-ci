@@ -131,13 +131,13 @@ describe("buildCopilotPrompt", () => {
     });
 
     expect(prompt).toContain(
-      "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):",
+      "Found X review suggestion(s) in the changes up to [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):",
     );
     expect(prompt).not.toContain(
       "<sub>Suggestions from previous review runs are not listed here.</sub>",
     );
     expect(prompt).toContain(
-      'Keep the markdown commit reference from "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):" unchanged and translate only the surrounding prose.',
+      'Keep the markdown commit reference from "Found X review suggestion(s) in the changes up to [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):" unchanged and translate only the surrounding prose.',
     );
   });
 

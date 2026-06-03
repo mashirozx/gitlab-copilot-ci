@@ -55,7 +55,7 @@ If there are no suggestions, write the localized equivalent of "✨ No issues fo
 };
 
 const buildReviewSummaryLeadLine = (): string => {
-  return `Found X review suggestion(s) in the changes from ${buildCurrentCommitReference()}:`;
+  return `Found X review suggestion(s) in the changes up to ${buildCurrentCommitReference()}:`;
 };
 
 const buildReviewHistoryExclusionNote = (): string => {
