@@ -134,6 +134,8 @@ Rules:
 - `--tools`: repeatable extra tool allowlist entries.
 - `--lang`: repeatable display languages for summary/inline output.
 - `--collapsed-lang` / `--c-lang`: repeatable display languages to render in `<details>` blocks.
+- `--collapse-changes-summary`: ask the model to emit the `## 🚧 Changes` heading normally, followed by a `<details>` block with summary label `Details` that contains the section body in `summary.content` and every translated summary block. Default: `false`.
+- `--collapse-review-summary`: ask the model to emit the `## 🔍 Review Summary` heading normally, followed by a `<details>` block with summary label `Details` that contains the section body in `summary.content` and every translated summary block. Default: `false`.
 - `--ignored-rank`: repeatable prompt-side rank suppression request with values `HIGH`, `MEDIUM`, `LOW`.
 - `--version` / `-v`: print version info and exit.
 
@@ -173,6 +175,7 @@ Prompt history is not a request to repeat or validate older comments. It is only
 
 1. `<!-- <prefix>-summary-marker -->`
 2. Rendered summary markdown in the requested display languages. Languages listed in `--collapsed-lang` render inside `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region. Plain `en` is treated as `en-GB` for the flag and plain `zh` is treated as `zh-CN` for the flag (for example `zh` -> `中文 🇨🇳`, `zh-CN` -> `中文（中国大陆） 🇨🇳`, `en` -> `English 🇬🇧`).
+  - Section-level collapsing for `🚧 Changes` and `🔍 Review Summary` is prompt-driven. When `--collapse-changes-summary` or `--collapse-review-summary` is enabled, `app/prompts.ts` asks the model to emit the normal `##` heading first, then a nested `<details>` block with summary label `Details` for the section body, including translated summary blocks; `app/utils/review-summary.ts` does not rewrite those sections at render time.
 3. Performance metrics section when available.
 4. Collapsed errors section when errors exist.
 5. The hidden review-history block:

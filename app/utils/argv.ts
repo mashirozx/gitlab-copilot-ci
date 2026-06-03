@@ -209,6 +209,18 @@ export const argv = yargs(hideBin(process.argv))
     array: true,
     default: [] as string[],
   })
+  .option("collapse-changes-summary", {
+    describe:
+      'Wrap the summary note\'s "## 🚧 Changes" section in a GitLab <details> block.',
+    type: "boolean",
+    default: false,
+  })
+  .option("collapse-review-summary", {
+    describe:
+      'Wrap the summary note\'s "## 🔍 Review Summary" section in a GitLab <details> block.',
+    type: "boolean",
+    default: false,
+  })
   .option("ignored-rank", {
     describe:
       "Review rank(s) to ask the LLM to omit from inline reviews and the summary note. Allowed values: HIGH, MEDIUM, LOW.",

@@ -1,14 +1,39 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const originalArgv = [...process.argv];
 const originalCommitSha = process.env.CI_COMMIT_SHA;
 const originalCommitShortSha = process.env.CI_COMMIT_SHORT_SHA;
 const originalProjectUrl = process.env.CI_PROJECT_URL;
 
-const loadPromptsModule = async () => {
+const loadPromptsModule = async ({
+  collapseChangesSummary = false,
+  collapseReviewSummary = false,
+}: {
+  collapseChangesSummary?: boolean;
+  collapseReviewSummary?: boolean;
+} = {}) => {
   process.env.CI_COMMIT_SHA = "1234567890abcdef";
   process.env.CI_COMMIT_SHORT_SHA = "12345678";
   process.env.CI_PROJECT_URL = "https://gitlab.example.com/group/project";
+
+  mock.module("./utils/argv", () => ({
+    argv: {
+      agent: "github-copilot-cli",
+      "agent-bin": undefined,
+      lang: ["ja"],
+      "collapsed-lang": [],
+      "html-marker-prefix": "copilot",
+      "instruction-files": [],
+      "extra-prompts": undefined,
+      "ignored-rank": [],
+      "max-history-length": 2,
+      "should-teach-diff-compute": false,
+      model: "gpt-5.4",
+      tools: [],
+      "collapse-changes-summary": collapseChangesSummary,
+      "collapse-review-summary": collapseReviewSummary,
+    },
+  }));
 
   process.argv = [
     originalArgv[0] ?? "bun",
@@ -21,14 +46,13 @@ const loadPromptsModule = async () => {
     "1",
     "--mr-iid",
     "2",
-    "--lang",
-    "ja",
   ];
 
   return import(`./prompts?test=${Date.now()}`);
 };
 
 afterEach(() => {
+  mock.restore();
   process.argv = [...originalArgv];
 
   if (originalCommitSha === undefined) {
@@ -114,6 +138,30 @@ describe("buildCopilotPrompt", () => {
     );
     expect(prompt).toContain(
       'Keep the markdown commit reference from "Found X review suggestion(s) in the changes from [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):" unchanged and translate only the surrounding prose.',
+    );
+  });
+
+  test("asks the model to emit collapsed changes and review sections when enabled", async () => {
+    const { buildCopilotPrompt } = await loadPromptsModule({
+      collapseChangesSummary: true,
+      collapseReviewSummary: true,
+    });
+    const prompt = buildCopilotPrompt({
+      diffFilePaths: ["mr-diff.page-1.diff"],
+      title: "Test MR",
+      description: null,
+      historyItems: [],
+      debugMode: false,
+    });
+
+    expect(prompt).toContain(
+      "## 🚧 Changes\n\n<details>\n<summary>Details</summary>",
+    );
+    expect(prompt).toContain(
+      "## 🔍 Review Summary\n\n<details>\n<summary>Details</summary>",
+    );
+    expect(prompt).toContain(
+      "If the English template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there",
     );
   });
 });

@@ -7,6 +7,7 @@ import { argv } from "./utils/argv";
 import { buildCurrentCommitReference } from "./utils/commit-reference";
 import { getPromptModelSpec } from "./utils/model-name-parser";
 import {
+  buildDetailsBlock,
   getPromptTranslationLangs,
   getRankInlineMath,
 } from "./utils/review-output";
@@ -34,7 +35,8 @@ const buildTranslationsSectionInstructions = (langs: string[]): string => {
 For "summary.translations["${lang}"]", return a complete markdown block using the same section structure, written entirely in ${lang}. Use a heading like:
 # 📝 [translated equivalent of "${reviewSummaryTitleTemplate}"] (${lang})
 Keep the markdown heading prefix exactly as "# 📝 ". Do not translate, duplicate, remove, or add markdown symbols, heading markers, or emoji in the title line. Translate only the human-language title text after that prefix.
-Include translated equivalents of "## 📋 Walkthrough", "## 🚧 Changes", "## 🔍 Review Summary", and "## 💡 Other Suggestions" section content.
+Preserve the exact English section structure for each corresponding section. If the English template uses a plain "##" heading for a section, keep a translated "##" heading there. If the English template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there and translate only the visible summary label and section body.
+Include translated equivalents of the Walkthrough, Changes, Review Summary, and Other Suggestions section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
 Keep the markdown commit reference from "${reviewSummaryLeadLine}" unchanged and translate only the surrounding prose.
 After the inline-review list, keep the same separator and subscript note structure as "${reviewSummaryFooterNote}", translated naturally while preserving the HTML and markdown structure.
@@ -104,6 +106,51 @@ Mapping:
 - "+new call()" -> new_line 11 only
 - " context B" -> old_line 12, new_line 12
 `;
+};
+
+const buildChangesSummaryTemplate = (): string => {
+  const heading = "## 🚧 Changes";
+  const content = `[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]
+
+[Example structure for one step:]
+**Step title**
+
+| Layer / File(s) | Summary |
+| --- | --- |
+| **name or desc of module, method, or larger feature**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |
+
+[Repeat for additional steps when needed.]`;
+
+  if (argv["collapse-changes-summary"]) {
+    return `${heading}\n\n${buildDetailsBlock({
+      summary: "Details",
+      content,
+    })}`;
+  }
+
+  return `${heading}\n\n${content}`;
+};
+
+const buildReviewSummaryTemplate = (): string => {
+  const heading = "## 🔍 Review Summary";
+  const content = `${buildReviewSummaryLeadLine()}
+
+[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]
+
+If no suggestions, instead write: ✨ No issues found!
+
+***
+
+${buildReviewSummaryFooterNote()}`;
+
+  if (argv["collapse-review-summary"]) {
+    return `${heading}\n\n${buildDetailsBlock({
+      summary: "Details",
+      content,
+    })}`;
+  }
+
+  return `${heading}\n\n${content}`;
 };
 
 export const buildCopilotPrompt = ({
@@ -200,40 +247,26 @@ ${historyItems
   const translatedRankFlagInstructions =
     langs.length > 0 ? buildTranslatedRankFlagInstructions() : "";
 
+  const walkthroughSectionTemplate = `## 📋 Walkthrough
+[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]`;
+
+  const otherSuggestionsSectionTemplate = `## 💡 Other Suggestions
+[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]
+
+If there are no other suggestions, write: ✨ I have no feedback to provide.`;
+
   const summaryTemplate = `MUST use this exact template:
 
 ${reviewSummaryTitleTemplate}
 
-## 📋 Walkthrough
-[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]
+${walkthroughSectionTemplate}
 
-## 🚧 Changes
-[Break the merge request into key steps. For each step, start with a short bold title, then add a two-column markdown table with "Layer / File(s)" and "Summary". In the left column, name the relevant layer, module, or method and list the touched file paths. In the right column, describe what actually changed for that step.]
 
-[Example structure for one step:]
-**Step title**
+${buildChangesSummaryTemplate()}
 
-| Layer / File(s) | Summary |
-| --- | --- |
-| **name or desc of module, method, or larger feature**  <br> \`path/to/file.rs\`, \`path/to/file.ts\` | What actually changed |
+${buildReviewSummaryTemplate()}
 
-[Repeat for additional steps when needed.]
-
-## 🔍 Review Summary
-${buildReviewSummaryLeadLine()}
-
-[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]
-
-If no suggestions, instead write: ✨ No issues found!
-
-***
-
-${buildReviewSummaryFooterNote()}
-
-## 💡 Other Suggestions
-[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]
-
-If there are no other suggestions, write: ✨ I have no feedback to provide.`;
+${otherSuggestionsSectionTemplate}`;
 
   const instructionEntryFilesSection =
     instructionFiles.length > 0
