@@ -47,6 +47,16 @@ test:unit:
   script:
     - bun run test
 
+test:typecheck:
+  extends:
+    - .prepare
+  stage: test
+  only:
+    - main
+    - merge_requests
+  script:
+    - bun run typecheck
+
 test:tsgo:
   extends:
     - .prepare

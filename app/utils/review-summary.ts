@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { t } from "../i18n";
 import type { ReviewHistoryRunEntity } from "../services/gitlab.types";
 import type {
   ReviewResponseEntity,
@@ -6,10 +7,10 @@ import type {
 } from "../types/review.types";
 import { argv } from "./argv";
 import { env } from "./env";
+import { formatCollapsedLanguageHeader } from "./lang.ts";
 import { modelDisplayName } from "./model-display.ts";
 import {
   buildDetailsBlock,
-  formatCollapsedLanguageHeader,
   getDisplayLanguages,
   isSameLanguage,
 } from "./review-output";
@@ -295,7 +296,7 @@ export const buildPerformanceMetricsSection = ({
   }
 
   return `\n\n---\n\n${buildDetailsBlock({
-    summary: "📊 Model Usage & Performance Matrix",
+    summary: `📊 ${t("reviewSummary.performanceMetrics.summary")}`,
     content: content.trimEnd(),
   })}`;
 };

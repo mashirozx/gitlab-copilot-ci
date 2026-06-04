@@ -28,7 +28,7 @@ keywords:
 - **Context**: This repository's own CI builds and publishes release binaries.
 - **Purpose**: Validate, package, and publish `gitlab-copilot-ci` artifacts.
 - **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`.
-- **Validation Gates**: Both GitHub Actions and GitLab CI run `bun run lint`, `bun run test`, and `bun run tsgo` before build/release steps proceed.
+- **Validation Gates**: Both GitHub Actions and GitLab CI run explicit `bun run lint`, `bun run test`, `bun run typecheck`, and `bun run tsgo` jobs before build/release steps proceed.
 
 ### Investigation Workflow
 
@@ -98,12 +98,17 @@ Rules:
 | `app/services/copilot.ts` | GitHub Copilot CLI invocation and Copilot-specific response handling |
 | `app/services/pi.ts` | Pi invocation, Pi-event interpretation, human-readable console formatting, and usage extraction |
 | `app/services/logger.ts` | Shared `consola` logger and optional file logging |
+| `app/i18n/index.ts` | Typed runtime i18n helper for locale resolution, one-time async initialization, dot-path keys, plural selection, and dispatch to per-locale dictionaries |
+| `app/i18n/prompts.ts` | Prompt-specific language helper text, such as classical Chinese guidance derived from `--thinking-lang` and any requested translation languages |
+| `app/i18n/locales/*.ts` | Per-locale translation dictionaries, with `app/i18n/locales/en.ts` as the source schema for key and interpolation typing |
+| `app/i18n/schema.ts` | Shared locale-definition helper types used by the split i18n dictionaries |
 | `app/utils/argv.ts` | CLI argument parsing via yargs |
 | `app/utils/env.ts` | Shared live getters for runtime environment variables so modules can import a central env helper without snapshotting `process.env` at import time |
 | `app/utils/std-handler.ts` | Shared stdout/stderr helpers for incremental log streaming, recent-output tails, and marked-JSON capture |
 | `app/utils/diff-files.ts` | Writes paginated unified diff files and can recompute positions from `diff_file` / `diff_line_code` references |
 | `app/utils/review-helpers.ts` | Pure helpers for review line/location formatting |
 | `app/utils/review-output.ts` | Normalizes model output and renders inline review comment bodies |
+| `app/utils/lang.ts` | Shared language display-name and flag helpers for collapsed-language headers, with cached Intl/flag lookups |
 | `app/utils/review-summary.ts` | Renders summary markdown, performance/errors, history trimming, and encoded history blocks |
 | `app/utils/time.ts` | Temporal-based time helpers and async sleep utility |
 | `app/utils/model-name-parser.ts` | Shared model parsing helpers |
@@ -163,11 +168,31 @@ Model display rules:
 
 Language rendering rules:
 - `summary.content` and every `reviews[].suggestion` value are written in `--thinking-lang`.
+- The review prompt also tells the model to begin reasoning in `--thinking-lang` immediately after receiving the prompt; if the selected runtime exposes visible thinking/planning text before the final JSON line, that visible reasoning should stay in `--thinking-lang` too.
+- The review prompt also tells the model to translate the prompt instructions it relies on into `--thinking-lang` at the start of reasoning for internal use, then base all subsequent reasoning on that translated prompt, and to prefer direct UTF-8 characters over Unicode escape sequences in visible thinking and final JSON string values whenever valid JSON allows it.
 - `summary.translations` and `reviews[].translations` contain only the remaining requested display languages after removing any language equivalent to `--thinking-lang`.
 - When no `--lang` / `--collapsed-lang` values are provided, summary and inline rendering default to `--thinking-lang` instead of assuming English.
+- Language display helpers should normalize empty display-language inputs to `--thinking-lang`, and must still fall back to `en` if tests or import order expose an unset runtime argv value.
+- Display-language inputs and helper defaults should use canonical language tags such as `en`, `ja`, and `zh-CN`; do not add special handling for the literal `english` in rendering helpers.
 - When a requested display language matches `--thinking-lang`, rendering must use the original `summary.content` / `suggestion` directly instead of looking for a duplicate translation entry.
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
+
+## Internal I18n
+
+- Internal user-facing GitLab note strings should use `t(...)` from `app/i18n/index.ts` instead of introducing new hard-coded literals in feature code. Console log strings are currently not localized and remain English.
+- Summary UI labels rendered by `app/utils/review-summary.ts`, such as the performance metrics details summary, should also use `t(...)` so they follow `--thinking-lang`.
+- `app/i18n/index.ts` resolves the active locale directly from `argv["thinking-lang"]`. Startup code must call and await `initI18n()` once before any translated runtime output is built; after that, `t(...)` is synchronous.
+- `app/i18n/index.ts` should own the async loading boundary and cache the active locale after initialization rather than performing dynamic imports inside each `t(...)` call.
+- Locale definitions live under `app/i18n/locales/` such as `app/i18n/locales/en.ts` and `app/i18n/locales/zh-TW.ts`; keep `app/i18n/index.ts` focused on typing, locale resolution, initialization, and lookup.
+- Locale keys are nested objects with dot-path lookup keys derived from the English source dictionary. Interpolated entries should be functions, not placeholder strings, and placeholder names must stay stable across all locales because interpolation parameter names are inferred from the English source locale.
+- Pluralized entries are also leaf values: define them as branch objects with keys such as `zero`, `one`, and `other`, and call them through the normal `t(key, { count })` API. The full sentence for `zero` belongs in the locale file rather than feature code.
+- Type-level translation key generation must stop recursion at pluralized leaves so `TranslationKey` contains the plural entry's dot-path key itself, not nested branch keys like `.zero` or `.other`.
+- Special language tags `zh-Hans`, `zh-Hant`, `zh-lzh`, `zh-Hans-lzh`, and `zh-Hant-lzh` are supported. `zh-lzh` and `zh-Hans-lzh` render as classical Chinese in simplified characters, `zh-Hant-lzh` renders as classical Chinese in traditional characters, and collapsed-language headers should fall back to `文言文` display names plus the `zh-CN` flag alias when Bun `Intl` does not support those tags.
+- Locale resolution order is: exact `--thinking-lang`, then its primary language subtag, then the configured fallback language, then its primary language subtag, and finally English.
+- When adding or renaming translation keys, update every bundled locale together and add or adjust the `tstyche` type checks in `app/i18n/index.tst.ts`.
+- Validate i18n typing with `bun run typecheck`; `tstyche` auto-discovers `*.tst.ts` files, so new type-only checks should follow that suffix.
+- Do not rewrite existing translations unless the user explicitly asked for wording changes, a key changed, or a placeholder bug requires it. Avoid unrelated translation churn.
 
 Documentation maintenance rule:
 - Whenever `app/utils/argv.ts` changes the CLI argument surface, defaults, aliases, or descriptions, update `README.md` in the same change so the published options table stays synchronized with the implementation.
@@ -211,7 +236,7 @@ Prompt history is not a request to repeat or validate older comments. It is only
 `app/utils/review-summary.ts` builds the final MR summary note in this order:
 
 1. `<!-- <prefix>-summary-marker -->`
-2. Rendered summary markdown in the requested display languages. Languages listed in `--collapsed-lang` render inside `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region. Plain `en` is treated as `en-GB` for the flag and plain `zh` is treated as `zh-CN` for the flag (for example `zh` -> `中文 🇨🇳`, `zh-CN` -> `中文（中国大陆） 🇨🇳`, `en` -> `English 🇬🇧`).
+2. Rendered summary markdown in the requested display languages. Languages listed in `--collapsed-lang` render inside `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region or an explicit alias. Plain `en` is treated as `en-GB` for the flag. `zh`, `zh-Hans`, `zh-Hant`, `zh-lzh`, `zh-Hans-lzh`, and `zh-Hant-lzh` all alias to the `zh-CN` flag. When Bun `Intl` cannot resolve the classical Chinese tags, fall back to `文言文`, `文言文（简体）`, or `文言文（繁體）` as appropriate.
   - Section-level collapsing for `🚧 Changes` and `🔍 Review Summary` is prompt-driven. When `--collapse-changes-summary` or `--collapse-review-summary` is enabled, `app/prompts.ts` asks the model to emit the normal `##` heading first, then a nested `<details>` block with summary label `Details` for the section body, including translated summary blocks; `app/utils/review-summary.ts` does not rewrite those sections at render time.
 3. Performance metrics section when available.
   - When `response.runtimeStats` exists, render runtime platform, peak parent memory, parent CPU time, peak agent tree memory, peak agent tree CPU, peak process count, agent read/write bytes when available, and backend notes.
@@ -230,6 +255,7 @@ The history block must stay at the very end of the summary note.
 
 Prompting rules for the `## 🔍 Review Summary` section:
 - The summary template asks the model to mention the current commit using the shared markdown commit reference built from `CI_COMMIT_SHORT_SHA` and `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available.
+- The summary template also tells the model to use correct zero/singular/plural wording for the review-count lead sentence instead of literal `suggestion(s)`. When that count is zero, the lead sentence should end with `.` instead of `:`.
 - After the inline-review list, the template includes the separator plus the subscript history-exclusion note only when prior inline review history was passed into the prompt for duplicate suppression.
 
 ## Inline Review Position Rules
@@ -288,6 +314,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 
 - `bun run dev`
 - `bun run test`
+- `bun run typecheck`
 - `bun run tsgo`
 - `bun run lint`
 - `bun run biome`

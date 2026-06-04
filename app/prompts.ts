@@ -2,6 +2,7 @@ import {
   REVIEW_RESPONSE_JSON_END_MARKER,
   REVIEW_RESPONSE_JSON_START_MARKER,
 } from "./constants";
+import { buildSpecialLanguageInstructions } from "./i18n/prompts";
 import { argv } from "./utils/argv";
 import { buildCurrentCommitReference } from "./utils/commit-reference";
 import { getPromptModelSpec } from "./utils/model-name-parser";
@@ -73,10 +74,10 @@ const buildReviewSummaryLeadLine = ({
       right: "en",
     })
   ) {
-    return `Found X review suggestion(s) in the changes up to ${buildCurrentCommitReference()}:`;
+    return `[State how many review suggestions were found in the changes up to ${buildCurrentCommitReference()}. Use correct zero, singular, and plural wording instead of literal "suggestion(s)". If the count is zero, end this sentence with a period instead of a colon. If the count is one or more, end it with a colon.]`;
   }
 
-  return `[In ${sourceLanguage}, state how many review suggestions were found in the changes up to ${buildCurrentCommitReference()}. Keep the markdown commit reference unchanged.]`;
+  return `[In ${sourceLanguage}, state how many review suggestions were found in the changes up to ${buildCurrentCommitReference()}. Use correct zero, singular, and plural wording. If the count is zero, end this sentence with a period instead of a colon. If the count is one or more, end it with a colon. Keep the markdown commit reference unchanged.]`;
 };
 
 const buildReviewHistoryExclusionNote = (): string => {
@@ -269,6 +270,10 @@ A markdown file containing documented prior-review blocks is available at:
     hasReviewHistory,
     sourceLanguage,
   });
+  const thinkingLanguageInstructions = buildSpecialLanguageInstructions({
+    sourceLanguage,
+    translationLanguages: langs,
+  });
   const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE;
   const diffLineNumberGuidance = shouldTeachDiffCompute
     ? buildDiffLineNumberGuidance()
@@ -352,6 +357,15 @@ Read-only task:
 - Do not run mutating shell commands
 - Read repository files only as needed for review context
 
+Reasoning-language requirement:
+- From the very beginning of this task, immediately after receiving this prompt, think in ${sourceLanguage}.
+- At the beginning of your reasoning, first translate the relevant task instructions in this prompt into ${sourceLanguage} for your own working understanding.
+- After that translation step, base all subsequent reasoning, analysis, and planning on that translated prompt in ${sourceLanguage}.
+- If your runtime exposes any visible thinking, reasoning, planning, or step-by-step analysis before the final answer, emit that visible thinking in ${sourceLanguage} as well.
+- Do not switch visible reasoning to another language unless a higher-priority instruction explicitly requires it.
+- Do not rewrite visible thinking, markdown output, or JSON string content with Unicode escape encoding such as \\uXXXX when normal UTF-8 characters can be used directly.
+- Prefer direct UTF-8 characters in visible thinking and in the final JSON string values whenever valid JSON allows it.
+
 ## Pull Request Title
 ${title}${mrDescription}
 
@@ -402,6 +416,13 @@ ${configuredModelSection}`
 - The full human-readable model display name must appear in the summary title. Do not add any separate JSON field for model or effort output.
 - In every summary title, keep the exact markdown prefix "# 📝 " and do not translate or duplicate markdown symbols or emoji. Translate only the natural-language title text after that prefix when needed.
 - Always write "summary.content" and every review item's "suggestion" in ${sourceLanguage}, regardless of --lang or --collapsed-lang.
+- Start reasoning in ${sourceLanguage} immediately when this prompt begins, before reading diffs or repository files.
+- At the start of reasoning, translate the prompt instructions you rely on into ${sourceLanguage} for internal use before continuing the task.
+- After translating those prompt instructions, keep all further reasoning grounded in that ${sourceLanguage} translation rather than switching back to another-language interpretation.
+- If the runtime shows your thinking before the final JSON line, keep that visible thinking entirely in ${sourceLanguage}.
+- Do not convert visible thinking, markdown, or JSON string values into Unicode escape sequences such as \\uXXXX unless JSON syntax requires escaping a specific character.
+- Use normal UTF-8 characters directly in the final output whenever possible.
+- ${thinkingLanguageInstructions || "Keep the requested thinking language consistent across the full review output."}
 - Any requested language other than ${sourceLanguage} must be returned only inside the JSON translation fields.
 - If a requested display language matches ${sourceLanguage}, do not include that language in any translations object; the runtime will read that language directly from "summary.content" or "suggestion".
 - Keep suggestion and all translations aligned in meaning

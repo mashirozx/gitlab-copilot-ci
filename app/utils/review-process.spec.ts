@@ -60,9 +60,12 @@ mock.module("./argv", () => ({
     "mr-iid": "1",
     "process-max-pending-time": 1,
     "project-id": "1",
+    "thinking-lang": "en",
     tools: [],
   },
 }));
+
+const { initI18n } = await import("../i18n/index");
 
 const {
   buildReviewingMarkerNoteBody,
@@ -137,7 +140,9 @@ afterAll(() => {
 });
 
 describe("buildReviewingMarkerNoteBody", () => {
-  test("renders the current commit link when project and commit env vars exist", () => {
+  test("renders the current commit link when project and commit env vars exist", async () => {
+    await initI18n();
+
     const noteBody = buildReviewingMarkerNoteBody({
       htmlMarkerPrefix: "copilot",
     });

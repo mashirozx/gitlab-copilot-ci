@@ -1,4 +1,5 @@
 import { REVIEW_PENDING_POLL_INTERVAL_MS } from "../constants";
+import { t } from "../i18n/index";
 import { gitlabService } from "../services/gitlab";
 import { logger } from "../services/logger";
 import { argv } from "./argv";
@@ -20,12 +21,17 @@ export const buildReviewingMarkerNoteBody = ({
   const reviewingMarker = `${htmlMarkerPrefix}-reviewing-marker`;
   const commitReference = buildCurrentCommitReference();
 
+  const body = t("reviewProcess.reviewingMarker.body", {
+    commitReference,
+  });
+  const manualDeleteHint = t("reviewProcess.reviewingMarker.manualDeleteHint");
+
   return `<!-- ${reviewingMarker} -->
-⚠️ Code review is in progress... I am reviewing commit ${commitReference}. To avoid conflicts, I will hold further reviews until the current one is concluded.
+${body}
 
 ***
 
-<sub>Feel free to manually delete this comment if the review process seems stuck, which should unblock it. Just make sure to check the status of the latest review CI workflow first—ensure it's still running, or trigger a rerun if necessary.</sub>`;
+<sub>${manualDeleteHint}</sub>`;
 };
 
 export const waitForPendingReviewToFinish = async ({

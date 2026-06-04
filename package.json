@@ -13,7 +13,8 @@
     "build:linux-arm64": "bun run ./scripts/build-with-version.ts bun-linux-arm64",
     "build:win-x64": "bun run ./scripts/build-with-version.ts bun-windows-x64",
     "build:win-arm64": "bun run ./scripts/build-with-version.ts bun-windows-arm64",
-    "test": "bun test",
+    "test": "bun test && bun run typecheck",
+    "typecheck": "tstyche",
     "tsgo": "tsgo",
     "lint": "biome check .",
     "biome": "biome check . --fix && biome format --write .",
@@ -33,6 +34,7 @@
     "husky": "9.1.7",
     "tablemark": "4.1.0",
     "temporal-polyfill": "0.3.2",
+    "tstyche": "7.2.1",
     "typescript": "npm:@typescript/native-preview@7.0.0-dev.20260511.1",
     "yargs": "18.0.0"
   }

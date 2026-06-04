@@ -222,7 +222,7 @@ export const argv = yargs(hideBin(process.argv))
   })
   .option("lang", {
     describe:
-      "Display language(s) for review output (e.g. --lang=zh-CN --lang=ja --lang=english). If omitted, output defaults to English only.",
+      "Display language(s) for review output (e.g. --lang=zh-CN --lang=ja --lang=en). If omitted, output defaults to the --thinking-lang source language.",
     type: "string",
     array: true,
     default: [] as string[],

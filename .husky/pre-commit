@@ -1,2 +1,4 @@
+bun run tsgo
 bun run lint
 bun run test
+bun run typecheck

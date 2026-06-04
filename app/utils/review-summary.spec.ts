@@ -18,16 +18,21 @@ process.argv = [
   process.env.CI_PROJECT_ID,
   "--mr-iid",
   process.env.CI_MERGE_REQUEST_IID,
+  "--thinking-lang",
+  "en",
   "--model",
   "openai/gpt-5.4-mini:xhigh",
 ];
 
+const { initI18n } = await import("../i18n");
+await initI18n();
+
 const {
   buildReviewDiscussionBody,
-  formatCollapsedLanguageHeader,
   getDisplayLanguages,
   getPromptTranslationLangs,
 } = await import("./review-output");
+const { formatCollapsedLanguageHeader } = await import("./lang");
 
 const { modelDisplayName } = await import("./model-display.ts");
 
@@ -80,7 +85,7 @@ describe("buildReviewDiscussionBody", () => {
     const body = buildReviewDiscussionBody({
       marker: "<!-- marker -->",
       review: reviews[0] as ReviewItemEntity,
-      displayLanguages: ["english", "zh-CN"],
+      displayLanguages: ["en", "zh-CN"],
       collapsedLanguages: ["zh-CN"],
       sourceLanguage: "en",
     });
@@ -98,7 +103,7 @@ describe("buildReviewDiscussionBody", () => {
     const body = buildReviewDiscussionBody({
       marker: "<!-- marker -->",
       review: reviews[0] as ReviewItemEntity,
-      displayLanguages: ["english", "zh-CN"],
+      displayLanguages: ["en", "zh-CN"],
       collapsedLanguages: [],
       sourceLanguage: "en",
     });
@@ -122,6 +127,21 @@ describe("renderSummaryComment", () => {
     const chineseCnHeader = formatCollapsedLanguageHeader({
       language: "zh-CN",
     });
+    const chineseHansHeader = formatCollapsedLanguageHeader({
+      language: "zh-Hans",
+    });
+    const chineseHantHeader = formatCollapsedLanguageHeader({
+      language: "zh-Hant",
+    });
+    const classicalChineseHeader = formatCollapsedLanguageHeader({
+      language: "zh-lzh",
+    });
+    const classicalChineseHansHeader = formatCollapsedLanguageHeader({
+      language: "zh-Hans-lzh",
+    });
+    const classicalChineseHantHeader = formatCollapsedLanguageHeader({
+      language: "zh-Hant-lzh",
+    });
     const englishHeader = formatCollapsedLanguageHeader({ language: "en" });
     const japaneseHeader = formatCollapsedLanguageHeader({ language: "ja" });
 
@@ -130,6 +150,16 @@ describe("renderSummaryComment", () => {
 
     expect(chineseCnHeader.endsWith("🇨🇳")).toBe(true);
     expect(chineseCnHeader.replace(" 🇨🇳", "")).toContain("中");
+
+    expect(chineseHansHeader.endsWith("🇨🇳")).toBe(true);
+    expect(chineseHansHeader).toContain("简");
+
+    expect(chineseHantHeader.endsWith("🇨🇳")).toBe(true);
+    expect(chineseHantHeader).toContain("繁");
+
+    expect(classicalChineseHeader).toBe("文言文 🇨🇳");
+    expect(classicalChineseHansHeader).toBe("文言文（简体） 🇨🇳");
+    expect(classicalChineseHantHeader).toBe("文言文（繁體） 🇨🇳");
 
     expect(englishHeader.endsWith("🇬🇧")).toBe(true);
     expect(englishHeader.replace(" 🇬🇧", "")).toContain("English");
@@ -191,7 +221,7 @@ None.`,
 
     const translationLangs = getPromptTranslationLangs({
       langs: [],
-      collapsedLangs: ["zh-CN", "english", "zh-CN"],
+      collapsedLangs: ["zh-CN", "en", "zh-CN"],
       sourceLanguage: "en",
     });
 
@@ -528,6 +558,21 @@ describe("buildPerformanceMetricsSection", () => {
     expect(section).toContain("- ✍️ **Cache write tokens**: 0");
     expect(section).toContain("- 🔢 **Total tokens**: 1611");
     expect(section).toContain("- 💸 **Total cost**: 0");
+  });
+
+  test("uses the localized performance summary label", () => {
+    const section = buildPerformanceMetricsSection({
+      response: {
+        summary: { content: "", translations: {} },
+        reviews: [],
+        duration: 1234,
+      },
+      agentDisplay: "GitHub Copilot CLI 1.0.54",
+    });
+
+    expect(section).toContain(
+      "<summary>📊 Model Usage & Performance Matrix</summary>",
+    );
   });
 
   test("renders runtime stats when they are available", () => {

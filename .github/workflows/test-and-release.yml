@@ -45,6 +45,21 @@ jobs:
       - name: ✅ Run unit tests
         run: bun run test
 
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - *setup-bun-step
+
+      - name: 📥 Install dependencies
+        run: bun install
+
+      - name: ✅ Run typecheck
+        run: bun run typecheck
+
   tsgo:
     name: tsgo
     runs-on: ubuntu-latest
@@ -65,6 +80,7 @@ jobs:
     needs:
       - biome
       - unit-test
+      - typecheck
       - tsgo
     runs-on: ${{ matrix.runner }}
     strategy:

@@ -50,7 +50,7 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 | `--extra-prompts` | `string` | none | Extra prompt text to append to the generated LLM review prompt. If provided, the model must obey it. |
 | `--should-teach-diff-compute` | `boolean` | `false` | Include prompt instructions that teach the LLM how to compute diff line positions manually from unified diff hunks. |
 | `--tools` | `array` | `[]` | Additional agent tool names to allow beyond the built-in defaults. Repeatable, for example `--tools sh --tools read_file`. |
-| `--lang` | `array` | `[]` | Display language(s) for review output, for example `--lang=zh-CN --lang=ja --lang=english`. If omitted, output defaults to the `--thinking-lang` source language. |
+| `--lang` | `array` | `[]` | Display language(s) for review output, for example `--lang=zh-CN --lang=ja --lang=en`. If omitted, output defaults to the `--thinking-lang` source language. |
 | `--thinking-lang` | `string` | `en` | Source language for `summary.content` and `reviews[].suggestion`. Any requested display language matching this source reuses the original content instead of a translation entry. |
 | `--collapsed-lang`, `--c-lang` | `array` | `[]` | Display language(s) that should be wrapped in a GitLab `<details>` block for both inline reviews and the summary note. |
 | `--collapse-changes-summary` | `boolean` | `false` | Wrap the summary note's `## 🚧 Changes` section in a GitLab `<details>` block. |

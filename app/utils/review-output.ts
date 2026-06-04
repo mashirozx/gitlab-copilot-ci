@@ -3,10 +3,8 @@ import type {
   ReviewRankEntity,
   ReviewResponseEntity,
 } from "../types/review.types";
-import { countryCodeToFlagEmoji } from "./country-code-to-flag-emoji";
+import { formatCollapsedLanguageHeader } from "./lang.ts";
 import { modelDisplayName } from "./model-display.ts";
-
-const ENGLISH_LANGUAGE_KEY = "english";
 
 const normalizeLanguageForComparison = ({
   language,
@@ -25,20 +23,21 @@ const normalizeLanguageForComparison = ({
     };
   }
 
-  if (trimmedLanguage.toLowerCase() === ENGLISH_LANGUAGE_KEY) {
-    return {
-      full: "en",
-      base: "en",
-    };
-  }
-
   try {
-    const canonicalLanguage = Intl.getCanonicalLocales(trimmedLanguage)[0];
-    const canonicalLower = canonicalLanguage.toLowerCase();
+    const canonicalLanguages = Intl.getCanonicalLocales(trimmedLanguage);
+    let normalizedFullLanguage = trimmedLanguage.toLowerCase();
+
+    if (canonicalLanguages.length > 0) {
+      const firstCanonicalLanguage = canonicalLanguages[0];
+
+      if (typeof firstCanonicalLanguage === "string") {
+        normalizedFullLanguage = firstCanonicalLanguage.toLowerCase();
+      }
+    }
 
     return {
-      full: canonicalLower,
-      base: canonicalLower.split("-")[0] ?? canonicalLower,
+      full: normalizedFullLanguage,
+      base: normalizedFullLanguage.split("-")[0] ?? normalizedFullLanguage,
     };
   } catch {
     const normalizedLanguage = trimmedLanguage.toLowerCase();
@@ -152,7 +151,7 @@ export const getPromptTranslationLangs = ({
 export const getDisplayLanguages = ({
   langs,
   collapsedLangs = [],
-  sourceLanguage = ENGLISH_LANGUAGE_KEY,
+  sourceLanguage = "en",
 }: {
   langs: string[];
   collapsedLangs?: string[];
@@ -174,87 +173,6 @@ export const buildDetailsBlock = ({
   content: string;
 }): string => {
   return `<details>\n<summary>${summary}</summary>\n\n${content}\n\n</details>`;
-};
-
-const normalizeLanguageTagForDisplay = ({
-  language,
-}: {
-  language: string;
-}): string => {
-  const trimmedLanguage = language.trim();
-
-  if (trimmedLanguage.length === 0) {
-    return ENGLISH_LANGUAGE_KEY;
-  }
-
-  return trimmedLanguage.toLowerCase() === ENGLISH_LANGUAGE_KEY
-    ? "en"
-    : trimmedLanguage;
-};
-
-const getCollapsedLanguageFlagTag = ({
-  languageTag,
-}: {
-  languageTag: string;
-}): string | null => {
-  const normalizedLanguageTag = languageTag.trim().toLowerCase();
-
-  if (normalizedLanguageTag === "en") {
-    return "en-GB";
-  }
-
-  if (normalizedLanguageTag === "zh") {
-    return "zh-CN";
-  }
-
-  try {
-    return new Intl.Locale(languageTag).region ? languageTag : null;
-  } catch {
-    return null;
-  }
-};
-
-const getCollapsedLanguageFlag = ({
-  languageTag,
-}: {
-  languageTag: string;
-}): string => {
-  const flagLanguageTag = getCollapsedLanguageFlagTag({ languageTag });
-
-  if (!flagLanguageTag) {
-    return "";
-  }
-
-  try {
-    return countryCodeToFlagEmoji(flagLanguageTag);
-  } catch {
-    return "";
-  }
-};
-
-export const formatCollapsedLanguageHeader = ({
-  language,
-}: {
-  language: string;
-}): string => {
-  const normalizedLanguageTag = normalizeLanguageTagForDisplay({ language });
-
-  let localizedLanguageName = language.trim() || normalizedLanguageTag;
-
-  try {
-    localizedLanguageName =
-      new Intl.DisplayNames([normalizedLanguageTag], {
-        type: "language",
-      }).of(normalizedLanguageTag) ?? localizedLanguageName;
-  } catch {
-    // Fall back to the requested language token when Intl cannot resolve it.
-  }
-
-  const flag = getCollapsedLanguageFlag({
-    languageTag: normalizedLanguageTag,
-  });
-
-  return flag ? `${localizedLanguageName} ${flag}` : localizedLanguageName;
 };
 
 export const normalizeReviewRank = ({

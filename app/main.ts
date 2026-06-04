@@ -3,6 +3,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { initI18n } from "./i18n";
 import { buildCopilotPrompt } from "./prompts";
 import { runCopilotReview } from "./services/copilot";
 import { gitlabService } from "./services/gitlab";
@@ -36,6 +37,8 @@ const main = async () => {
   const errors: string[] = [];
   let reviewingMarkerNoteId: number | null = null;
   let tempDir: string | null = null;
+
+  await initI18n();
 
   if (argv["debug"]) {
     logger.info(
