@@ -16,6 +16,7 @@ import {
   recomputeReviewPositionFromDiffReference,
 } from "./utils/diff-files";
 import { formatReviewLocation } from "./utils/review-helpers";
+import { buildReviewHistoryFileContent } from "./utils/review-history-file";
 import {
   getPromptTranslationLangs,
   normalizeReviewResponse,
@@ -98,14 +99,17 @@ const main = async () => {
     });
     const reviewHistoryFilePath =
       historyItems.length > 0
-        ? join(createdTempDir, "prior-inline-review-history.json")
+        ? join(createdTempDir, "prior-inline-review-history.md")
         : null;
 
     if (reviewHistoryFilePath) {
       writeFileSync(
         reviewHistoryFilePath,
-        JSON.stringify(historyItems, null, 2),
+        buildReviewHistoryFileContent({ historyItems }),
         "utf-8",
+      );
+      logger.info(
+        `Wrote prior review history file with ${historyItems.length} item(s) to ${reviewHistoryFilePath}`,
       );
     }
 

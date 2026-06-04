@@ -83,7 +83,7 @@ Rules:
 - When reconciling stored history against live GitLab discussions, prefer each diff note's `resolved` boolean. Older/nullish fallback fields such as `resolved_at`, `resolved_by`, `resolved_by_id`, and `resolved_by_push` are only fallback signals when `resolved` is absent.
 - History reconciliation logs should report three counts separately: removed resolved review items, removed deleted review items, and kept existing unresolved review items.
 - Resolved historical inline discussions must never be embedded into the prompt duplicate-suppression section and must never remain in the hidden base64 review-history payload.
-- The next run flattens prior `content` items, writes them to a temp JSON file beside the diff pages, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
+- The next run flattens prior `content` items, writes them to a temp Markdown file beside the diff pages, formats them as repeated review blocks with a small `Diff` table plus a freeform `Suggestions` section, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
 
 ## Module Organization
@@ -177,7 +177,7 @@ Documentation maintenance rule:
 6. Post a new reviewing-marker note that references the current commit (`CI_COMMIT_SHORT_SHA` / `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available).
 7. Load the existing summary note, decode the review-history block if present, fetch all merge-request discussion pages from GitLab, drop any resolved stored discussions from that history snapshot, then flatten only the unresolved discussion content for later duplicate suppression.
 8. Fetch paginated MR diffs and write one temp file per page: `mr-diff.page-<n>.diff`.
-9. When unresolved prior inline history exists, write it to `prior-inline-review-history.json` in the same temp directory as the diff pages.
+9. When unresolved prior inline history exists, write it to `prior-inline-review-history.md` in the same temp directory as the diff pages.
 10. Run the configured agent (`github-copilot-cli` or `pi`) with the generated prompt.
 11. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the normalized response before final resolve.
 12. Before any GitLab writes, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
@@ -194,6 +194,8 @@ Prompt history is not a request to repeat or validate older comments. It is only
 - Suppress a new inline review only when the same issue is already covered on the same file and exact same old/new line pair.
 - If the same issue appears on a different file or line pair, it is a new finding and should still be reported.
 - The model should ignore the history file during initial review analysis and read it only immediately before constructing the final JSON payload.
+- The deferred history file should include only duplicate-detection fields (`file_path`, `new_line`, `old_line`, `suggestion`) and should omit GitLab discussion metadata such as `discussion_id` and `note_id`.
+- Keep rich suggestion markdown outside table cells; only the diff coordinates belong in the small `Diff` table.
 - History must not inflate the summary walkthrough, change list, summary counts, or other summary prose.
 - Resolved historical discussions are excluded from this suppression list because the runtime removes them after reconciling stored history against the live merge-request discussion state from GitLab.
 

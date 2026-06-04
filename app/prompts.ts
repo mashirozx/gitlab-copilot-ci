@@ -13,6 +13,13 @@ import {
 
 export const REVIEW_SUMMARY_TITLE = `# 📝 Code Review Summary by \${LLM name}`;
 export const REVIEW_SUMMARY_TITLE_TEXT = `Code Review Summary by \${LLM name}`;
+export const REVIEW_HISTORY_FILE_INTRO = `# Prior Inline Review History For Duplicate Suppression
+
+Read this file only after you finish the actual code review and are about to build the final output JSON.
+
+Use these review blocks only to remove duplicate inline review items that match the same issue on the same file and exact same old/new line pair.
+
+Do not use this file to change the walkthrough, change summary, or other earlier analysis.`;
 
 const buildTranslationsSpec = (langs: string[]): string => {
   if (langs.length === 0) return "";
@@ -198,15 +205,17 @@ export const buildCopilotPrompt = ({
 
 ## Deferred Previous Inline Review History
 
-A file containing inline review comments from earlier CI runs is available at:
+A markdown file containing documented prior-review blocks is available at:
 - ${reviewHistoryFilePath}
 
 - Do not read or use this history file during the initial diff review, repository walkthrough, or first-pass finding generation.
 - Complete the actual code review first based on the diff and repository context.
-- Only after you have a candidate final payload, and immediately before constructing the output JSON, read this history file and use it only for duplicate suppression.
+- Only after you have a candidate final payload, and immediately before constructing the output JSON, read this markdown history file and use it only for duplicate suppression.
 - Remove only duplicate inline review items where the same issue is already covered on the same file and exact same old/new line pair.
 - If a similar issue appears on a different file or different line pair, you should still keep it as a new review item.
 - If you are unsure whether a history item describes the same issue, prefer treating it as different instead of suppressing a new finding.
+- Each prior-review block includes a small "Diff" table and a freeform "Suggestions" section so rich markdown suggestions remain readable.
+- The history file intentionally omits discussion ids and note ids because they are not relevant to duplicate detection.
 - After removing duplicates, update the final inline-review list and X count inside "summary.content" and every translated summary block so they match the filtered final "reviews" array exactly.
 - Do not let this deferred history check change the walkthrough, changes summary, or any other earlier analysis beyond omitting duplicate inline findings from the final output.
 `

@@ -95,7 +95,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: "Test description",
-      reviewHistoryFilePath: "/tmp/prior-inline-review-history.json",
+      reviewHistoryFilePath: "/tmp/prior-inline-review-history.md",
       debugMode: true,
     });
 
@@ -103,7 +103,16 @@ describe("buildCopilotPrompt", () => {
     expect(prompt).toContain(
       "Do not read or use this history file during the initial diff review, repository walkthrough, or first-pass finding generation.",
     );
-    expect(prompt).toContain("- /tmp/prior-inline-review-history.json");
+    expect(prompt).toContain(
+      "A markdown file containing documented prior-review blocks is available at:",
+    );
+    expect(prompt).toContain("- /tmp/prior-inline-review-history.md");
+    expect(prompt).toContain(
+      'Each prior-review block includes a small "Diff" table and a freeform "Suggestions" section so rich markdown suggestions remain readable.',
+    );
+    expect(prompt).toContain(
+      "The history file intentionally omits discussion ids and note ids because they are not relevant to duplicate detection.",
+    );
     expect(prompt).toContain(
       'After removing duplicates, update the final inline-review list and X count inside "summary.content" and every translated summary block so they match the filtered final "reviews" array exactly.',
     );
@@ -139,7 +148,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
-      reviewHistoryFilePath: "/tmp/prior-inline-review-history.json",
+      reviewHistoryFilePath: "/tmp/prior-inline-review-history.md",
       debugMode: false,
     });
 
