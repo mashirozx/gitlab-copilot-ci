@@ -96,6 +96,18 @@ const main = async () => {
       writeFileSync(diffFilePath, buildDiffPageFileContent({ diffs }), "utf-8");
       return diffFilePath;
     });
+    const reviewHistoryFilePath =
+      historyItems.length > 0
+        ? join(createdTempDir, "prior-inline-review-history.json")
+        : null;
+
+    if (reviewHistoryFilePath) {
+      writeFileSync(
+        reviewHistoryFilePath,
+        JSON.stringify(historyItems, null, 2),
+        "utf-8",
+      );
+    }
 
     logger.info(
       `[GitLab] Loaded ${changes.length} diff file entries across ${diffPages.length} page(s)`,
@@ -110,7 +122,7 @@ const main = async () => {
       diffFilePaths,
       title: mr.title,
       description: mr.description,
-      historyItems,
+      reviewHistoryFilePath: reviewHistoryFilePath ?? undefined,
       debugMode: argv["debug"],
     });
     const response = await reviewRunner({

@@ -81,7 +81,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
-      historyItems: [],
+      reviewHistoryFilePath: undefined,
       debugMode: false,
     });
 
@@ -89,32 +89,24 @@ describe("buildCopilotPrompt", () => {
     expect(prompt.length).toBeGreaterThan(0);
   });
 
-  test("describes previous inline review history as duplicate suppression only", async () => {
+  test("defers previous inline review history to the final duplicate-suppression step", async () => {
     const { buildCopilotPrompt } = await loadPromptsModule();
     const prompt = buildCopilotPrompt({
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: "Test description",
-      historyItems: [
-        {
-          file_path: "app/main.ts",
-          new_line: 42,
-          old_line: null,
-          suggestion: "Existing suggestion",
-        },
-      ],
+      reviewHistoryFilePath: "/tmp/prior-inline-review-history.json",
       debugMode: true,
     });
 
+    expect(prompt).toContain("## Deferred Previous Inline Review History");
     expect(prompt).toContain(
-      "## Previous Inline Review History (duplicate suppression only)",
+      "Do not read or use this history file during the initial diff review, repository walkthrough, or first-pass finding generation.",
     );
+    expect(prompt).toContain("- /tmp/prior-inline-review-history.json");
     expect(prompt).toContain(
-      "Do not let this history change the walkthrough, change summary, summary counts, or any other summary content",
+      'After removing duplicates, update the final inline-review list and X count inside "summary.content" and every translated summary block so they match the filtered final "reviews" array exactly.',
     );
-    expect(prompt).toContain("**File**: app/main.ts");
-    expect(prompt).toContain("**Lines**: new 42, old -");
-    expect(prompt).toContain("**Suggestion**: Existing suggestion");
     expect(prompt).not.toContain(
       "Reviews marked with this will be automatically deleted if not resolved before next update",
     );
@@ -126,7 +118,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
-      historyItems: [],
+      reviewHistoryFilePath: undefined,
       debugMode: false,
     });
 
@@ -147,14 +139,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
-      historyItems: [
-        {
-          file_path: "app/main.ts",
-          new_line: 42,
-          old_line: null,
-          suggestion: "Existing suggestion",
-        },
-      ],
+      reviewHistoryFilePath: "/tmp/prior-inline-review-history.json",
       debugMode: false,
     });
 
@@ -172,7 +157,7 @@ describe("buildCopilotPrompt", () => {
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
-      historyItems: [],
+      reviewHistoryFilePath: undefined,
       debugMode: false,
     });
 

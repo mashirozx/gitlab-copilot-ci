@@ -2,7 +2,6 @@ import {
   REVIEW_RESPONSE_JSON_END_MARKER,
   REVIEW_RESPONSE_JSON_START_MARKER,
 } from "./constants";
-import type { ReviewHistoryContentEntity } from "./services/gitlab.types";
 import { argv } from "./utils/argv";
 import { buildCurrentCommitReference } from "./utils/commit-reference";
 import { getPromptModelSpec } from "./utils/model-name-parser";
@@ -169,16 +168,16 @@ export const buildCopilotPrompt = ({
   diffFilePaths,
   title,
   description,
-  historyItems,
+  reviewHistoryFilePath,
   debugMode,
 }: {
   diffFilePaths: string[];
   title: string;
   description?: string | null;
-  historyItems?: ReviewHistoryContentEntity[];
+  reviewHistoryFilePath?: string;
   debugMode: boolean;
 }): string => {
-  const hasReviewHistory = Boolean(historyItems && historyItems.length > 0);
+  const hasReviewHistory = Boolean(reviewHistoryFilePath);
   const langs = getPromptTranslationLangs({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
@@ -193,30 +192,23 @@ export const buildCopilotPrompt = ({
   const mrDescription = description?.trim()
     ? `\n\n## Pull Request Description\n${description.trim()}`
     : "";
-  const reviewHistoryItems = historyItems ?? [];
 
   const reviewHistorySection = hasReviewHistory
     ? `
 
-## Previous Inline Review History (duplicate suppression only)
+## Deferred Previous Inline Review History
 
-The following inline review comments were already posted by earlier CI runs.
+A file containing inline review comments from earlier CI runs is available at:
+- ${reviewHistoryFilePath}
 
-- Use this history only to avoid creating a duplicate inline review when the same issue is already covered on the same file and exact same old/new line pair.
-- Do not let this history change the walkthrough, change summary, summary counts, or any other summary content except omitting duplicate inline findings.
-- If a similar issue appears on a different file or different line pair, you should still create a new review item for it.
+- Do not read or use this history file during the initial diff review, repository walkthrough, or first-pass finding generation.
+- Complete the actual code review first based on the diff and repository context.
+- Only after you have a candidate final payload, and immediately before constructing the output JSON, read this history file and use it only for duplicate suppression.
+- Remove only duplicate inline review items where the same issue is already covered on the same file and exact same old/new line pair.
+- If a similar issue appears on a different file or different line pair, you should still keep it as a new review item.
 - If you are unsure whether a history item describes the same issue, prefer treating it as different instead of suppressing a new finding.
-
-${reviewHistoryItems
-  .map(
-    (review, idx) => `
-### Previous Review ${idx + 1}
-**File**: ${review.file_path}
-**Lines**: new ${review.new_line ?? "-"}, old ${review.old_line ?? "-"}
-**Suggestion**: ${review.suggestion}
-`,
-  )
-  .join("\n")}
+- After removing duplicates, update the final inline-review list and X count inside "summary.content" and every translated summary block so they match the filtered final "reviews" array exactly.
+- Do not let this deferred history check change the walkthrough, changes summary, or any other earlier analysis beyond omitting duplicate inline findings from the final output.
 `
     : "";
 
@@ -403,8 +395,10 @@ ${translatedRankFlagInstructions}
 ${ignoredRankInstruction}
 ${translationsNote}
 ${translationsSections}
+- If a deferred previous-inline-review history file is provided above, read it only at the final JSON-construction step. Prefer reading and applying that duplicate filter with local Node.js immediately before serializing the payload.
 - Before emitting the final response, construct the full JSON payload with local Node.js and serialize it with Node's JSON.stringify(). Prefer this over hand-writing JSON text.
 - If the Node.js step throws any syntax, reference, or serialization error, fix the payload immediately and rerun the same Node.js JSON.stringify() step until it succeeds.
+- If you loaded the deferred history file, finish filtering duplicate inline review items before this JSON.stringify() step and ensure the final summary review list/counts match the filtered payload.
 - Only after Node.js successfully prints valid minified JSON may you wrap it with the start/end markers and return it.
 - A valid workflow is: build the full payload as a JavaScript object in Node.js, run JSON.stringify(payload), inspect any thrown error, correct the object, and rerun until JSON.stringify(payload) succeeds.
 - Output the JSON on a single line, minified (no newlines)
