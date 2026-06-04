@@ -221,6 +221,7 @@ export class GitLabService {
   private readonly displayLanguages = getDisplayLanguages({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
+    sourceLanguage: argv["thinking-lang"],
   });
   private readonly collapsedLanguages = argv["collapsed-lang"];
   private readonly htmlMarkerPrefix = argv["html-marker-prefix"];
@@ -433,6 +434,7 @@ export class GitLabService {
       review,
       displayLanguages: this.displayLanguages,
       collapsedLanguages: this.collapsedLanguages,
+      sourceLanguage: argv["thinking-lang"],
     });
 
     /**

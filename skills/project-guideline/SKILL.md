@@ -154,11 +154,18 @@ Model display rules:
 - `--should-teach-diff-compute`: include the explicit unified-diff line-number teaching block. Default: `false`.
 - `--tools`: repeatable extra tool allowlist entries.
 - `--lang`: repeatable display languages for summary/inline output.
+- `--thinking-lang`: source language for `summary.content` and `reviews[].suggestion`. Default: `en`.
 - `--collapsed-lang` / `--c-lang`: repeatable display languages to render in `<details>` blocks.
 - `--collapse-changes-summary`: ask the model to emit the `## 🚧 Changes` heading normally, followed by a `<details>` block with summary label `Details` that contains the section body in `summary.content` and every translated summary block. Default: `false`.
 - `--collapse-review-summary`: ask the model to emit the `## 🔍 Review Summary` heading normally, followed by a `<details>` block with summary label `Details` that contains the section body in `summary.content` and every translated summary block. Default: `false`.
 - `--ignored-rank`: repeatable prompt-side rank suppression request with values `HIGH`, `MEDIUM`, `LOW`.
 - `--version` / `-v`: print version info and exit.
+
+Language rendering rules:
+- `summary.content` and every `reviews[].suggestion` value are written in `--thinking-lang`.
+- `summary.translations` and `reviews[].translations` contain only the remaining requested display languages after removing any language equivalent to `--thinking-lang`.
+- When no `--lang` / `--collapsed-lang` values are provided, summary and inline rendering default to `--thinking-lang` instead of assuming English.
+- When a requested display language matches `--thinking-lang`, rendering must use the original `summary.content` / `suggestion` directly instead of looking for a duplicate translation entry.
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
 

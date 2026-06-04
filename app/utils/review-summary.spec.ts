@@ -82,6 +82,7 @@ describe("buildReviewDiscussionBody", () => {
       review: reviews[0] as ReviewItemEntity,
       displayLanguages: ["english", "zh-CN"],
       collapsedLanguages: ["zh-CN"],
+      sourceLanguage: "en",
     });
 
     expect(body).toContain("\\colorbox{#ff4d4f}");
@@ -99,6 +100,7 @@ describe("buildReviewDiscussionBody", () => {
       review: reviews[0] as ReviewItemEntity,
       displayLanguages: ["english", "zh-CN"],
       collapsedLanguages: [],
+      sourceLanguage: "en",
     });
 
     expect(body).toContain(
@@ -190,6 +192,7 @@ None.`,
     const translationLangs = getPromptTranslationLangs({
       langs: [],
       collapsedLangs: ["zh-CN", "english", "zh-CN"],
+      sourceLanguage: "en",
     });
 
     expect(translationLangs).toEqual(["zh-CN"]);
@@ -226,8 +229,10 @@ None.`,
       displayLanguages: getDisplayLanguages({
         langs: [],
         collapsedLangs: ["zh-CN"],
+        sourceLanguage: "en",
       }),
       collapsedLanguages: ["zh-CN"],
+      sourceLanguage: "en",
     });
 
     expect(rendered).toContain(`<summary>${collapsedHeader}</summary>`);
@@ -287,8 +292,10 @@ None.`,
       displayLanguages: getDisplayLanguages({
         langs: ["zh-CN"],
         collapsedLangs: ["en", "ja"],
+        sourceLanguage: "en",
       }),
       collapsedLanguages: ["en", "ja"],
+      sourceLanguage: "en",
     });
 
     expect(rendered).toContain("中文变更。");
@@ -337,6 +344,7 @@ None.`,
       },
       displayLanguages: ["en", "ja"],
       collapsedLanguages: ["en", "ja"],
+      sourceLanguage: "en",
     });
 
     expect(rendered).toContain(`<summary>${englishHeader}</summary>`);
@@ -356,10 +364,55 @@ English changes.`,
       },
       displayLanguages: ["en", "ja"],
       collapsedLanguages: ["ja"],
+      sourceLanguage: "en",
     });
 
     expect(rendered).toContain("English changes.");
     expect(rendered).not.toContain("<summary>ja</summary>");
+  });
+
+  test("renders original summary content directly for a non-English thinking language", () => {
+    const japaneseHeader = formatCollapsedLanguageHeader({
+      language: "ja",
+    });
+
+    const rendered = renderSummaryComment({
+      summary: {
+        content: `# 📝 GPT-5.4 コードレビュー要約
+
+## 📋 Pull Request Changes
+日本語の変更。
+
+## 🔍 Review Summary
+1 件の提案が見つかりました。
+
+- src/a.ts:10: 1つ目
+
+## 💡 Other Suggestions
+なし。`,
+        translations: {
+          en: `${buildConcreteReviewSummaryTitle({ llmName: "GPT-5.4" })}
+
+## 📋 Pull Request Changes
+English changes.
+
+## 🔍 Review Summary
+Found 1 suggestion(s) from GitHub Copilot:
+
+- src/a.ts:10: first
+
+## 💡 Other Suggestions
+None.`,
+        },
+      },
+      displayLanguages: ["ja", "en"],
+      collapsedLanguages: ["ja"],
+      sourceLanguage: "ja",
+    });
+
+    expect(rendered).toContain(`<summary>${japaneseHeader}</summary>`);
+    expect(rendered).toContain("日本語の変更。");
+    expect(rendered).toContain("English changes.");
   });
 });
 

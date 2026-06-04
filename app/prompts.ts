@@ -9,6 +9,7 @@ import {
   buildDetailsBlock,
   getPromptTranslationLangs,
   getRankInlineMath,
+  isSameLanguage,
 } from "./utils/review-output";
 
 export const REVIEW_SUMMARY_TITLE = `# 📝 Code Review Summary by \${LLM name}`;
@@ -30,14 +31,15 @@ const buildTranslationsSpec = (langs: string[]): string => {
 const buildTranslationsSectionInstructions = ({
   langs,
   hasReviewHistory,
+  sourceLanguage,
 }: {
   langs: string[];
   hasReviewHistory: boolean;
+  sourceLanguage: string;
 }): string => {
   if (langs.length === 0) return "";
 
   const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE_TEXT;
-  const reviewSummaryLeadLine = buildReviewSummaryLeadLine();
   const reviewSummaryHistoryNote = hasReviewHistory
     ? buildReviewHistoryExclusionNote()
     : "";
@@ -49,10 +51,10 @@ const buildTranslationsSectionInstructions = ({
 For "summary.translations["${lang}"]", return a complete markdown block using the same section structure, written entirely in ${lang}. Use a heading like:
 # 📝 [translated equivalent of "${reviewSummaryTitleTemplate}"] (${lang})
 Keep the markdown heading prefix exactly as "# 📝 ". Do not translate, duplicate, remove, or add markdown symbols, heading markers, or emoji in the title line. Translate only the human-language title text after that prefix.
-Preserve the exact English section structure for each corresponding section. If the English template uses a plain "##" heading for a section, keep a translated "##" heading there. If the English template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there and translate only the visible summary label and section body.
+Translate the original ${sourceLanguage} "summary.content" markdown block into ${lang} while preserving its section structure. If the source template uses a plain "##" heading for a section, keep a translated "##" heading there. If the source template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there and translate only the visible summary label and section body.
 Include translated equivalents of the Walkthrough, Changes, Review Summary, and Other Suggestions section content.
 The suggestions list should use the translations["${lang}"] values from the reviews.
-Keep the markdown commit reference from "${reviewSummaryLeadLine}" unchanged and translate only the surrounding prose.
+Keep the markdown commit reference from the original "summary.content" unchanged and translate only the surrounding prose.
 ${reviewSummaryHistoryNote ? `After the inline-review list, keep the same separator and subscript note structure as "${reviewSummaryHistoryNote}", translated naturally while preserving the HTML and markdown structure.` : ""}
 The Other Suggestions section may be a bullet list, numbered list, or a short paragraph, but it must remain in the comment markdown rather than the reviews JSON array.
 If there are no suggestions, write the localized equivalent of "✨ No issues found!".`,
@@ -60,8 +62,21 @@ If there are no suggestions, write the localized equivalent of "✨ No issues fo
     .join("");
 };
 
-const buildReviewSummaryLeadLine = (): string => {
-  return `Found X review suggestion(s) in the changes up to ${buildCurrentCommitReference()}:`;
+const buildReviewSummaryLeadLine = ({
+  sourceLanguage,
+}: {
+  sourceLanguage: string;
+}): string => {
+  if (
+    isSameLanguage({
+      left: sourceLanguage,
+      right: "en",
+    })
+  ) {
+    return `Found X review suggestion(s) in the changes up to ${buildCurrentCommitReference()}:`;
+  }
+
+  return `[In ${sourceLanguage}, state how many review suggestions were found in the changes up to ${buildCurrentCommitReference()}. Keep the markdown commit reference unchanged.]`;
 };
 
 const buildReviewHistoryExclusionNote = (): string => {
@@ -147,16 +162,18 @@ const buildChangesSummaryTemplate = (): string => {
 
 const buildReviewSummaryTemplate = ({
   hasReviewHistory,
+  sourceLanguage,
 }: {
   hasReviewHistory: boolean;
+  sourceLanguage: string;
 }): string => {
   const heading = "## 🔍 Review Summary";
   const historyNote = hasReviewHistory
     ? `\n\n***\n\n${buildReviewHistoryExclusionNote()}`
     : "";
-  const content = `${buildReviewSummaryLeadLine()}
+  const content = `${buildReviewSummaryLeadLine({ sourceLanguage })}
 
-[List of inline-review suggestions in English only, format: "- file:line: rank_flag suggestion"]
+[List of inline-review suggestions in ${sourceLanguage} only, format: "- file:line: rank_flag suggestion"]
 
 If no suggestions, instead write: ✨ No issues found!
 ${historyNote}`;
@@ -185,9 +202,11 @@ export const buildCopilotPrompt = ({
   debugMode: boolean;
 }): string => {
   const hasReviewHistory = Boolean(reviewHistoryFilePath);
+  const sourceLanguage = argv["thinking-lang"];
   const langs = getPromptTranslationLangs({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
+    sourceLanguage,
   });
   const instructionFiles = argv["instruction-files"];
   const extraPrompts = argv["extra-prompts"]?.trim();
@@ -248,6 +267,7 @@ A markdown file containing documented prior-review blocks is available at:
   const translationsSections = buildTranslationsSectionInstructions({
     langs,
     hasReviewHistory,
+    sourceLanguage,
   });
   const reviewSummaryTitleTemplate = REVIEW_SUMMARY_TITLE;
   const diffLineNumberGuidance = shouldTeachDiffCompute
@@ -265,10 +285,10 @@ A markdown file containing documented prior-review blocks is available at:
     langs.length > 0 ? buildTranslatedRankFlagInstructions() : "";
 
   const walkthroughSectionTemplate = `## 📋 Walkthrough
-[Write an English walkthrough that explains the merge request's goal and how the implementation is built step by step.]`;
+[Write a ${sourceLanguage} walkthrough that explains the merge request's goal and how the implementation is built step by step.]`;
 
   const otherSuggestionsSectionTemplate = `## 💡 Other Suggestions
-[List any valid non-inline suggestions in English only. This can be a bullet list, numbered list, or short paragraph.]
+[List any valid non-inline suggestions in ${sourceLanguage} only. This can be a bullet list, numbered list, or short paragraph.]
 
 If there are no other suggestions, write: ✨ I have no feedback to provide.`;
 
@@ -281,7 +301,10 @@ ${walkthroughSectionTemplate}
 
 ${buildChangesSummaryTemplate()}
 
-${buildReviewSummaryTemplate({ hasReviewHistory })}
+${buildReviewSummaryTemplate({
+  hasReviewHistory,
+  sourceLanguage,
+})}
 
 ${otherSuggestionsSectionTemplate}`;
 
@@ -341,7 +364,7 @@ Then, inspect any repository files you need for context, including changed files
 ${extraPromptsSection}
 
 Analyze what this pull request changes and generate:
-1. A structured summary object whose "content" is always markdown in English${langs.length > 0 ? ` and whose "translations" object contains translated summary markdown blocks keyed by language: ${langs.join(", ")}` : ""}
+1. A structured summary object whose "content" is always markdown in ${sourceLanguage}${langs.length > 0 ? ` and whose "translations" object contains translated summary markdown blocks keyed by language: ${langs.join(", ")}` : ""}
 2. JSON array with one object per inline review comment
 
 Return only a JSON object with this structure:
@@ -358,7 +381,7 @@ Return only a JSON object with this structure:
       "new_line"?: number,
       "old_line"?: number,
       "rank": "HIGH | MEDIUM | LOW",
-      "suggestion": "string (English)"${translationsSpec}
+      "suggestion": "string (${sourceLanguage})"${translationsSpec}
     }
   ]
 }
@@ -378,8 +401,9 @@ ${configuredModelSection}`
 - In the title of "summary.content" and every value in "summary.translations", replace "\${LLM name}" with the full, human-readable model display name using Title Case with space separation (e.g., "GPT-5.4 mini", "Gemini 3.5 Flash"). If and only if you are the standard/base model, drop the tier suffix (e.g., use "GPT-5.4", not "GPT-5.4 Base").
 - The full human-readable model display name must appear in the summary title. Do not add any separate JSON field for model or effort output.
 - In every summary title, keep the exact markdown prefix "# 📝 " and do not translate or duplicate markdown symbols or emoji. Translate only the natural-language title text after that prefix when needed.
-- Always write "summary.content" and every review item's "suggestion" in English, regardless of --lang or --collapsed-lang.
-- Any non-English language requested by the runtime must be returned only inside the JSON translation fields.
+- Always write "summary.content" and every review item's "suggestion" in ${sourceLanguage}, regardless of --lang or --collapsed-lang.
+- Any requested language other than ${sourceLanguage} must be returned only inside the JSON translation fields.
+- If a requested display language matches ${sourceLanguage}, do not include that language in any translations object; the runtime will read that language directly from "summary.content" or "suggestion".
 - Keep suggestion and all translations aligned in meaning
 - Every review item in "reviews" must include a rank of HIGH, MEDIUM, or LOW.
 - Do not embed the rank flag markup into "suggestion" or translation text. Keep the structured "rank" field separate.
@@ -388,7 +412,7 @@ ${configuredModelSection}`
   - HIGH: ${getRankInlineMath({ rank: "HIGH" })}
   - MEDIUM: ${getRankInlineMath({ rank: "MEDIUM" })}
   - LOW: ${getRankInlineMath({ rank: "LOW" })}
-- In "summary.content", keep the rank words in English exactly as shown above.
+- In "summary.content", keep the rank words in ${sourceLanguage}.
 ${translatedRankFlagInstructions}
 - Only include actionable review findings
 - Every review item in "reviews" must include "diff_file" and "diff_line_code".

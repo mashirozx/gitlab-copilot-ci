@@ -11,17 +11,19 @@ import {
   buildDetailsBlock,
   formatCollapsedLanguageHeader,
   getDisplayLanguages,
-  isEnglishLanguage,
+  isSameLanguage,
 } from "./review-output";
 
 const getSummaryContentForLanguage = ({
   summary,
   language,
+  sourceLanguage = "en",
 }: {
   summary: ReviewSummaryEntity;
   language: string;
+  sourceLanguage?: string;
 }): string | null => {
-  if (isEnglishLanguage({ language })) {
+  if (isSameLanguage({ left: language, right: sourceLanguage })) {
     return summary.content.trim().length > 0 ? summary.content : null;
   }
 
@@ -37,10 +39,12 @@ export const renderSummaryComment = ({
   summary,
   displayLanguages,
   collapsedLanguages,
+  sourceLanguage = "en",
 }: {
   summary: ReviewSummaryEntity;
   displayLanguages: string[];
   collapsedLanguages: string[];
+  sourceLanguage?: string;
 }): string => {
   const collapsedLanguageSet = new Set(
     collapsedLanguages.map((language) => language.trim().toLowerCase()),
@@ -51,6 +55,7 @@ export const renderSummaryComment = ({
       const block = getSummaryContentForLanguage({
         summary,
         language,
+        sourceLanguage,
       });
 
       if (!block) {
@@ -352,6 +357,7 @@ export const buildSummaryNote = ({
   const displayLanguages = getDisplayLanguages({
     langs: argv["lang"],
     collapsedLangs: argv["collapsed-lang"],
+    sourceLanguage: argv["thinking-lang"],
   });
   const encodedReviewHistory = encodeReviewHistory({
     reviewHistory: trimReviewHistoryRuns({
@@ -364,6 +370,7 @@ ${renderSummaryComment({
   summary: response.summary,
   displayLanguages,
   collapsedLanguages: argv["collapsed-lang"],
+  sourceLanguage: argv["thinking-lang"],
 })}`;
 
   summaryBody += buildPerformanceMetricsSection({

@@ -8,9 +8,15 @@ const originalProjectUrl = process.env.CI_PROJECT_URL;
 const loadPromptsModule = async ({
   collapseChangesSummary = false,
   collapseReviewSummary = false,
+  thinkingLang = "en",
+  langs = ["ja"],
+  collapsedLangs = [],
 }: {
   collapseChangesSummary?: boolean;
   collapseReviewSummary?: boolean;
+  thinkingLang?: string;
+  langs?: string[];
+  collapsedLangs?: string[];
 } = {}) => {
   process.env.CI_COMMIT_SHA = "1234567890abcdef";
   process.env.CI_COMMIT_SHORT_SHA = "12345678";
@@ -20,8 +26,9 @@ const loadPromptsModule = async ({
     argv: {
       agent: "github-copilot-cli",
       "agent-bin": undefined,
-      lang: ["ja"],
-      "collapsed-lang": [],
+      lang: langs,
+      "collapsed-lang": collapsedLangs,
+      "thinking-lang": thinkingLang,
       "html-marker-prefix": "copilot",
       "instruction-files": [],
       "extra-prompts": undefined,
@@ -138,7 +145,7 @@ describe("buildCopilotPrompt", () => {
       "<sub>Suggestions from previous review runs are not listed here.</sub>",
     );
     expect(prompt).toContain(
-      'Keep the markdown commit reference from "Found X review suggestion(s) in the changes up to [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef):" unchanged and translate only the surrounding prose.',
+      'Keep the markdown commit reference from the original "summary.content" unchanged and translate only the surrounding prose.',
     );
   });
 
@@ -177,7 +184,36 @@ describe("buildCopilotPrompt", () => {
       "## 🔍 Review Summary\n\n<details>\n<summary>Details</summary>",
     );
     expect(prompt).toContain(
-      "If the English template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there",
+      "If the source template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there",
     );
+  });
+
+  test("uses thinking-lang as the original content language and excludes it from translations", async () => {
+    const { buildCopilotPrompt } = await loadPromptsModule({
+      thinkingLang: "ja",
+      langs: ["ja", "zh-CN"],
+      collapsedLangs: ["en"],
+    });
+    const prompt = buildCopilotPrompt({
+      diffFilePaths: ["mr-diff.page-1.diff"],
+      title: "Test MR",
+      description: null,
+      reviewHistoryFilePath: undefined,
+      debugMode: false,
+    });
+
+    expect(prompt).toContain(
+      'A structured summary object whose "content" is always markdown in ja and whose "translations" object contains translated summary markdown blocks keyed by language: zh-CN, en',
+    );
+    expect(prompt).toContain(
+      '"suggestion": "string (ja)", "translations": { "zh-CN": "string", "en": "string" }',
+    );
+    expect(prompt).toContain(
+      'Always write "summary.content" and every review item\'s "suggestion" in ja, regardless of --lang or --collapsed-lang.',
+    );
+    expect(prompt).toContain(
+      'If a requested display language matches ja, do not include that language in any translations object; the runtime will read that language directly from "summary.content" or "suggestion".',
+    );
+    expect(prompt).not.toContain('"ja": "string"');
   });
 });

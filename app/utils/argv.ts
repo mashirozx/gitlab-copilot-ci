@@ -227,6 +227,12 @@ export const argv = yargs(hideBin(process.argv))
     array: true,
     default: [] as string[],
   })
+  .option("thinking-lang", {
+    describe:
+      "Source language for summary.content and reviews[].suggestion. Matching display languages reuse the original content instead of a translation entry.",
+    type: "string",
+    default: "en",
+  })
   .option("collapsed-lang", {
     alias: "c-lang",
     describe:

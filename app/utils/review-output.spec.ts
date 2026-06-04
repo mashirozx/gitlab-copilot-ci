@@ -5,7 +5,11 @@ process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
 process.env.CI_MERGE_REQUEST_IID ??= "1";
 
-const { normalizeReviewResponse } = await import("./review-output");
+const {
+  getDisplayLanguages,
+  getPromptTranslationLangs,
+  normalizeReviewResponse,
+} = await import("./review-output");
 
 describe("normalizeReviewResponse", () => {
   test("keeps keyed summary translations unchanged", () => {
@@ -45,5 +49,25 @@ describe("normalizeReviewResponse", () => {
       "zh-CN": "中文",
       ja: "日本語",
     });
+  });
+
+  test("excludes the thinking language from translation requests", () => {
+    expect(
+      getPromptTranslationLangs({
+        langs: ["ja", "zh-CN"],
+        collapsedLangs: ["en"],
+        sourceLanguage: "ja",
+      }),
+    ).toEqual(["zh-CN", "en"]);
+  });
+
+  test("defaults displayed languages to the thinking language", () => {
+    expect(
+      getDisplayLanguages({
+        langs: [],
+        collapsedLangs: [],
+        sourceLanguage: "ja",
+      }),
+    ).toEqual(["ja"]);
   });
 });

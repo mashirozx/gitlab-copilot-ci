@@ -50,7 +50,8 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 | `--extra-prompts` | `string` | none | Extra prompt text to append to the generated LLM review prompt. If provided, the model must obey it. |
 | `--should-teach-diff-compute` | `boolean` | `false` | Include prompt instructions that teach the LLM how to compute diff line positions manually from unified diff hunks. |
 | `--tools` | `array` | `[]` | Additional agent tool names to allow beyond the built-in defaults. Repeatable, for example `--tools sh --tools read_file`. |
-| `--lang` | `array` | `[]` | Display language(s) for review output, for example `--lang=zh-CN --lang=ja --lang=english`. If omitted, output defaults to English only. |
+| `--lang` | `array` | `[]` | Display language(s) for review output, for example `--lang=zh-CN --lang=ja --lang=english`. If omitted, output defaults to the `--thinking-lang` source language. |
+| `--thinking-lang` | `string` | `en` | Source language for `summary.content` and `reviews[].suggestion`. Any requested display language matching this source reuses the original content instead of a translation entry. |
 | `--collapsed-lang`, `--c-lang` | `array` | `[]` | Display language(s) that should be wrapped in a GitLab `<details>` block for both inline reviews and the summary note. |
 | `--collapse-changes-summary` | `boolean` | `false` | Wrap the summary note's `## 🚧 Changes` section in a GitLab `<details>` block. |
 | `--collapse-review-summary` | `boolean` | `false` | Wrap the summary note's `## 🔍 Review Summary` section in a GitLab `<details>` block. |
@@ -90,12 +91,14 @@ code-review:
     - ./gitlab-copilot-ci \
         --agent "pi" \ # required
         --model "google/gemini-3.5-flash:xhigh" \ # optional
-        --lang en --c-lang zh-CN \ # optional
+        --thinking-lang en --lang en --c-lang zh-CN \ # optional
         --instruction-files CLAUDE.md --instruction-files CODE-REVIEW_RULE.md \ # optional
         --extra-prompts "Focus on security implications and edge cases." \ # optional
         --ignored-rank LOW \ # optional
         --html-marker-prefix "xiaomi-mimo-code-review" # optional
 ```
+
+      When `--thinking-lang` differs from the requested display languages, the agent writes the original `summary.content` and inline `suggestion` fields in that source language, then fills `summary.translations` and `reviews[].translations` only for the remaining requested languages. If `--lang` or `--c-lang` includes the same language as `--thinking-lang`, that language is rendered directly from the original content instead of duplicated in the translations objects.
 
 ### Model Syntax
 

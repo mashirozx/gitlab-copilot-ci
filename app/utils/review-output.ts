@@ -8,6 +8,73 @@ import { modelDisplayName } from "./model-display.ts";
 
 const ENGLISH_LANGUAGE_KEY = "english";
 
+const normalizeLanguageForComparison = ({
+  language,
+}: {
+  language: string;
+}): {
+  full: string;
+  base: string;
+} => {
+  const trimmedLanguage = language.trim();
+
+  if (trimmedLanguage.length === 0) {
+    return {
+      full: "",
+      base: "",
+    };
+  }
+
+  if (trimmedLanguage.toLowerCase() === ENGLISH_LANGUAGE_KEY) {
+    return {
+      full: "en",
+      base: "en",
+    };
+  }
+
+  try {
+    const canonicalLanguage = Intl.getCanonicalLocales(trimmedLanguage)[0];
+    const canonicalLower = canonicalLanguage.toLowerCase();
+
+    return {
+      full: canonicalLower,
+      base: canonicalLower.split("-")[0] ?? canonicalLower,
+    };
+  } catch {
+    const normalizedLanguage = trimmedLanguage.toLowerCase();
+
+    return {
+      full: normalizedLanguage,
+      base: normalizedLanguage.split("-")[0] ?? normalizedLanguage,
+    };
+  }
+};
+
+export const isSameLanguage = ({
+  left,
+  right,
+}: {
+  left: string;
+  right: string;
+}): boolean => {
+  const normalizedLeft = normalizeLanguageForComparison({ language: left });
+  const normalizedRight = normalizeLanguageForComparison({ language: right });
+
+  if (normalizedLeft.full.length === 0 || normalizedRight.full.length === 0) {
+    return false;
+  }
+
+  if (normalizedLeft.full === normalizedRight.full) {
+    return true;
+  }
+
+  return (
+    normalizedLeft.base === normalizedRight.base &&
+    (normalizedLeft.full === normalizedLeft.base ||
+      normalizedRight.full === normalizedRight.base)
+  );
+};
+
 const REVIEW_RANK_META: Record<
   ReviewRankEntity,
   {
@@ -61,41 +128,42 @@ export const isEnglishLanguage = ({
 }: {
   language: string;
 }): boolean => {
-  const normalized = language.trim().toLowerCase();
-
-  return (
-    normalized === "english" ||
-    normalized === "en" ||
-    normalized.startsWith("en-")
-  );
+  return isSameLanguage({
+    left: language,
+    right: "en",
+  });
 };
 
 export const getPromptTranslationLangs = ({
   langs,
   collapsedLangs = [],
+  sourceLanguage = "en",
 }: {
   langs: string[];
   collapsedLangs?: string[];
+  sourceLanguage?: string;
 }): string[] => {
   return mergeRequestedLanguages({
     langs,
     collapsedLangs,
-  }).filter((lang) => !isEnglishLanguage({ language: lang }));
+  }).filter((lang) => !isSameLanguage({ left: lang, right: sourceLanguage }));
 };
 
 export const getDisplayLanguages = ({
   langs,
   collapsedLangs = [],
+  sourceLanguage = ENGLISH_LANGUAGE_KEY,
 }: {
   langs: string[];
   collapsedLangs?: string[];
+  sourceLanguage?: string;
 }): string[] => {
   const normalizedLangs = mergeRequestedLanguages({
     langs,
     collapsedLangs,
   });
 
-  return normalizedLangs.length > 0 ? normalizedLangs : [ENGLISH_LANGUAGE_KEY];
+  return normalizedLangs.length > 0 ? normalizedLangs : [sourceLanguage];
 };
 
 export const buildDetailsBlock = ({
@@ -261,15 +329,17 @@ export const getRankInlineMath = ({
 const getRenderedReviewMessages = ({
   review,
   displayLanguages,
+  sourceLanguage = "en",
 }: {
   review: ReviewItemEntity;
   displayLanguages: string[];
+  sourceLanguage?: string;
 }): Array<{
   language: string;
   message: string;
 }> => {
   return displayLanguages.flatMap((language) => {
-    if (isEnglishLanguage({ language })) {
+    if (isSameLanguage({ left: language, right: sourceLanguage })) {
       return review.suggestion.trim().length > 0
         ? [
             {
@@ -298,15 +368,18 @@ export const buildReviewDiscussionBody = ({
   review,
   displayLanguages,
   collapsedLanguages,
+  sourceLanguage = "en",
 }: {
   marker: string;
   review: ReviewItemEntity;
   displayLanguages: string[];
   collapsedLanguages: string[];
+  sourceLanguage?: string;
 }): string => {
   const renderedMessages = getRenderedReviewMessages({
     review,
     displayLanguages,
+    sourceLanguage,
   });
   const collapsedLanguageSet = new Set(
     collapsedLanguages.map((language) => language.trim().toLowerCase()),

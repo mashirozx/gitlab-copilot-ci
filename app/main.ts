@@ -137,6 +137,7 @@ const main = async () => {
       translationLangs: getPromptTranslationLangs({
         langs: argv["lang"],
         collapsedLangs: argv["collapsed-lang"],
+        sourceLanguage: argv["thinking-lang"],
       }),
     });
     const reviews = normalizedResponse.reviews;
