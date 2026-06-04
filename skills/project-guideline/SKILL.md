@@ -122,6 +122,11 @@ Rules:
 - Prefer pure helpers in `app/utils/` over embedding parser/formatter logic in `app/main.ts`.
 - Type imports should come from the owning domain module, for example `./types/review.types` and `./services/gitlab.types`.
 
+Model display rules:
+- `app/utils/model-display.ts` defaults missing effort suffixes to `medium` in rendered model labels.
+- `mimo` display labels do not render raw effort tags: any explicit suffix becomes `thinking: enabled`, and no suffix becomes `thinking: disabled`.
+- `MiniMax` display labels alias effort tags to Anthropic-style labels for consistency: `minimal -> low`, `low -> low`, `medium -> medium`, `high -> high`, and `xhigh -> high`.
+
 ## CLI Arguments and Environment Variables
 
 `app/utils/argv.ts` accepts:

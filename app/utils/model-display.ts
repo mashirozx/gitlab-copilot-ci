@@ -1,10 +1,49 @@
 import { argv } from "./argv";
 import { getPromptModelSpec } from "./model-name-parser";
 
-export const modelDisplayName = (() => {
-  const DEFAULT_CONFIGURED_MODEL_EFFORT = "medium";
+const DEFAULT_CONFIGURED_MODEL_EFFORT = "medium";
+
+const normalizeConfiguredModelName = ({ model }: { model: string }): string => {
+  return model
+    .trim()
+    .replace(/[\s_:/]+/g, "-")
+    .replace(/-+/g, "-")
+    .toLowerCase();
+};
+
+const getConfiguredEffortDisplay = ({
+  model,
+  effort,
+}: {
+  model: string;
+  effort?: string;
+}): string => {
+  if (/^mimo(?:$|[-:.])/i.test(model.trim())) {
+    return effort ? "thinking: enabled" : "thinking: disabled";
+  }
+
+  if (/^minimax(?:$|[-:.])/i.test(model.trim())) {
+    if (!effort) {
+      return DEFAULT_CONFIGURED_MODEL_EFFORT;
+    }
+
+    if (effort === "minimal") {
+      return "low";
+    }
+
+    if (effort === "xhigh") {
+      return "high";
+    }
+
+    return effort;
+  }
+
+  return effort ?? DEFAULT_CONFIGURED_MODEL_EFFORT;
+};
+
+export const getModelDisplayName = ({ model }: { model?: string }): string => {
   const configuredModelSpec = getPromptModelSpec({
-    model: argv["model"],
+    model,
   });
 
   const configuredModelName = configuredModelSpec.model;
@@ -13,27 +52,9 @@ export const modelDisplayName = (() => {
     return "";
   }
 
-  const normalizeConfiguredModelName = ({
-    model,
-  }: {
-    model: string;
-  }): string => {
-    return model
-      .trim()
-      .replace(/[\s_:/]+/g, "-")
-      .replace(/-+/g, "-")
-      .toLowerCase();
-  };
+  return `${normalizeConfiguredModelName({ model: configuredModelName })} <kbd>${getConfiguredEffortDisplay({ model: configuredModelName, effort: configuredModelSpec.effort })}</kbd>`;
+};
 
-  const getConfiguredEffortDisplay = (): string => {
-    if (/^mimo(?:$|[-:.])/i.test(configuredModelName.trim())) {
-      return configuredModelSpec.effort
-        ? "thinking: enabled"
-        : "thinking: disabled";
-    }
-
-    return configuredModelSpec.effort ?? DEFAULT_CONFIGURED_MODEL_EFFORT;
-  };
-
-  return `${normalizeConfiguredModelName({ model: configuredModelName })} <kbd>${getConfiguredEffortDisplay()}</kbd>`;
-})();
+export const modelDisplayName = getModelDisplayName({
+  model: argv["model"],
+});

@@ -22,10 +22,44 @@ process.argv = [
   "openai/gpt-5.4",
 ];
 
-const { modelDisplayName } = await import("./model-display.ts");
+const { getModelDisplayName, modelDisplayName } = await import(
+  "./model-display.ts"
+);
 
 describe("modelDisplayName", () => {
   test("uses the eagerly computed shared configured model display", () => {
     expect(modelDisplayName).toBe("gpt-5.4 <kbd>medium</kbd>");
+  });
+
+  test("aliases MiniMax effort tags to Anthropic-compatible labels", () => {
+    expect(
+      getModelDisplayName({
+        model: "minimax/MiniMax-M3:minimal",
+      }),
+    ).toBe("minimax-m3 <kbd>low</kbd>");
+
+    expect(
+      getModelDisplayName({
+        model: "minimax/MiniMax-M3:low",
+      }),
+    ).toBe("minimax-m3 <kbd>low</kbd>");
+
+    expect(
+      getModelDisplayName({
+        model: "minimax/MiniMax-M3:medium",
+      }),
+    ).toBe("minimax-m3 <kbd>medium</kbd>");
+
+    expect(
+      getModelDisplayName({
+        model: "minimax/MiniMax-M3:high",
+      }),
+    ).toBe("minimax-m3 <kbd>high</kbd>");
+
+    expect(
+      getModelDisplayName({
+        model: "minimax/MiniMax-M3:xhigh",
+      }),
+    ).toBe("minimax-m3 <kbd>high</kbd>");
   });
 });
