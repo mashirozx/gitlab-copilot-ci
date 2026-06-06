@@ -3,6 +3,7 @@ stages:
   - release-check
   - build
   - release
+  - trigger
 
 .use-image:
   tags:
@@ -122,3 +123,37 @@ release:publish:
       artifacts: true
   script:
     - bun scripts/ci/publish-release.ts
+
+trigger:runner:
+  extends:
+    - .use-image
+  stage: trigger
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $RUNNER_TRIGGER_TOKEN'
+      when: on_success
+    - when: never
+  needs:
+    - job: release:check
+      artifacts: true
+    - job: release:publish
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      if [ -z "${RUNNER_TRIGGER_URL:-}" ]; then
+        echo "Missing RUNNER_TRIGGER_URL"
+        exit 1
+      fi
+
+      if [ -z "${RUNNER_TARGET_JOB:-}" ]; then
+        echo "Missing RUNNER_TARGET_JOB"
+        exit 1
+      fi
+
+      curl -X POST \
+        --fail \
+        -F "token=${RUNNER_TRIGGER_TOKEN}" \
+        -F "ref=main" \
+        -F "variables[TARGET_JOB]=${RUNNER_TARGET_JOB}" \
+        -F "variables[GITLAB_COPILOT_CLI_VERSION]=${RELEASE_TAG}" \
+        "${RUNNER_TRIGGER_URL}"
