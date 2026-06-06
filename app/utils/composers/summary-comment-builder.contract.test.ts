@@ -3,11 +3,19 @@ import { initI18n } from "../../i18n";
 import type { ReviewHistoryDiscussionEntity } from "../../services/gitlab.types";
 import type { ReviewResponseEntity } from "../../types/review.types";
 
-process.env.GITLAB_TOKEN ??= "test-gitlab-token";
-process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
-process.env.CI_PROJECT_ID ??= "1";
-process.env.CI_MERGE_REQUEST_IID ??= "1";
-process.env.CI_PROJECT_URL ??= "https://gitlab.example.com/group/repo-name";
+process.env.GITLAB_TOKEN = "test-gitlab-token";
+process.env.CI_SERVER_URL = "https://gitlab.example.com";
+process.env.CI_PROJECT_ID = "1";
+process.env.CI_MERGE_REQUEST_IID = "1";
+process.env.CI_PROJECT_URL = "https://gitlab.example.com/group/repo-name";
+
+const contractEnv = {
+  GITLAB_TOKEN: "test-gitlab-token",
+  CI_SERVER_URL: "https://gitlab.example.com",
+  CI_PROJECT_ID: "1",
+  CI_MERGE_REQUEST_IID: "1",
+  CI_PROJECT_URL: "https://gitlab.example.com/group/repo-name",
+} as const;
 
 const buildSnapshotPath = ({ fileName }: { fileName: string }): URL => {
   return new URL(`./__snapshots__/${fileName}`, import.meta.url);
@@ -282,6 +290,25 @@ const loadSummaryCommentBuilder = async () => {
       "max-history-length": 12,
       model: "gpt-5.4",
       "thinking-lang": "en",
+    },
+  }));
+  mock.module("../env", () => ({
+    env: {
+      get GITLAB_TOKEN() {
+        return contractEnv.GITLAB_TOKEN;
+      },
+      get CI_SERVER_URL() {
+        return contractEnv.CI_SERVER_URL;
+      },
+      get CI_PROJECT_ID() {
+        return contractEnv.CI_PROJECT_ID;
+      },
+      get CI_MERGE_REQUEST_IID() {
+        return contractEnv.CI_MERGE_REQUEST_IID;
+      },
+      get CI_PROJECT_URL() {
+        return contractEnv.CI_PROJECT_URL;
+      },
     },
   }));
   mock.module("../model-display.ts", () => ({
