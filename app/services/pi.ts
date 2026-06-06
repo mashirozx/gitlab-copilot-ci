@@ -7,6 +7,7 @@ import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
+import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
 import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
 import { createPiMessageFormatter } from "../utils/pi-message-formatter";
@@ -399,15 +400,10 @@ export const runPiReview = async ({
           }
 
           void finalizeResult({
-            result: {
-              summary: {
-                content: "",
-                translations: {},
-              },
-              reviews: [],
+            result: buildEmptyReviewResponse({
               duration,
-              errors: [errMsg],
-            },
+              error: errMsg,
+            }),
           });
           return;
         }
@@ -435,15 +431,10 @@ export const runPiReview = async ({
             startTimeMs: startTime,
           });
           void finalizeResult({
-            result: {
-              summary: {
-                content: "",
-                translations: {},
-              },
-              reviews: [],
+            result: buildEmptyReviewResponse({
               duration,
-              errors: [errMsg],
-            },
+              error: errMsg,
+            }),
           });
           return;
         }
@@ -482,15 +473,10 @@ export const runPiReview = async ({
           startTimeMs: startTime,
         });
         void finalizeResult({
-          result: {
-            summary: {
-              content: "",
-              translations: {},
-            },
-            reviews: [],
+          result: buildEmptyReviewResponse({
             duration,
-            errors: [errMsg],
-          },
+            error: errMsg,
+          }),
         });
       }
     });
@@ -503,15 +489,10 @@ export const runPiReview = async ({
         startTimeMs: startTime,
       });
       void finalizeResult({
-        result: {
-          summary: {
-            content: "",
-            translations: {},
-          },
-          reviews: [],
+        result: buildEmptyReviewResponse({
           duration,
-          errors: [errMsg],
-        },
+          error: errMsg,
+        }),
       });
     });
   });

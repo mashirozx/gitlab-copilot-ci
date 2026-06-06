@@ -8,6 +8,19 @@ import {
   recomputeReviewPositionFromDiffReference,
 } from "./diff-files";
 
+const buildSuggestions = ({
+  detail,
+  abstract,
+}: {
+  detail: string;
+  abstract: string;
+}) => ({
+  en: {
+    detail,
+    abstract,
+  },
+});
+
 const createDiff = ({
   oldPath,
   newPath,
@@ -130,7 +143,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
           file_path: "wrong/path.ts",
           diff_file: "mr-diff.page-1.diff",
           diff_line_code: "+lineB2",
-          suggestion: "Use the added line",
+          suggestions: buildSuggestions({
+            detail: "Use the added line",
+            abstract: "Use the added line",
+          }),
         },
         diffFilePaths: [diffFilePath],
       });
@@ -140,7 +156,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
           file_path: "wrong/path.ts",
           diff_file: "mr-diff.page-1.diff",
           diff_line_code: "-lineB",
-          suggestion: "Use the removed line",
+          suggestions: buildSuggestions({
+            detail: "Use the removed line",
+            abstract: "Use the removed line",
+          }),
         },
         diffFilePaths: [diffFilePath],
       });
@@ -150,7 +169,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
           file_path: "wrong/path.ts",
           diff_file: "mr-diff.page-1.diff",
           diff_line_code: " lineC",
-          suggestion: "Use the context line",
+          suggestions: buildSuggestions({
+            detail: "Use the context line",
+            abstract: "Use the context line",
+          }),
         },
         diffFilePaths: [diffFilePath],
       });
@@ -159,7 +181,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
         file_path: "src/example.ts",
         diff_file: "mr-diff.page-1.diff",
         diff_line_code: "+lineB2",
-        suggestion: "Use the added line",
+        suggestions: buildSuggestions({
+          detail: "Use the added line",
+          abstract: "Use the added line",
+        }),
         new_line: 11,
         old_line: undefined,
       });
@@ -168,7 +193,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
         file_path: "src/example.ts",
         diff_file: "mr-diff.page-1.diff",
         diff_line_code: "-lineB",
-        suggestion: "Use the removed line",
+        suggestions: buildSuggestions({
+          detail: "Use the removed line",
+          abstract: "Use the removed line",
+        }),
         new_line: undefined,
         old_line: 11,
       });
@@ -177,7 +205,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
         file_path: "src/example.ts",
         diff_file: "mr-diff.page-1.diff",
         diff_line_code: " lineC",
-        suggestion: "Use the context line",
+        suggestions: buildSuggestions({
+          detail: "Use the context line",
+          abstract: "Use the context line",
+        }),
         new_line: 12,
         old_line: 12,
       });
@@ -207,7 +238,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
             file_path: "src/example.ts",
             diff_file: "missing.diff",
             diff_line_code: "+new",
-            suggestion: "Missing file",
+            suggestions: buildSuggestions({
+              detail: "Missing file",
+              abstract: "Missing file",
+            }),
           },
           diffFilePaths: [diffFilePath],
         }),
@@ -219,7 +253,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
             file_path: "src/example.ts",
             diff_file: "mr-diff.page-1.diff",
             diff_line_code: "+does-not-exist",
-            suggestion: "Invalid diff line code",
+            suggestions: buildSuggestions({
+              detail: "Invalid diff line code",
+              abstract: "Invalid diff line code",
+            }),
           },
           diffFilePaths: [diffFilePath],
         }),
@@ -257,7 +294,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
           file_path: "wrong/path.ts",
           diff_file: "mr-diff.page-1.diff",
           diff_line_code: "+duplicate()",
-          suggestion: "First duplicate",
+          suggestions: buildSuggestions({
+            detail: "First duplicate",
+            abstract: "First duplicate",
+          }),
         },
         diffFilePaths: [diffFilePath],
         matchState,
@@ -268,7 +308,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
           file_path: "wrong/path.ts",
           diff_file: "mr-diff.page-1.diff",
           diff_line_code: "+duplicate()",
-          suggestion: "Second duplicate",
+          suggestions: buildSuggestions({
+            detail: "Second duplicate",
+            abstract: "Second duplicate",
+          }),
         },
         diffFilePaths: [diffFilePath],
         matchState,
@@ -279,7 +322,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
           file_path: "wrong/path.ts",
           diff_file: "mr-diff.page-1.diff",
           diff_line_code: "+duplicate()",
-          suggestion: "Wrapped duplicate",
+          suggestions: buildSuggestions({
+            detail: "Wrapped duplicate",
+            abstract: "Wrapped duplicate",
+          }),
         },
         diffFilePaths: [diffFilePath],
         matchState,
@@ -289,7 +335,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
         file_path: "src/example.ts",
         diff_file: "mr-diff.page-1.diff",
         diff_line_code: "+duplicate()",
-        suggestion: "First duplicate",
+        suggestions: buildSuggestions({
+          detail: "First duplicate",
+          abstract: "First duplicate",
+        }),
         new_line: 2,
         old_line: undefined,
       });
@@ -298,7 +347,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
         file_path: "src/example.ts",
         diff_file: "mr-diff.page-1.diff",
         diff_line_code: "+duplicate()",
-        suggestion: "Second duplicate",
+        suggestions: buildSuggestions({
+          detail: "Second duplicate",
+          abstract: "Second duplicate",
+        }),
         new_line: 4,
         old_line: undefined,
       });
@@ -307,7 +359,10 @@ describe("recomputeReviewPositionFromDiffReference", () => {
         file_path: "src/example.ts",
         diff_file: "mr-diff.page-1.diff",
         diff_line_code: "+duplicate()",
-        suggestion: "Wrapped duplicate",
+        suggestions: buildSuggestions({
+          detail: "Wrapped duplicate",
+          abstract: "Wrapped duplicate",
+        }),
         new_line: 2,
         old_line: undefined,
       });

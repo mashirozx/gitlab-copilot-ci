@@ -3,8 +3,47 @@ import type { en } from "./en";
 
 export const ar = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 ملخص مراجعة الكود بواسطة ${readableModelName}`,
+    walkthrough: {
+      title: "📋 شرح التغييرات",
+    },
+    changes: {
+      title: "🚧 التغييرات",
+      columns: {
+        layerFiles: "الطبقة / الملف(ات)",
+        summary: "الملخص",
+      },
+    },
+    reviewList: {
+      title: "🔍 ملخص المراجعة",
+      header: {
+        zero: "لم يتم العثور على ملاحظات مراجعة مضمنة.",
+        one: ({ count }: { count: number }) =>
+          `تم العثور على ${count} ملاحظة مراجعة مضمنة:`,
+        other: ({ count }: { count: number }) =>
+          `تم العثور على ${count} ملاحظات مراجعة مضمنة:`,
+      },
+      footer: "<sub>اقتراحات جولات المراجعة السابقة غير مدرجة هنا.</sub>",
+      empty: "✨ لم يتم العثور على أي مشكلات!",
+    },
+    otherSuggestions: {
+      title: "💡 اقتراحات أخرى",
+      empty: "✨ ليست لدي ملاحظات إضافية.",
+    },
+    details: {
+      summary: "التفاصيل",
+    },
+    rank: {
+      high: "مرتفع",
+      medium: "متوسط",
+      low: "منخفض",
+    },
+    errors: {
+      summary: "⚠️ أخطاء",
+    },
     performanceMetrics: {
-      summary: "مصفوفة استخدام النموذج والأداء",
+      summary: "📊 مصفوفة استخدام النموذج والأداء",
     },
   },
   reviewProcess: {

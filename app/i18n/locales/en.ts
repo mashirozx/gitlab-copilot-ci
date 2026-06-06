@@ -2,8 +2,47 @@ import { defineLocale } from "../schema";
 
 export const en = defineLocale({
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 Code Review Summary by ${readableModelName}`,
+    walkthrough: {
+      title: "📋 Walkthrough",
+    },
+    changes: {
+      title: "🚧 Changes",
+      columns: {
+        layerFiles: "Layer / File(s)",
+        summary: "Summary",
+      },
+    },
+    reviewList: {
+      title: "🔍 Review Summary",
+      header: {
+        zero: "Found no inline review suggestions.",
+        one: ({ count }: { count: number }) =>
+          `Found ${count} inline review suggestion:`,
+        other: ({ count }: { count: number }) =>
+          `Found ${count} inline review suggestions:`,
+      },
+      footer: "Suggestions from previous review runs are not listed here.",
+      empty: "✨ No issues found!",
+    },
+    otherSuggestions: {
+      title: "💡 Other Suggestions",
+      empty: "✨ I have no feedback to provide.",
+    },
+    details: {
+      summary: "Details",
+    },
+    rank: {
+      high: "HIGH",
+      medium: "MEDIUM",
+      low: "LOW",
+    },
+    errors: {
+      summary: "⚠️ Errors",
+    },
     performanceMetrics: {
-      summary: "Model Usage & Performance Matrix",
+      summary: "📊 Model Usage & Performance Matrix",
     },
   },
   reviewProcess: {

@@ -8,11 +8,13 @@ import { argv } from "../utils/argv";
 import {
   buildReviewDiscussionBody,
   getDisplayLanguages,
-} from "../utils/review-output";
+  getLocalizedRecordValue,
+} from "../utils/composers/review-comment-builder";
 import type {
   MergeRequestDiffPageDataType,
   MergeRequestDiffsResultDataType,
   MergeRequestPositionContextEntity,
+  ReviewHistoryContentEntity,
   ReviewHistoryDiscussionEntity,
   ReviewHistoryRunEntity,
 } from "./gitlab.types";
@@ -51,6 +53,117 @@ const hasNonNullProperty = ({
   value: Record<string, unknown>;
   key: string;
 }): boolean => value[key] !== null && value[key] !== undefined;
+
+const getStringProperty = ({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>;
+  key: string;
+}): string | undefined => {
+  const property = value[key];
+
+  return typeof property === "string" ? property : undefined;
+};
+
+const getNullableLineProperty = ({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>;
+  key: string;
+}): number | null => {
+  const property = value[key];
+
+  return typeof property === "number" ? property : null;
+};
+
+const normalizeDecodedReviewHistory = ({
+  value,
+}: {
+  value: unknown;
+}): ReviewHistoryRunEntity[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((run): ReviewHistoryRunEntity[] => {
+    if (!run || typeof run !== "object") {
+      return [];
+    }
+
+    const rawDiscussions = (run as { discussions?: unknown }).discussions;
+
+    if (!Array.isArray(rawDiscussions)) {
+      return [];
+    }
+
+    const discussions = rawDiscussions.flatMap(
+      (discussion): ReviewHistoryDiscussionEntity[] => {
+        if (!discussion || typeof discussion !== "object") {
+          return [];
+        }
+
+        const rawDiscussion = discussion as Record<string, unknown>;
+        const rawContent = rawDiscussion.content;
+
+        if (!rawContent || typeof rawContent !== "object") {
+          return [];
+        }
+
+        const rawHistoryContent = rawContent as Record<string, unknown>;
+        const suggestion =
+          getStringProperty({
+            value: rawHistoryContent,
+            key: "suggestion",
+          }) ??
+          getStringProperty({
+            value: rawHistoryContent,
+            key: "content",
+          });
+        const filePath = getStringProperty({
+          value: rawHistoryContent,
+          key: "file_path",
+        });
+        const discussionId = getStringProperty({
+          value: rawDiscussion,
+          key: "discussion_id",
+        });
+        const noteId = getStringProperty({
+          value: rawDiscussion,
+          key: "note_id",
+        });
+
+        if (!suggestion || !filePath || !discussionId || !noteId) {
+          return [];
+        }
+
+        const content: ReviewHistoryContentEntity = {
+          suggestion,
+          file_path: filePath,
+          old_line: getNullableLineProperty({
+            value: rawHistoryContent,
+            key: "old_line",
+          }),
+          new_line: getNullableLineProperty({
+            value: rawHistoryContent,
+            key: "new_line",
+          }),
+        };
+
+        return [
+          {
+            discussion_id: discussionId,
+            note_id: noteId,
+            content,
+          },
+        ];
+      },
+    );
+
+    return discussions.length > 0 ? [{ discussions }] : [];
+  });
+};
 
 export const isDiscussionResolved = ({
   discussion,
@@ -369,9 +482,11 @@ export class GitLabService {
 
       const parsed = JSON.parse(
         Buffer.from(encodedPayload, "base64").toString("utf8"),
-      ) as ReviewHistoryRunEntity[];
+      );
 
-      return Array.isArray(parsed) ? parsed : [];
+      return normalizeDecodedReviewHistory({
+        value: parsed,
+      });
     } catch {
       logger.warn(
         "Failed to parse previous review history from summary comment",
@@ -478,7 +593,13 @@ export class GitLabService {
       discussion_id: discussion.id,
       note_id: String(createdNote.id),
       content: {
-        suggestion: review.suggestion,
+        suggestion:
+          getLocalizedRecordValue({
+            record: review.suggestions,
+            language: argv["thinking-lang"],
+          })?.abstract ??
+          Object.values(review.suggestions)[0]?.abstract ??
+          "",
         file_path: review.file_path,
         old_line: review.old_line ?? null,
         new_line: review.new_line ?? null,

@@ -10,6 +10,7 @@ import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
+import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
@@ -26,6 +27,171 @@ import {
 } from "../utils/std-handler.ts";
 import { getElapsedMilliseconds, getNowEpochMilliseconds } from "../utils/time";
 import { logger, writeLogStream } from "./logger";
+
+const MAX_USAGE_OUTPUT_CAPTURE_LENGTH = 8_192;
+
+const appendUsageOutputCapture = ({
+  buffer,
+  text,
+}: {
+  buffer: string;
+  text: string;
+}): string => {
+  const combined = `${buffer}${text}`;
+
+  return combined.length > MAX_USAGE_OUTPUT_CAPTURE_LENGTH
+    ? combined.slice(-MAX_USAGE_OUTPUT_CAPTURE_LENGTH)
+    : combined;
+};
+
+const stripAnsiSequences = ({ text }: { text: string }): string => {
+  let sanitizedText = "";
+  let index = 0;
+
+  while (index < text.length) {
+    if (text.charCodeAt(index) === 0x1b && text[index + 1] === "[") {
+      index += 2;
+
+      while (index < text.length) {
+        const currentCharacter = text[index];
+
+        if (
+          !currentCharacter ||
+          !(
+            (currentCharacter >= "0" && currentCharacter <= "9") ||
+            currentCharacter === ";"
+          )
+        ) {
+          break;
+        }
+
+        index += 1;
+      }
+
+      if (text[index] === "m") {
+        index += 1;
+        continue;
+      }
+    }
+
+    sanitizedText += text[index] ?? "";
+    index += 1;
+  }
+
+  return sanitizedText;
+};
+
+const parseCompactNumber = ({
+  value,
+}: {
+  value: string | null | undefined;
+}): number | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim().replaceAll(",", "").toLowerCase();
+  const compactMatch = normalizedValue.match(/^(\d+(?:\.\d+)?)([kmb])?$/i);
+
+  if (!compactMatch) {
+    const parsedValue = Number(normalizedValue);
+    return Number.isFinite(parsedValue) ? parsedValue : undefined;
+  }
+
+  const numericValue = Number(compactMatch[1]);
+  const unit = compactMatch[2]?.toLowerCase();
+  const multiplier =
+    unit === "k"
+      ? 1_000
+      : unit === "m"
+        ? 1_000_000
+        : unit === "b"
+          ? 1_000_000_000
+          : 1;
+
+  return Math.round(numericValue * multiplier);
+};
+
+const getLastMatch = ({
+  text,
+  pattern,
+}: {
+  text: string;
+  pattern: RegExp;
+}): RegExpMatchArray | undefined => {
+  let lastMatch: RegExpMatchArray | undefined;
+
+  for (const match of text.matchAll(pattern)) {
+    lastMatch = match;
+  }
+
+  return lastMatch;
+};
+
+const parseCopilotCliUsage = ({
+  stdoutText,
+  stderrText,
+}: {
+  stdoutText: string;
+  stderrText: string;
+}): ReviewResponseEntity["usage"] | undefined => {
+  const combinedOutput = stripAnsiSequences({
+    text: `${stdoutText}\n${stderrText}`,
+  });
+  const creditsMatch = getLastMatch({
+    text: combinedOutput,
+    pattern: /AI Credits\s+([0-9][\d.,]*[kmb]?)/gi,
+  });
+  const tokensMatch = getLastMatch({
+    text: combinedOutput,
+    pattern:
+      /Tokens\s+↑\s*([0-9][\d.,]*[kmb]?)(?:\s*\(([0-9][\d.,]*[kmb]?)\s+cached\))?\s*[•·]\s*↓\s*([0-9][\d.,]*[kmb]?)(?:\s*\(([0-9][\d.,]*[kmb]?)\s+reasoning\))?/giu,
+  });
+
+  const inputTokens = parseCompactNumber({
+    value: tokensMatch?.[1],
+  });
+  const cacheReadTokens = parseCompactNumber({
+    value: tokensMatch?.[2],
+  });
+  const outputTokens = parseCompactNumber({
+    value: tokensMatch?.[3],
+  });
+  const reasoningTokens = parseCompactNumber({
+    value: tokensMatch?.[4],
+  });
+  const aiCredits = parseCompactNumber({
+    value: creditsMatch?.[1],
+  });
+
+  const usage: ReviewResponseEntity["usage"] = {};
+
+  if (aiCredits !== undefined) {
+    usage.aiCredits = aiCredits;
+  }
+
+  if (inputTokens !== undefined) {
+    usage.input = inputTokens;
+  }
+
+  if (cacheReadTokens !== undefined) {
+    usage.cacheRead = cacheReadTokens;
+  }
+
+  if (outputTokens !== undefined) {
+    usage.output = outputTokens;
+  }
+
+  if (reasoningTokens !== undefined) {
+    usage.reasoningTokens = reasoningTokens;
+  }
+
+  if (inputTokens !== undefined || outputTokens !== undefined) {
+    usage.totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+  }
+
+  return Object.keys(usage).length > 0 ? usage : undefined;
+};
 
 const getAllowedTools = (): string[] => {
   return [
@@ -51,6 +217,8 @@ export const runCopilotReview = async ({
     let stderrLogBuffer = "";
     const stdoutTail: string[] = [];
     const stderrTail: string[] = [];
+    let stdoutUsageOutputCapture = "";
+    let stderrUsageOutputCapture = "";
     const stdoutJsonCapture = createMarkedJsonCaptureState();
     const stderrJsonCapture = createMarkedJsonCaptureState();
     const stdoutPrintBudget = createStdoutPrintBudgetState();
@@ -120,6 +288,10 @@ export const runCopilotReview = async ({
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
+      stdoutUsageOutputCapture = appendUsageOutputCapture({
+        buffer: stdoutUsageOutputCapture,
+        text,
+      });
       const stdoutBudgetResult = consumeStdoutPrintBudget({
         state: stdoutPrintBudget,
         text,
@@ -158,6 +330,10 @@ export const runCopilotReview = async ({
 
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
+      stderrUsageOutputCapture = appendUsageOutputCapture({
+        buffer: stderrUsageOutputCapture,
+        text,
+      });
       process.stderr.write(text);
       consumeMarkedJsonChunk({
         state: stderrJsonCapture,
@@ -220,15 +396,10 @@ export const runCopilotReview = async ({
           startTimeMs: startTime,
         });
         void finalizeResult({
-          result: {
-            summary: {
-              content: "",
-              translations: {},
-            },
-            reviews: [],
+          result: buildEmptyReviewResponse({
             duration,
-            errors: [errMsg],
-          },
+            error: errMsg,
+          }),
         });
         return;
       }
@@ -238,6 +409,18 @@ export const runCopilotReview = async ({
           startTimeMs: startTime,
         });
         const result = parseJson<ReviewResponseEntity>({ text: jsonText });
+        const cliUsage = parseCopilotCliUsage({
+          stdoutText: stdoutUsageOutputCapture,
+          stderrText: stderrUsageOutputCapture,
+        });
+
+        if (cliUsage) {
+          result.usage = {
+            ...result.usage,
+            ...cliUsage,
+          };
+        }
+
         result.duration = duration;
 
         getContextInfo(env)
@@ -269,15 +452,10 @@ export const runCopilotReview = async ({
           startTimeMs: startTime,
         });
         void finalizeResult({
-          result: {
-            summary: {
-              content: "",
-              translations: {},
-            },
-            reviews: [],
+          result: buildEmptyReviewResponse({
             duration,
-            errors: [errMsg],
-          },
+            error: errMsg,
+          }),
         });
       }
     });
@@ -290,15 +468,10 @@ export const runCopilotReview = async ({
         startTimeMs: startTime,
       });
       void finalizeResult({
-        result: {
-          summary: {
-            content: "",
-            translations: {},
-          },
-          reviews: [],
+        result: buildEmptyReviewResponse({
           duration,
-          errors: [errMsg],
-        },
+          error: errMsg,
+        }),
       });
     });
   });

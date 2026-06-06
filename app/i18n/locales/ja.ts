@@ -3,8 +3,48 @@ import type { en } from "./en";
 
 export const ja = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 ${readableModelName} によるコードレビュー要約`,
+    walkthrough: {
+      title: "📋 ウォークスルー",
+    },
+    changes: {
+      title: "🚧 変更点",
+      columns: {
+        layerFiles: "レイヤー / ファイル",
+        summary: "概要",
+      },
+    },
+    reviewList: {
+      title: "🔍 レビュー要約",
+      header: {
+        zero: "インラインのレビュー指摘はありません。",
+        one: ({ count }: { count: number }) =>
+          `インラインのレビュー指摘が ${count} 件あります:`,
+        other: ({ count }: { count: number }) =>
+          `インラインのレビュー指摘が ${count} 件あります:`,
+      },
+      footer:
+        "<sub>過去のレビュー実行で出された提案はここには含めていません。</sub>",
+      empty: "✨ 問題は見つかりませんでした!",
+    },
+    otherSuggestions: {
+      title: "💡 その他の提案",
+      empty: "✨ 追加のフィードバックはありません。",
+    },
+    details: {
+      summary: "詳細",
+    },
+    rank: {
+      high: "高",
+      medium: "中",
+      low: "低",
+    },
+    errors: {
+      summary: "⚠️ エラー",
+    },
     performanceMetrics: {
-      summary: "モデル使用量・パフォーマンス指標",
+      summary: "📊 モデル使用量・パフォーマンス指標",
     },
   },
   reviewProcess: {

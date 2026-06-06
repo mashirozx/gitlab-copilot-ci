@@ -366,6 +366,51 @@ describe("filterExistingUnresolvedReviewHistory", () => {
 });
 
 describe("GitLabService.getUnresolvedReviewHistoryFromSummary", () => {
+  test("maps legacy stored history content fields back to suggestion", () => {
+    const encodedHistory = Buffer.from(
+      JSON.stringify([
+        {
+          discussions: [
+            {
+              discussion_id: "discussion-legacy",
+              note_id: "401",
+              content: {
+                content: "Legacy suggestion",
+                file_path: "src/legacy.ts",
+                old_line: null,
+                new_line: 40,
+              },
+            },
+          ],
+        },
+      ]),
+      "utf8",
+    ).toString("base64");
+    const noteBody = `<!-- copilot-review-data-start -->
+<!--
+${encodedHistory}
+-->
+<!-- copilot-review-data-end -->`;
+    const service = new GitLabService();
+
+    expect(service.getReviewHistoryFromSummary({ noteBody })).toEqual([
+      {
+        discussions: [
+          {
+            discussion_id: "discussion-legacy",
+            note_id: "401",
+            content: {
+              suggestion: "Legacy suggestion",
+              file_path: "src/legacy.ts",
+              old_line: null,
+              new_line: 40,
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
   test("fetches all MR discussion pages before filtering resolved history", async () => {
     const fillerDiscussions = Array.from({ length: 99 }, (_, index) =>
       buildDiscussion({

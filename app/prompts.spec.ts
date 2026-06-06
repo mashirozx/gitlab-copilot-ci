@@ -89,7 +89,6 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
     expect(typeof prompt).toBe("string");
@@ -103,7 +102,6 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: "Test description",
       reviewHistoryFilePath: "/tmp/prior-inline-review-history.md",
-      debugMode: true,
     });
 
     expect(prompt).toContain("## Deferred Previous Inline Review History");
@@ -121,51 +119,36 @@ describe("buildCopilotPrompt", () => {
       "The history file intentionally omits discussion ids and note ids because they are not relevant to duplicate detection.",
     );
     expect(prompt).toContain(
-      'After removing duplicates, update the final inline-review list and X count inside "summary.content" and every translated summary block so they match the filtered final "reviews" array exactly.',
+      'After removing duplicates, ensure the final "reviews" array is the only deduplicated output surface. Do not let this deferred history check change the walkthrough, changes list, or other suggestions beyond omitting duplicate inline findings from the final output.',
     );
-    expect(prompt).not.toContain(
-      "Reviews marked with this will be automatically deleted if not resolved before next update",
-    );
+    expect(prompt).not.toContain('"summary.content"');
   });
 
-  test("includes the commit reference in the template", async () => {
+  test("describes the new structured JSON response contract", async () => {
     const { buildCopilotPrompt } = await loadPromptsModule();
     const prompt = buildCopilotPrompt({
       diffFilePaths: ["mr-diff.page-1.diff"],
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
+    expect(prompt).toContain('"readableModelName": "string"');
     expect(prompt).toContain(
-      'State how many review suggestions were found in the changes up to [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef). Use correct zero, singular, and plural wording instead of literal "suggestion(s)". If the count is zero, end this sentence with a period instead of a colon. If the count is one or more, end it with a colon.',
+      '"walkthrough": { "en": "string", "ja": "string" }',
     );
-    expect(prompt).not.toContain(
-      "<sub>Suggestions from previous review runs are not listed here.</sub>",
-    );
-    expect(prompt).not.toContain("Found X review suggestion(s)");
+    expect(prompt).toContain('"changes": [');
     expect(prompt).toContain(
-      'Keep the markdown commit reference from the original "summary.content" unchanged and translate only the surrounding prose.',
+      '"otherSuggestions": { "en": "string", "ja": "string" }',
     );
+    expect(prompt).toContain(
+      '"suggestions": { "en": { "detail": "string", "abstract": "string" }, "ja": { "detail": "string", "abstract": "string" } }',
+    );
+    expect(prompt).not.toContain('"content"');
+    expect(prompt).not.toContain('"translations"');
   });
 
-  test("includes the review-history exclusion note only when history exists", async () => {
-    const { buildCopilotPrompt } = await loadPromptsModule();
-    const prompt = buildCopilotPrompt({
-      diffFilePaths: ["mr-diff.page-1.diff"],
-      title: "Test MR",
-      description: null,
-      reviewHistoryFilePath: "/tmp/prior-inline-review-history.md",
-      debugMode: false,
-    });
-
-    expect(prompt).toContain(
-      "***\n\n<sub>Suggestions from previous review runs are not listed here.</sub>",
-    );
-  });
-
-  test("asks the model to emit collapsed changes and review sections when enabled", async () => {
+  test("tells the model that runtime templating now owns titles, tables, and collapsed blocks", async () => {
     const { buildCopilotPrompt } = await loadPromptsModule({
       collapseChangesSummary: true,
       collapseReviewSummary: true,
@@ -175,21 +158,14 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
     expect(prompt).toContain(
-      "## 🚧 Changes\n\n<details>\n<summary>Details</summary>",
-    );
-    expect(prompt).toContain(
-      "## 🔍 Review Summary\n\n<details>\n<summary>Details</summary>",
-    );
-    expect(prompt).toContain(
-      "If the source template uses a <details> block for a section, keep the same <details>/<summary> HTML structure there",
+      "Do not generate the final GitLab comment template yourself. The runtime will apply the summary title, walkthrough heading, changes heading, review-summary heading, rank badges, tables, and collapsed translation blocks.",
     );
   });
 
-  test("uses thinking-lang as the original content language and excludes it from translations", async () => {
+  test("uses thinking-lang as the source language and merges collapsed languages into the response schema", async () => {
     const { buildCopilotPrompt } = await loadPromptsModule({
       thinkingLang: "ja",
       langs: ["ja", "zh-CN"],
@@ -200,55 +176,29 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
-    expect(prompt).toContain(
-      'A structured summary object whose "content" is always markdown in ja and whose "translations" object contains translated summary markdown blocks keyed by language: zh-CN, en',
-    );
-    expect(prompt).toContain(
-      '"suggestion": "string (ja)", "translations": { "zh-CN": "string", "en": "string" }',
-    );
-    expect(prompt).toContain(
-      'Always write "summary.content" and every review item\'s "suggestion" in ja, regardless of --lang or --collapsed-lang.',
-    );
     expect(prompt).toContain(
       "From the very beginning of this task, immediately after receiving this prompt, think in ja.",
     );
     expect(prompt).toContain(
+      "Include every requested language in every language-keyed record: ja, zh-CN, en.",
+    );
+    expect(prompt).toContain(
+      '"walkthrough": { "ja": "string", "zh-CN": "string", "en": "string" }',
+    );
+    expect(prompt).toContain(
+      '"suggestions": { "ja": { "detail": "string", "abstract": "string" }, "zh-CN": { "detail": "string", "abstract": "string" }, "en": { "detail": "string", "abstract": "string" } }',
+    );
+    expect(prompt).toContain(
+      'For every review item, include all requested languages inside "suggestions".',
+    );
+    expect(prompt).toContain(
       "At the beginning of your reasoning, first translate the relevant task instructions in this prompt into ja for your own working understanding.",
     );
-    expect(prompt).toContain(
-      "After that translation step, base all subsequent reasoning, analysis, and planning on that translated prompt in ja.",
-    );
-    expect(prompt).toContain(
-      "If your runtime exposes any visible thinking, reasoning, planning, or step-by-step analysis before the final answer, emit that visible thinking in ja as well.",
-    );
-    expect(prompt).toContain(
-      "Do not rewrite visible thinking, markdown output, or JSON string content with Unicode escape encoding such as \\uXXXX when normal UTF-8 characters can be used directly.",
-    );
-    expect(prompt).toContain(
-      "Start reasoning in ja immediately when this prompt begins, before reading diffs or repository files.",
-    );
-    expect(prompt).toContain(
-      "At the start of reasoning, translate the prompt instructions you rely on into ja for internal use before continuing the task.",
-    );
-    expect(prompt).toContain(
-      "After translating those prompt instructions, keep all further reasoning grounded in that ja translation rather than switching back to another-language interpretation.",
-    );
-    expect(prompt).toContain(
-      "If the runtime shows your thinking before the final JSON line, keep that visible thinking entirely in ja.",
-    );
-    expect(prompt).toContain(
-      "Do not convert visible thinking, markdown, or JSON string values into Unicode escape sequences such as \\uXXXX unless JSON syntax requires escaping a specific character.",
-    );
-    expect(prompt).toContain(
-      "Use normal UTF-8 characters directly in the final output whenever possible.",
-    );
-    expect(prompt).toContain(
-      'If a requested display language matches ja, do not include that language in any translations object; the runtime will read that language directly from "summary.content" or "suggestion".',
-    );
-    expect(prompt).not.toContain('"ja": "string"');
+    expect(prompt).not.toContain('"summary.content"');
+    expect(prompt).not.toContain('"translations"');
+    expect(prompt).not.toContain('"suggestion": "string (ja)"');
   });
 
   test("adds a classical Chinese note when thinking-lang uses a literary Chinese variant", async () => {
@@ -261,11 +211,10 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
     expect(prompt).toContain("这里的“文言文”指古典汉语书面语");
-    expect(prompt).toContain("并使用繁體漢字");
+    expect(prompt).toContain("在每条翻译中请使用繁體漢字");
   });
 
   test("adds a classical Chinese translation note when --lang requests a literary Chinese variant", async () => {
@@ -278,13 +227,11 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
     expect(prompt).toContain(
-      '如果需要返回 "zh-hans-lzh" 翻译，请使用文言文撰写对应的 "summary.translations["zh-hans-lzh"]" 与每条 "reviews[].translations["zh-hans-lzh"]"',
+      "补充说明：这里的“文言文”指古典汉语书面语。在每条翻译中请使用简体汉字。",
     );
-    expect(prompt).toContain("并使用简体汉字");
   });
 
   test("adds a classical Chinese translation note when --collapsed-lang requests a literary Chinese variant", async () => {
@@ -298,12 +245,10 @@ describe("buildCopilotPrompt", () => {
       title: "Test MR",
       description: null,
       reviewHistoryFilePath: undefined,
-      debugMode: false,
     });
 
     expect(prompt).toContain(
-      '如果需要返回 "zh-hant-lzh" 翻译，请使用文言文撰写对应的 "summary.translations["zh-hant-lzh"]" 与每条 "reviews[].translations["zh-hant-lzh"]"',
+      "补充说明：这里的“文言文”指古典汉语书面语。在每条翻译中请使用繁體漢字。",
     );
-    expect(prompt).toContain("并使用繁體漢字");
   });
 });

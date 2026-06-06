@@ -1,8 +1,25 @@
 export type ReviewRankEntity = "HIGH" | "MEDIUM" | "LOW";
 
+export type ReviewSuggestionEntity = {
+  detail: string;
+  abstract: string;
+};
+
+export type ReviewChangeLayerEntity = {
+  title: string;
+  files: string[];
+  summary: string;
+};
+
+export type ReviewChangeEntity = {
+  step: string;
+  layers: ReviewChangeLayerEntity[];
+};
+
 export type ReviewSummaryEntity = {
-  content: string;
-  translations?: Record<string, string>;
+  walkthrough: Record<string, string>;
+  changes: Array<Record<string, ReviewChangeEntity>>;
+  otherSuggestions: Record<string, string>;
 };
 
 export type ReviewItemEntity = {
@@ -12,8 +29,7 @@ export type ReviewItemEntity = {
   diff_file?: string;
   diff_line_code?: string;
   rank?: ReviewRankEntity;
-  suggestion: string;
-  translations?: Record<string, string>;
+  suggestions: Record<string, ReviewSuggestionEntity>;
 };
 
 export type ReviewUsageEntity = {
@@ -22,6 +38,8 @@ export type ReviewUsageEntity = {
   cacheRead?: number;
   cacheWrite?: number;
   totalTokens?: number;
+  aiCredits?: number;
+  reasoningTokens?: number;
   cost?: {
     input?: number;
     output?: number;
@@ -63,6 +81,7 @@ export type ReviewRuntimeStatsEntity = {
 };
 
 export type ReviewResponseEntity = {
+  readableModelName: string;
   summary: ReviewSummaryEntity;
   reviews: ReviewItemEntity[];
   errors?: string[];

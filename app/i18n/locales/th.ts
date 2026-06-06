@@ -3,8 +3,47 @@ import type { en } from "./en";
 
 export const th = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 สรุปการรีวิวโค้ดโดย ${readableModelName}`,
+    walkthrough: {
+      title: "📋 ภาพรวม",
+    },
+    changes: {
+      title: "🚧 การเปลี่ยนแปลง",
+      columns: {
+        layerFiles: "เลเยอร์ / ไฟล์",
+        summary: "สรุป",
+      },
+    },
+    reviewList: {
+      title: "🔍 สรุปการรีวิว",
+      header: {
+        zero: "ไม่พบข้อเสนอแนะการรีวิวแบบอินไลน์",
+        one: ({ count }: { count: number }) =>
+          `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการ:`,
+        other: ({ count }: { count: number }) =>
+          `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการ:`,
+      },
+      footer: "<sub>ข้อเสนอแนะจากรอบการรีวิวก่อนหน้าไม่ได้แสดงไว้ที่นี่</sub>",
+      empty: "✨ ไม่พบปัญหา!",
+    },
+    otherSuggestions: {
+      title: "💡 ข้อเสนอแนะอื่น ๆ",
+      empty: "✨ ฉันไม่มีข้อเสนอแนะเพิ่มเติม",
+    },
+    details: {
+      summary: "รายละเอียด",
+    },
+    rank: {
+      high: "สูง",
+      medium: "กลาง",
+      low: "ต่ำ",
+    },
+    errors: {
+      summary: "⚠️ ข้อผิดพลาด",
+    },
     performanceMetrics: {
-      summary: "เมทริกซ์การใช้งานโมเดลและประสิทธิภาพ",
+      summary: "📊 เมทริกซ์การใช้งานโมเดลและประสิทธิภาพ",
     },
   },
   reviewProcess: {

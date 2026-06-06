@@ -3,8 +3,46 @@ import type { en } from "./en";
 
 export const zh = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 由 ${readableModelName} 生成的代码审查总结`,
+    walkthrough: {
+      title: "📋 变更概览",
+    },
+    changes: {
+      title: "🚧 变更",
+      columns: {
+        layerFiles: "层 / 文件",
+        summary: "摘要",
+      },
+    },
+    reviewList: {
+      title: "🔍 审查摘要",
+      header: {
+        zero: "未发现行内审查建议。",
+        one: ({ count }: { count: number }) => `发现 ${count} 条行内审查建议：`,
+        other: ({ count }: { count: number }) =>
+          `发现 ${count} 条行内审查建议：`,
+      },
+      footer: "<sub>此处不包含过往审查轮次中的建议。</sub>",
+      empty: "✨ 未发现问题！",
+    },
+    otherSuggestions: {
+      title: "💡 其他建议",
+      empty: "✨ 我没有额外反馈。",
+    },
+    details: {
+      summary: "详情",
+    },
+    rank: {
+      high: "高",
+      medium: "中",
+      low: "低",
+    },
+    errors: {
+      summary: "⚠️ 错误",
+    },
     performanceMetrics: {
-      summary: "模型用量与性能矩阵",
+      summary: "📊 模型用量与性能矩阵",
     },
   },
   reviewProcess: {

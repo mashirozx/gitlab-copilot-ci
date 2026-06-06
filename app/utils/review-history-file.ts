@@ -1,4 +1,4 @@
-import { REVIEW_HISTORY_FILE_INTRO } from "../prompts";
+import { REVIEW_HISTORY_FILE_INTRO } from "../prompts.ts";
 import type { ReviewHistoryContentEntity } from "../services/gitlab.types";
 
 const NO_LINE_MARKER = "-";

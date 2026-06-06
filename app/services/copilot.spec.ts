@@ -55,6 +55,7 @@ mock.module("../utils/argv", () => ({
 
 mock.module("node:child_process", () => ({
   spawn: () => nextChildFactory(),
+  spawnSync: () => ({ stdout: "", stderr: "" }),
 }));
 
 mock.module("node:fs", () => ({
@@ -63,6 +64,15 @@ mock.module("node:fs", () => ({
 }));
 
 const { runCopilotReview } = await import(`./copilot?test=${Date.now()}`);
+const { buildPerformanceMetricsSection } = await import(
+  `../utils/composers/summary-comment-builder?test=${Date.now()}`
+);
+const { initI18n } = await import("../i18n");
+
+await initI18n({
+  languageTag: "en",
+  preloadLanguageTags: ["en"],
+});
 
 afterEach(() => {
   mock.restore();
@@ -93,7 +103,7 @@ describe("runCopilotReview", () => {
       const reviewPromise = runCopilotReview({
         prompt: "review this diff",
       });
-      const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
+      const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
 
       child.emit("spawn");
       child.stdout.emit("data", Buffer.from(jsonText));
@@ -102,7 +112,7 @@ describe("runCopilotReview", () => {
       const result = await reviewPromise;
 
       expect(result.errors).toBeUndefined();
-      expect(result.summary.content).toBe("ok");
+      expect(result.summary.walkthrough.en).toBe("ok");
       expect(stdoutWriteCalls).toEqual([]);
       expect(warnCalls).toHaveLength(1);
       expect(warnCalls[0]).toContain("20% safety margin");
@@ -113,5 +123,45 @@ describe("runCopilotReview", () => {
       process.stdout.write = originalStdoutWrite;
       loggerMock.warn = originalWarn;
     }
+  });
+
+  test("parses Copilot CLI usage lines into the performance metrics section", async () => {
+    const child = createMockChildProcess();
+
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+    const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+
+    child.emit("spawn");
+    child.stdout.emit("data", Buffer.from("AI Credits 126 (10m 47s)\n"));
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        "Tokens     ↑ 2.3m (2.3m cached) • ↓ 32.6k (15.7k reasoning)\n",
+      ),
+    );
+    child.stdout.emit("data", Buffer.from(jsonText));
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.usage?.aiCredits).toBe(126);
+    expect(result.usage?.input).toBe(2_300_000);
+    expect(result.usage?.cacheRead).toBe(2_300_000);
+    expect(result.usage?.output).toBe(32_600);
+    expect(result.usage?.totalTokens).toBe(2_332_600);
+    expect(result.usage?.reasoningTokens).toBe(15_700);
+
+    const section = buildPerformanceMetricsSection({
+      response: result,
+      agentDisplay: "GitHub Copilot CLI 1.0.54",
+    });
+
+    expect(section).toContain("- 🪙 **AI Credits**: 126");
+    expect(section).toContain("- 🔢 **Total tokens**: 2332600");
+    expect(section).toContain("- 🧠 **Reasoning tokens**: 15700");
   });
 });

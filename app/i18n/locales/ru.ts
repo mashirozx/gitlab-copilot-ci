@@ -3,8 +3,48 @@ import type { en } from "./en";
 
 export const ru = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 Сводка ревью кода от ${readableModelName}`,
+    walkthrough: {
+      title: "📋 Обзор",
+    },
+    changes: {
+      title: "🚧 Изменения",
+      columns: {
+        layerFiles: "Слой / Файл(ы)",
+        summary: "Сводка",
+      },
+    },
+    reviewList: {
+      title: "🔍 Сводка ревью",
+      header: {
+        zero: "Встроенных замечаний ревью не найдено.",
+        one: ({ count }: { count: number }) =>
+          `Найдено ${count} встроенное замечание ревью:`,
+        other: ({ count }: { count: number }) =>
+          `Найдено ${count} встроенных замечаний ревью:`,
+      },
+      footer:
+        "<sub>Предложения из предыдущих запусков ревью здесь не перечислены.</sub>",
+      empty: "✨ Проблем не найдено!",
+    },
+    otherSuggestions: {
+      title: "💡 Другие предложения",
+      empty: "✨ У меня нет дополнительных замечаний.",
+    },
+    details: {
+      summary: "Подробности",
+    },
+    rank: {
+      high: "ВЫСОКИЙ",
+      medium: "СРЕДНИЙ",
+      low: "НИЗКИЙ",
+    },
+    errors: {
+      summary: "⚠️ Ошибки",
+    },
     performanceMetrics: {
-      summary: "Матрица использования модели и производительности",
+      summary: "📊 Матрица использования модели и производительности",
     },
   },
   reviewProcess: {

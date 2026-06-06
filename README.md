@@ -23,6 +23,8 @@ Each run can:
 - post inline discussions on valid diff positions
 - publish a summary note that includes review findings, optional translations, model or agent timing metadata, and embedded review-history data for duplicate suppression
 
+Agent output is now fully structured. The model returns `readableModelName`, localized `summary.walkthrough`, localized structured `summary.changes`, localized `summary.otherSuggestions`, and inline `reviews[].suggestions[lang].{detail,abstract}` entries. The runtime, not the model, renders GitLab headings, tables, localized section labels, rank badges, collapsed language blocks, and the final summary note layout.
+
 When `--collect-runtime-stats` is enabled, the summary performance matrix also includes best-effort parent and agent runtime usage for the current OS sampler.
 
 ### CLI Arguments
@@ -40,7 +42,7 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 | `--mr-iid` | `string` | `CI_MERGE_REQUEST_IID` | GitLab merge request IID. |
 | `--max-git-diff-page` | `number` | unlimited | Maximum number of GitLab merge request diff pages to fetch. With the current per-page size of 20, a value of `5` reads at most the first `100` diff entries. |
 | `--html-marker-prefix` | `string` | `copilot` | Prefix used to build the HTML markers that identify CLI-generated MR comments. Alias: `--html-marker-preffix`. Generates `<prefix>-review-marker`, `<prefix>-summary-marker`, `<prefix>-review-data-start`, `<prefix>-review-data-end`, and `<prefix>-reviewing-marker`. |
-| `--debug`, `-d` | `boolean` | `false` | Review only from the diff and skip reading local repository files. |
+| `--dry-run`, `--debug`, `-d` | `boolean` | `false` | Run the real review pipeline but skip all GitLab writes, including inline comments, summary notes, and reviewing-marker notes. |
 | `--log` | `array` | none | Enable log file writing. Pass without a value to write to the current directory, or provide a path such as `--log /path/to/dir`. |
 | `--max-stdout-size` | `string` | `100mb` | Maximum GitLab CI job log size used to cap live agent stdout printing. Accepts case-insensitive byte-size suffixes like `100mb`, `512kb`, or `42b`. Console stdout stops once printed output reaches `80%` of this byte limit, and printed stdout is measured with `Buffer.byteLength(...)` for accurate byte counting. This follows GitLab's job log size ceiling guidance: https://docs.gitlab.com/administration/cicd/job_logs/#maximum-log-file-size |
 | `--collect-runtime-stats` | `boolean` | `false` | Collect best-effort runtime stats for the Bun parent process and the spawned review agent. Uses OS-specific samplers for macOS, Linux, and Windows; Linux and Windows can also report best-effort agent read/write byte totals, while macOS reports memory and CPU without per-process disk I/O bytes. |
@@ -51,7 +53,7 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 | `--should-teach-diff-compute` | `boolean` | `false` | Include prompt instructions that teach the LLM how to compute diff line positions manually from unified diff hunks. |
 | `--tools` | `array` | `[]` | Additional agent tool names to allow beyond the built-in defaults. Repeatable, for example `--tools sh --tools read_file`. |
 | `--lang` | `array` | `[]` | Display language(s) for review output, for example `--lang=zh-CN --lang=ja --lang=en`. If omitted, output defaults to the `--thinking-lang` source language. |
-| `--thinking-lang` | `string` | `en` | Source language for `summary.content` and `reviews[].suggestion`. Any requested display language matching this source reuses the original content instead of a translation entry. |
+| `--thinking-lang` | `string` | `en` | Primary reasoning language and the required language key included in every language-keyed summary and review record returned by the agent. If `--lang` and `--collapsed-lang` are both omitted, rendered output defaults to this language. |
 | `--collapsed-lang`, `--c-lang` | `array` | `[]` | Display language(s) that should be wrapped in a GitLab `<details>` block for both inline reviews and the summary note. |
 | `--collapse-changes-summary` | `boolean` | `false` | Wrap the summary note's `## 🚧 Changes` section in a GitLab `<details>` block. |
 | `--collapse-review-summary` | `boolean` | `false` | Wrap the summary note's `## 🔍 Review Summary` section in a GitLab `<details>` block. |
@@ -98,7 +100,9 @@ code-review:
         --html-marker-prefix "xiaomi-mimo-code-review" # optional
 ```
 
-      When `--thinking-lang` differs from the requested display languages, the agent writes the original `summary.content` and inline `suggestion` fields in that source language, then fills `summary.translations` and `reviews[].translations` only for the remaining requested languages. If `--lang` or `--c-lang` includes the same language as `--thinking-lang`, that language is rendered directly from the original content instead of duplicated in the translations objects.
+      At startup, the runtime preloads the `--thinking-lang` locale plus every language requested by `--lang` and `--c-lang`. The agent must return all of those languages directly in the structured response. Rendering then selects the requested display language from those language-keyed records, and any collapsed languages are wrapped by the runtime in GitLab `<details>` blocks.
+
+      For GitHub Copilot CLI runs, the performance matrix also parses Copilot's trailing usage lines and includes `AI Credits`, total tokens, and reasoning tokens when available.
 
 ### Model Syntax
 
@@ -141,6 +145,9 @@ bun run format
 bun run biome
 
 # Type check
+bun run typecheck
+
+# Experimental TypeScript native preview check
 bun run tsgo
 
 # Unit tests

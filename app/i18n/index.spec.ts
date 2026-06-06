@@ -28,8 +28,9 @@ describe("t", () => {
       "現在のレビューの後ろに、さらに 12 件のレビューが待機しています。",
     );
     expect(t("reviewSummary.performanceMetrics.summary")).toBe(
-      "モデル使用量・パフォーマンス指標",
+      "📊 モデル使用量・パフォーマンス指標",
     );
+    expect(t("reviewSummary.errors.summary")).toBe("⚠️ エラー");
   });
 
   test("uses the zero branch as a distinct sentence", async () => {

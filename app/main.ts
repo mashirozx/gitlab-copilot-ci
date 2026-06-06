@@ -4,13 +4,18 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initI18n } from "./i18n";
-import { buildCopilotPrompt } from "./prompts";
+import { buildCopilotPrompt } from "./prompts.ts";
 import { runCopilotReview } from "./services/copilot";
 import { gitlabService } from "./services/gitlab";
 import type { ReviewHistoryDiscussionEntity } from "./services/gitlab.types";
 import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
 import { argv } from "./utils/argv";
+import { getRequestedResponseLanguages } from "./utils/composers/review-comment-builder";
+import {
+  buildSummaryNote,
+  trimReviewHistoryRuns,
+} from "./utils/composers/summary-comment-builder";
 import {
   buildDiffPageFileContent,
   colorizeDiffLineCode,
@@ -19,30 +24,29 @@ import {
 import { formatReviewLocation } from "./utils/review-helpers";
 import { buildReviewHistoryFileContent } from "./utils/review-history-file";
 import {
-  getPromptTranslationLangs,
-  normalizeReviewResponse,
-} from "./utils/review-output";
-import {
   buildReviewingMarkerNoteBody,
   shouldSkipForStaleCommit,
   waitForPendingReviewToFinish,
 } from "./utils/review-process";
-import {
-  buildSummaryNote,
-  trimReviewHistoryRuns,
-} from "./utils/review-summary";
 import { getFormattedVersion } from "./utils/version";
 
 const main = async () => {
   const errors: string[] = [];
   let reviewingMarkerNoteId: number | null = null;
   let tempDir: string | null = null;
+  const isDryRun = argv["dry-run"];
 
-  await initI18n();
+  await initI18n({
+    preloadLanguageTags: getRequestedResponseLanguages({
+      langs: argv["lang"],
+      collapsedLangs: argv["collapsed-lang"],
+      sourceLanguage: argv["thinking-lang"],
+    }),
+  });
 
-  if (argv["debug"]) {
+  if (isDryRun) {
     logger.info(
-      "[DEBUG MODE] Starting review in debug mode - will generate mock reviews",
+      "[DRY RUN] Starting real review execution with GitLab writes disabled",
     );
     logger.info("[Arguments]", JSON.stringify(argv, null, 2));
   }
@@ -50,8 +54,10 @@ const main = async () => {
   logger.silent(`Gitlab Copilot CI`);
   logger.box(getFormattedVersion());
 
-  if (!(await waitForPendingReviewToFinish())) {
-    return;
+  if (!isDryRun) {
+    if (!(await waitForPendingReviewToFinish())) {
+      return;
+    }
   }
 
   // A. Fetch MR details and diff (SHA values needed for comment positioning)
@@ -63,13 +69,15 @@ const main = async () => {
     return;
   }
 
-  const reviewingMarkerNote = await gitlabService.createReviewingMarkerNote({
-    noteBody: buildReviewingMarkerNoteBody({
-      htmlMarkerPrefix: argv["html-marker-prefix"],
-    }),
-  });
-  reviewingMarkerNoteId = reviewingMarkerNote.id;
-  logger.info("[GitLab] Posted review-in-progress marker note");
+  if (!isDryRun) {
+    const reviewingMarkerNote = await gitlabService.createReviewingMarkerNote({
+      noteBody: buildReviewingMarkerNoteBody({
+        htmlMarkerPrefix: argv["html-marker-prefix"],
+      }),
+    });
+    reviewingMarkerNoteId = reviewingMarkerNote.id;
+    logger.info("[GitLab] Posted review-in-progress marker note");
+  }
 
   try {
     const existingSummaryNote = await gitlabService.getExistingSummaryNote();
@@ -130,116 +138,122 @@ const main = async () => {
       title: mr.title,
       description: mr.description,
       reviewHistoryFilePath: reviewHistoryFilePath ?? undefined,
-      debugMode: argv["debug"],
     });
     const response = await reviewRunner({
       prompt,
     });
-    const normalizedResponse = normalizeReviewResponse({
-      response,
-      translationLangs: getPromptTranslationLangs({
-        langs: argv["lang"],
-        collapsedLangs: argv["collapsed-lang"],
-        sourceLanguage: argv["thinking-lang"],
-      }),
-    });
-    const reviews = normalizedResponse.reviews;
+    const reviews = [...response.reviews];
 
-    if (normalizedResponse.errors) errors.push(...normalizedResponse.errors);
-
-    if (
-      !(await waitForPendingReviewToFinish({
-        ignoreReviewingNoteId: reviewingMarkerNoteId ?? undefined,
-      }))
-    ) {
-      return;
-    }
-
-    const latestMergeRequest = await gitlabService.getMergeRequest();
-    if (
-      shouldSkipForStaleCommit({
-        mergeRequestHeadSha: latestMergeRequest.diff_refs.head_sha,
-      })
-    ) {
-      return;
-    }
+    if (response.errors) errors.push(...response.errors);
 
     logger.success("Review results:");
-    logger.log(JSON.stringify(normalizedResponse, null, 2));
+    logger.log(JSON.stringify(response, null, 2));
 
     // C. Post inline review comments and store newly created review history entries
     const createdDiscussions: ReviewHistoryDiscussionEntity[] = [];
-    const diffLineMatchState = new Map<string, number>();
-    for (const item of reviews) {
-      try {
-        const discussion = await gitlabService.createReviewDiscussion({
-          review: item,
-          mergeRequest: latestMergeRequest,
-        });
-        createdDiscussions.push(discussion);
-        logger.success(
-          `Successfully posted comment to ${formatReviewLocation({ review: item })} (discussion: ${discussion.discussion_id})`,
-        );
-      } catch (e) {
-        const recomputedReview = recomputeReviewPositionFromDiffReference({
-          review: item,
-          diffFilePaths,
-          matchState: diffLineMatchState,
-        });
-
-        // logger.warn(
-        //   `Failed to post comment for ${formatReviewLocation({ review: item })} at specified position. Attempted to recompute position from diff reference, result`,
-        //   JSON.stringify({ recomputedReview, item }, null, 2),
-        // );
-
-        if (
-          item.diff_line_code !== undefined &&
-          recomputedReview &&
-          (recomputedReview.file_path !== item.file_path ||
-            recomputedReview.new_line !== item.new_line ||
-            recomputedReview.old_line !== item.old_line)
-        ) {
-          try {
-            logger.warn(
-              `Retrying ${formatReviewLocation({ review: item })} using ${item.diff_file} to find ${colorizeDiffLineCode(item.diff_line_code)} -> ${formatReviewLocation({ review: recomputedReview })}`,
-            );
-
-            const discussion = await gitlabService.createReviewDiscussion({
-              review: recomputedReview,
-              mergeRequest: latestMergeRequest,
-            });
-            createdDiscussions.push(discussion);
-            logger.success(
-              `Successfully posted comment to ${formatReviewLocation({ review: recomputedReview })} after recomputing position by using ${item.diff_file} to find${colorizeDiffLineCode(item.diff_line_code)} (discussion: ${discussion.discussion_id})`,
-            );
-            continue;
-          } catch (retryError) {
-            const retryMsg = `Failed to post recomputed comment for ${formatReviewLocation({ review: recomputedReview })} by using ${item.diff_file} to find ${colorizeDiffLineCode(item.diff_line_code)}: ${retryError instanceof Error ? retryError.message : String(retryError)}`;
-            logger.error(retryMsg);
-            logger.error(retryError);
-            errors.push(retryMsg);
-          }
-        }
-
-        const msg = `Failed to post comment for ${formatReviewLocation({ review: item })}: ${e instanceof Error ? e.message : String(e)}`;
-        logger.error(msg);
-        logger.debug(
-          "Failed with payload :",
-          JSON.stringify({ item }, null, 2),
-        );
-        logger.error(e);
-        errors.push(msg);
+    if (!isDryRun) {
+      if (
+        !(await waitForPendingReviewToFinish({
+          ignoreReviewingNoteId: reviewingMarkerNoteId ?? undefined,
+        }))
+      ) {
+        return;
       }
+
+      const latestMergeRequest = await gitlabService.getMergeRequest();
+      if (
+        shouldSkipForStaleCommit({
+          mergeRequestHeadSha: latestMergeRequest.diff_refs.head_sha,
+        })
+      ) {
+        return;
+      }
+
+      const diffLineMatchState = new Map<string, number>();
+      for (const [index, item] of reviews.entries()) {
+        try {
+          const discussion = await gitlabService.createReviewDiscussion({
+            review: item,
+            mergeRequest: latestMergeRequest,
+          });
+          createdDiscussions.push(discussion);
+          logger.success(
+            `Successfully posted comment to ${formatReviewLocation({ review: item })} (discussion: ${discussion.discussion_id})`,
+          );
+        } catch (e) {
+          const recomputedReview = recomputeReviewPositionFromDiffReference({
+            review: item,
+            diffFilePaths,
+            matchState: diffLineMatchState,
+          });
+
+          if (
+            item.diff_line_code !== undefined &&
+            recomputedReview &&
+            (recomputedReview.file_path !== item.file_path ||
+              recomputedReview.new_line !== item.new_line ||
+              recomputedReview.old_line !== item.old_line)
+          ) {
+            try {
+              logger.warn(
+                `Retrying ${formatReviewLocation({ review: item })} using ${item.diff_file} to find ${colorizeDiffLineCode(item.diff_line_code)} -> ${formatReviewLocation({ review: recomputedReview })}`,
+              );
+
+              const discussion = await gitlabService.createReviewDiscussion({
+                review: recomputedReview,
+                mergeRequest: latestMergeRequest,
+              });
+              reviews[index] = recomputedReview;
+              createdDiscussions.push(discussion);
+              logger.success(
+                `Successfully posted comment to ${formatReviewLocation({ review: recomputedReview })} after recomputing position by using ${item.diff_file} to find${colorizeDiffLineCode(item.diff_line_code)} (discussion: ${discussion.discussion_id})`,
+              );
+              continue;
+            } catch (retryError) {
+              const retryMsg = `Failed to post recomputed comment for ${formatReviewLocation({ review: recomputedReview })} by using ${item.diff_file} to find ${colorizeDiffLineCode(item.diff_line_code)}: ${retryError instanceof Error ? retryError.message : String(retryError)}`;
+              logger.error(retryMsg);
+              logger.error(retryError);
+              errors.push(retryMsg);
+            }
+          }
+
+          const msg = `Failed to post comment for ${formatReviewLocation({ review: item })}: ${e instanceof Error ? e.message : String(e)}`;
+          logger.error(msg);
+          logger.debug(
+            "Failed with payload :",
+            JSON.stringify({ item }, null, 2),
+          );
+          logger.error(e);
+          errors.push(msg);
+        }
+      }
+    } else {
+      logger.info(
+        `[DRY RUN] Skipping ${reviews.length} inline review write(s) and summary note write`,
+      );
     }
 
     // D. Replace summary comment with updated embedded review history
     const summaryBody = buildSummaryNote({
-      response: normalizedResponse,
+      response: {
+        ...response,
+        reviews,
+      },
       reviewHistory: trimReviewHistoryRuns({
-        reviewHistory: [...reviewHistory, { discussions: createdDiscussions }],
+        reviewHistory:
+          createdDiscussions.length > 0
+            ? [...reviewHistory, { discussions: createdDiscussions }]
+            : reviewHistory,
       }),
       errors,
+      hasPreviousReviewHistory: reviewHistory.length > 0,
+      currentRunDiscussions: createdDiscussions,
     });
+
+    if (isDryRun) {
+      logger.debug(summaryBody);
+      return;
+    }
 
     try {
       if (existingSummaryNote) {

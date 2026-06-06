@@ -3,8 +3,48 @@ import type { en } from "./en";
 
 export const fr = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 Résumé de revue de code par ${readableModelName}`,
+    walkthrough: {
+      title: "📋 Parcours",
+    },
+    changes: {
+      title: "🚧 Changements",
+      columns: {
+        layerFiles: "Couche / Fichier(s)",
+        summary: "Résumé",
+      },
+    },
+    reviewList: {
+      title: "🔍 Résumé de revue",
+      header: {
+        zero: "Aucune suggestion de revue en ligne n'a été trouvée.",
+        one: ({ count }: { count: number }) =>
+          `${count} suggestion de revue en ligne a été trouvée :`,
+        other: ({ count }: { count: number }) =>
+          `${count} suggestions de revue en ligne ont été trouvées :`,
+      },
+      footer:
+        "<sub>Les suggestions des exécutions de revue précédentes ne sont pas listées ici.</sub>",
+      empty: "✨ Aucun problème détecté !",
+    },
+    otherSuggestions: {
+      title: "💡 Autres suggestions",
+      empty: "✨ Je n'ai pas d'autre remarque.",
+    },
+    details: {
+      summary: "Détails",
+    },
+    rank: {
+      high: "ÉLEVÉ",
+      medium: "MOYEN",
+      low: "FAIBLE",
+    },
+    errors: {
+      summary: "⚠️ Erreurs",
+    },
     performanceMetrics: {
-      summary: "Matrice d'utilisation du modèle et des performances",
+      summary: "📊 Matrice d'utilisation du modèle et des performances",
     },
   },
   reviewProcess: {

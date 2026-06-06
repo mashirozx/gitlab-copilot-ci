@@ -3,8 +3,48 @@ import type { en } from "./en";
 
 export const it = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 Riepilogo della revisione del codice di ${readableModelName}`,
+    walkthrough: {
+      title: "📋 Panoramica",
+    },
+    changes: {
+      title: "🚧 Modifiche",
+      columns: {
+        layerFiles: "Livello / File",
+        summary: "Riepilogo",
+      },
+    },
+    reviewList: {
+      title: "🔍 Riepilogo revisione",
+      header: {
+        zero: "Non sono stati trovati suggerimenti di revisione inline.",
+        one: ({ count }: { count: number }) =>
+          `È stato trovato ${count} suggerimento di revisione inline:`,
+        other: ({ count }: { count: number }) =>
+          `Sono stati trovati ${count} suggerimenti di revisione inline:`,
+      },
+      footer:
+        "<sub>I suggerimenti delle esecuzioni di revisione precedenti non sono elencati qui.</sub>",
+      empty: "✨ Nessun problema trovato!",
+    },
+    otherSuggestions: {
+      title: "💡 Altri suggerimenti",
+      empty: "✨ Non ho altri feedback da fornire.",
+    },
+    details: {
+      summary: "Dettagli",
+    },
+    rank: {
+      high: "ALTO",
+      medium: "MEDIO",
+      low: "BASSO",
+    },
+    errors: {
+      summary: "⚠️ Errori",
+    },
     performanceMetrics: {
-      summary: "Matrice di Utilizzo del Modello e Prestazioni",
+      summary: "📊 Matrice di Utilizzo del Modello e Prestazioni",
     },
   },
   reviewProcess: {

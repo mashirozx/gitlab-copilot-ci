@@ -3,8 +3,48 @@ import type { en } from "./en";
 
 export const id = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 Ringkasan Tinjauan Kode oleh ${readableModelName}`,
+    walkthrough: {
+      title: "📋 Uraian",
+    },
+    changes: {
+      title: "🚧 Perubahan",
+      columns: {
+        layerFiles: "Lapisan / Berkas",
+        summary: "Ringkasan",
+      },
+    },
+    reviewList: {
+      title: "🔍 Ringkasan Tinjauan",
+      header: {
+        zero: "Tidak ada saran tinjauan inline yang ditemukan.",
+        one: ({ count }: { count: number }) =>
+          `Ditemukan ${count} saran tinjauan inline:`,
+        other: ({ count }: { count: number }) =>
+          `Ditemukan ${count} saran tinjauan inline:`,
+      },
+      footer:
+        "<sub>Saran dari putaran tinjauan sebelumnya tidak ditampilkan di sini.</sub>",
+      empty: "✨ Tidak ada masalah yang ditemukan!",
+    },
+    otherSuggestions: {
+      title: "💡 Saran Lainnya",
+      empty: "✨ Saya tidak punya masukan tambahan.",
+    },
+    details: {
+      summary: "Detail",
+    },
+    rank: {
+      high: "TINGGI",
+      medium: "SEDANG",
+      low: "RENDAH",
+    },
+    errors: {
+      summary: "⚠️ Kesalahan",
+    },
     performanceMetrics: {
-      summary: "Matriks Penggunaan Model dan Kinerja",
+      summary: "📊 Matriks Penggunaan Model dan Kinerja",
     },
   },
   reviewProcess: {

@@ -3,8 +3,48 @@ import type { en } from "./en";
 
 export const ta = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 ${readableModelName} வழங்கிய குறியீட்டு மதிப்பாய்வு சுருக்கம்`,
+    walkthrough: {
+      title: "📋 நடைபாதை விளக்கம்",
+    },
+    changes: {
+      title: "🚧 மாற்றங்கள்",
+      columns: {
+        layerFiles: "அடுக்கு / கோப்பு(கள்)",
+        summary: "சுருக்கம்",
+      },
+    },
+    reviewList: {
+      title: "🔍 மதிப்பாய்வு சுருக்கம்",
+      header: {
+        zero: "Inline மதிப்பாய்வு பரிந்துரைகள் எதுவும் கிடைக்கவில்லை.",
+        one: ({ count }: { count: number }) =>
+          `${count} inline மதிப்பாய்வு பரிந்துரை கிடைத்தது:`,
+        other: ({ count }: { count: number }) =>
+          `${count} inline மதிப்பாய்வு பரிந்துரைகள் கிடைத்தன:`,
+      },
+      footer:
+        "<sub>முந்தைய மதிப்பாய்வு ஓட்டங்களின் பரிந்துரைகள் இங்கு பட்டியலிடப்படவில்லை.</sub>",
+      empty: "✨ எந்தப் பிரச்சினையும் கண்டுபிடிக்கப்படவில்லை!",
+    },
+    otherSuggestions: {
+      title: "💡 பிற பரிந்துரைகள்",
+      empty: "✨ எனக்கு கூடுதல் கருத்துகள் இல்லை.",
+    },
+    details: {
+      summary: "விவரங்கள்",
+    },
+    rank: {
+      high: "உயர்",
+      medium: "நடுத்தரம்",
+      low: "குறைவு",
+    },
+    errors: {
+      summary: "⚠️ பிழைகள்",
+    },
     performanceMetrics: {
-      summary: "மாதிரி பயன்பாடு மற்றும் செயல்திறன் அட்டவணை",
+      summary: "📊 மாதிரி பயன்பாடு மற்றும் செயல்திறன் அட்டவணை",
     },
   },
   reviewProcess: {

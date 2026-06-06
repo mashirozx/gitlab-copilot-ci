@@ -84,6 +84,8 @@ Rules:
 - History reconciliation logs should report three counts separately: removed resolved review items, removed deleted review items, and kept existing unresolved review items.
 - Resolved historical inline discussions must never be embedded into the prompt duplicate-suppression section and must never remain in the hidden base64 review-history payload.
 - The next run flattens prior `content` items, writes them to a temp Markdown file beside the diff pages, formats them as repeated review blocks with a small `Diff` table plus a freeform `Suggestions` section, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
+- The next run flattens prior `suggestion` items, writes them to a temp Markdown file beside the diff pages, formats them as repeated review blocks with a small `Diff` table plus a freeform `Suggestions` section, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
+- Summary parsing should accept older stored history entries that used `content` instead of `suggestion`, but all newly written history payloads should store `suggestion`.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
 
 ## Module Organization
@@ -99,7 +101,7 @@ Rules:
 | `app/services/pi.ts` | Pi invocation, Pi-event interpretation, human-readable console formatting, and usage extraction |
 | `app/services/logger.ts` | Shared `consola` logger and optional file logging |
 | `app/i18n/index.ts` | Typed runtime i18n helper for locale resolution, one-time async initialization, dot-path keys, plural selection, and dispatch to per-locale dictionaries |
-| `app/i18n/prompts.ts` | Prompt-specific language helper text, such as classical Chinese guidance derived from `--thinking-lang` and any requested translation languages |
+| `app/i18n/prompts.ts` | Prompt-specific language helper text, such as the shared classical Chinese script note derived from `--thinking-lang` and any requested translation languages |
 | `app/i18n/locales/*.ts` | Per-locale translation dictionaries, with `app/i18n/locales/en.ts` as the source schema for key and interpolation typing |
 | `app/i18n/schema.ts` | Shared locale-definition helper types used by the split i18n dictionaries |
 | `app/utils/argv.ts` | CLI argument parsing via yargs |
@@ -107,9 +109,10 @@ Rules:
 | `app/utils/std-handler.ts` | Shared stdout/stderr helpers for incremental log streaming, recent-output tails, and marked-JSON capture |
 | `app/utils/diff-files.ts` | Writes paginated unified diff files and can recompute positions from `diff_file` / `diff_line_code` references |
 | `app/utils/review-helpers.ts` | Pure helpers for review line/location formatting |
-| `app/utils/review-output.ts` | Normalizes model output and renders inline review comment bodies |
+| `app/utils/composers/review-comment-builder.ts` | Renders inline review comment bodies plus requested/translated display-language selection helpers |
+| `app/utils/composers/comment-helper.ts` | Shared comment-formatting and localization helpers reused by both comment builders |
 | `app/utils/lang.ts` | Shared language display-name and flag helpers for collapsed-language headers, with cached Intl/flag lookups |
-| `app/utils/review-summary.ts` | Renders summary markdown, performance/errors, history trimming, and encoded history blocks |
+| `app/utils/composers/summary-comment-builder.ts` | Renders summary markdown, performance/errors, history trimming, and encoded history blocks |
 | `app/utils/time.ts` | Temporal-based time helpers and async sleep utility |
 | `app/utils/model-name-parser.ts` | Shared model parsing helpers |
 | `app/utils/commit-reference.ts` | Shared current-commit short SHA / URL / markdown reference helpers used by prompts and reviewing-marker notes |
@@ -119,6 +122,7 @@ Rules:
 | `app/utils/stats/*.ts` | OS-specific runtime stats samplers plus the shared collector that records parent and agent usage during agent execution |
 | `app/utils/json.ts` | Safe JSON extraction/parsing helpers |
 | `app/utils/cli-env.ts` | Shared CLI environment helpers |
+| `app/utils/empty-review-response.ts` | Shared empty error-response builder used by both agent service implementations |
 | `app/types/review.types.ts` | Shared review/summary/usage payload types |
 
 Rules:
@@ -149,7 +153,7 @@ Model display rules:
 - `--max-history-length`: positive integer cap for the number of review runs kept in the encoded summary history. Default: `12`.
 - `--process-max-pending-time`: positive integer number of minutes to wait for an existing reviewing marker before skipping the current run. Default: `30`.
 - `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
-- `--debug` / `-d`: generate mock reviews only.
+- `--dry-run` / `--debug` / `-d`: run the real review pipeline but skip all GitLab writes, including inline comments, summary notes, and reviewing-marker notes.
 - `--log`: enable file logging; supports bare flag or a directory path.
 - `--max-stdout-size`: byte-size string with case-insensitive `b`, `kb`, or `mb` suffixes. Default: `100mb`. Live agent stdout printing stops once accumulated stdout reaches `80%` of that byte limit, measured with `Buffer.byteLength(...)`, so the process keeps a `20%` safety margin below GitLab's maximum job log file size.
 - `--collect-runtime-stats`: collect best-effort runtime stats for the Bun parent process and the spawned review agent while the agent runs. Default: `false`.
@@ -159,31 +163,36 @@ Model display rules:
 - `--should-teach-diff-compute`: include the explicit unified-diff line-number teaching block. Default: `false`.
 - `--tools`: repeatable extra tool allowlist entries.
 - `--lang`: repeatable display languages for summary/inline output.
-- `--thinking-lang`: source language for `summary.content` and `reviews[].suggestion`. Default: `en`.
+- `--thinking-lang`: primary thinking language and required language key included in every language-keyed review/summary record returned by the agent. Default: `en`.
 - `--collapsed-lang` / `--c-lang`: repeatable display languages to render in `<details>` blocks.
-- `--collapse-changes-summary`: ask the model to emit the `## 🚧 Changes` heading normally, followed by a `<details>` block with summary label `Details` that contains the section body in `summary.content` and every translated summary block. Default: `false`.
-- `--collapse-review-summary`: ask the model to emit the `## 🔍 Review Summary` heading normally, followed by a `<details>` block with summary label `Details` that contains the section body in `summary.content` and every translated summary block. Default: `false`.
+- `--collapse-changes-summary`: wrap the rendered `## 🚧 Changes` section in a runtime-owned `<details>` block with summary label `Details`. Default: `false`.
+- `--collapse-review-summary`: wrap the rendered `## 🔍 Review Summary` section in a runtime-owned `<details>` block with summary label `Details`. Default: `false`.
 - `--ignored-rank`: repeatable prompt-side rank suppression request with values `HIGH`, `MEDIUM`, `LOW`.
 - `--version` / `-v`: print version info and exit.
 
 Language rendering rules:
-- `summary.content` and every `reviews[].suggestion` value are written in `--thinking-lang`.
+- The agent response shape is direct and normalized at the source: `readableModelName`, `summary.walkthrough`, `summary.changes`, `summary.otherSuggestions`, and `reviews[].suggestions[lang].{detail,abstract}`. There is no runtime normalization layer and no legacy `summary.content`, `summary.translations`, `reviews[].suggestion`, or `reviews[].translations` contract.
 - The review prompt also tells the model to begin reasoning in `--thinking-lang` immediately after receiving the prompt; if the selected runtime exposes visible thinking/planning text before the final JSON line, that visible reasoning should stay in `--thinking-lang` too.
 - The review prompt also tells the model to translate the prompt instructions it relies on into `--thinking-lang` at the start of reasoning for internal use, then base all subsequent reasoning on that translated prompt, and to prefer direct UTF-8 characters over Unicode escape sequences in visible thinking and final JSON string values whenever valid JSON allows it.
-- `summary.translations` and `reviews[].translations` contain only the remaining requested display languages after removing any language equivalent to `--thinking-lang`.
+- Requested response languages are `--thinking-lang` plus every language requested by `--lang` and `--collapsed-lang`, deduped by normalized language tag.
 - When no `--lang` / `--collapsed-lang` values are provided, summary and inline rendering default to `--thinking-lang` instead of assuming English.
 - Language display helpers should normalize empty display-language inputs to `--thinking-lang`, and must still fall back to `en` if tests or import order expose an unset runtime argv value.
 - Display-language inputs and helper defaults should use canonical language tags such as `en`, `ja`, and `zh-CN`; do not add special handling for the literal `english` in rendering helpers.
-- When a requested display language matches `--thinking-lang`, rendering must use the original `summary.content` / `suggestion` directly instead of looking for a duplicate translation entry.
+- `reviews[].suggestions[lang].detail` is the inline-review body for that language, and `reviews[].suggestions[lang].abstract` is the summary-list text for that language.
+- Review-history persistence uses `reviews[].suggestions[thinkingLang].abstract` as `ReviewHistoryContentEntity.suggestion`, while summary-history parsing still accepts older stored `content` payloads for backward compatibility.
+- Inline rank badges are rendered by the runtime and stay in the source/thinking language even when the inline comment body is shown in another display language.
+- Summary review-list entries link the `file_path:line` label to the current run's successfully created GitLab inline note when the runtime has both `CI_PROJECT_URL` and the created `note_id`; when inline posting fails or no note URL context is available, the summary falls back to plain `file_path:line` text.
+- When inline posting succeeds only after `recomputeReviewPositionFromDiffReference(...)` adjusts the location, the runtime must also render the summary from those recomputed coordinates so the summary line numbers and note links match the stored current-run history entry.
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
 
 ## Internal I18n
 
 - Internal user-facing GitLab note strings should use `t(...)` from `app/i18n/index.ts` instead of introducing new hard-coded literals in feature code. Console log strings are currently not localized and remain English.
-- Summary UI labels rendered by `app/utils/review-summary.ts`, such as the performance metrics details summary, should also use `t(...)` so they follow `--thinking-lang`.
-- `app/i18n/index.ts` resolves the active locale directly from `argv["thinking-lang"]`. Startup code must call and await `initI18n()` once before any translated runtime output is built; after that, `t(...)` is synchronous.
+- Summary UI labels rendered by `app/utils/composers/summary-comment-builder.ts` and `app/utils/composers/review-comment-builder.ts`, including summary headings, table headers, review-rank tags, empty-review lines, history footers, and performance/error detail summaries, should use `t(...)` so they follow the intended render language.
+- `app/i18n/index.ts` resolves the active locale directly from `argv["thinking-lang"]`. Startup code must call and await `initI18n({ preloadLanguageTags })` once before any translated runtime output is built; preload the thinking language plus every requested display/collapsed language. After initialization, `t(...)` is synchronous.
 - `app/i18n/index.ts` should own the async loading boundary and cache the active locale after initialization rather than performing dynamic imports inside each `t(...)` call.
+- `t(key, { lang })` is the supported way to force a specific render language for a localized runtime string while keeping the globally initialized thinking language unchanged.
 - Locale definitions live under `app/i18n/locales/` such as `app/i18n/locales/en.ts` and `app/i18n/locales/zh-TW.ts`; keep `app/i18n/index.ts` focused on typing, locale resolution, initialization, and lookup.
 - Locale keys are nested objects with dot-path lookup keys derived from the English source dictionary. Interpolated entries should be functions, not placeholder strings, and placeholder names must stay stable across all locales because interpolation parameter names are inferred from the English source locale.
 - Pluralized entries are also leaf values: define them as branch objects with keys such as `zero`, `one`, and `other`, and call them through the normal `t(key, { count })` API. The full sentence for `zero` belongs in the locale file rather than feature code.
@@ -206,18 +215,18 @@ Documentation maintenance rule:
 3. If the marker still exists at the limit, log a warning and exit successfully without reviewing.
 4. Fetch the merge request and compare `process.env.CI_COMMIT_SHA` to `mr.diff_refs.head_sha`.
 5. If the MR head moved to a different commit, log a warning and exit successfully without reviewing.
-6. Post a new reviewing-marker note that references the current commit (`CI_COMMIT_SHORT_SHA` / `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available).
+6. If not in `--dry-run`, post a new reviewing-marker note that references the current commit (`CI_COMMIT_SHORT_SHA` / `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available).
 7. Load the existing summary note, decode the review-history block if present, fetch all merge-request discussion pages from GitLab, drop any resolved stored discussions from that history snapshot, then flatten only the unresolved discussion content for later duplicate suppression.
 8. Fetch paginated MR diffs and write one temp file per page: `mr-diff.page-<n>.diff`.
 9. When unresolved prior inline history exists, write it to `prior-inline-review-history.md` in the same temp directory as the diff pages.
 10. Run the configured agent (`github-copilot-cli` or `pi`) with the generated prompt.
-11. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the normalized response before final resolve.
-12. Before any GitLab writes, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
+11. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the response before final resolve.
+12. If not in `--dry-run`, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
 13. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
 14. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
-15. Normalize the response and post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
-16. Replace the prior summary note with a new one that contains the updated markdown plus the trimmed encoded history block, storing only unresolved historical inline discussions along with the newly created discussions from the current run.
-17. Delete the reviewing-marker note in a `finally` block, even if the review run fails.
+15. If not in `--dry-run`, post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
+16. Build the summary note from the structured response and replace the prior summary note unless `--dry-run` is enabled. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
+17. Delete the reviewing-marker note in a `finally` block when one was created.
 
 ### Duplicate Suppression Semantics
 
@@ -233,13 +242,23 @@ Prompt history is not a request to repeat or validate older comments. It is only
 
 ## Summary Construction
 
-`app/utils/review-summary.ts` builds the final MR summary note in this order:
+`app/utils/composers/summary-comment-builder.ts` builds the final MR summary note in this order:
 
 1. `<!-- <prefix>-summary-marker -->`
-2. Rendered summary markdown in the requested display languages. Languages listed in `--collapsed-lang` render inside `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region or an explicit alias. Plain `en` is treated as `en-GB` for the flag. `zh`, `zh-Hans`, `zh-Hant`, `zh-lzh`, `zh-Hans-lzh`, and `zh-Hant-lzh` all alias to the `zh-CN` flag. When Bun `Intl` cannot resolve the classical Chinese tags, fall back to `文言文`, `文言文（简体）`, or `文言文（繁體）` as appropriate.
-  - Section-level collapsing for `🚧 Changes` and `🔍 Review Summary` is prompt-driven. When `--collapse-changes-summary` or `--collapse-review-summary` is enabled, `app/prompts.ts` asks the model to emit the normal `##` heading first, then a nested `<details>` block with summary label `Details` for the section body, including translated summary blocks; `app/utils/review-summary.ts` does not rewrite those sections at render time.
+2. Rendered summary markdown in the requested display languages, built from `response.readableModelName`, `response.summary.walkthrough`, `response.summary.changes`, `response.summary.otherSuggestions`, and `response.reviews[].suggestions[lang].abstract`. The runtime owns the final GitLab layout and localizes the main title, section titles, review-count lead sentence, changes-table headers, history footer, and rank tags.
+  - `summary.changes[*][lang].layers[*].files` stay plain path strings in model output. `app/utils/composers/summary-comment-builder.ts` wraps long file paths when rendering the `Layer / File(s)` table column so narrow GitLab tables stay readable.
+  - Languages listed in `--collapsed-lang` render inside top-level `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region or an explicit alias. Plain `en` is treated as `en-GB` for the flag. `zh`, `zh-Hans`, `zh-Hant`, `zh-lzh`, `zh-Hans-lzh`, and `zh-Hant-lzh` all alias to the `zh-CN` flag. When Bun `Intl` cannot resolve the classical Chinese tags, fall back to `文言文`, `文言文（简体）`, or `文言文（繁體）` as appropriate.
+  - Section-level collapsing for `🚧 Changes` and `🔍 Review Summary` is runtime-owned. When `--collapse-changes-summary` or `--collapse-review-summary` is enabled, `app/utils/composers/summary-comment-builder.ts` wraps the rendered section body in a nested `<details>` block with summary label `Details`.
+
+## Comment Composer Tests
+
+- Comment-builder unit tests and contract tests live under `app/utils/composers/`.
+- Ordinary unit coverage stays in `review-comment-builder.spec.ts` and `summary-comment-builder.spec.ts`.
+- Snapshot-backed contract coverage lives in `review-comment-builder.contract.test.ts` and `summary-comment-builder.contract.test.ts`.
+- Contract snapshot artifacts are stored under `app/utils/composers/__snapshots__/` so builder contracts stay separate from other utility tests.
 3. Performance metrics section when available.
   - When `response.runtimeStats` exists, render runtime platform, peak parent memory, parent CPU time, peak agent tree memory, peak agent tree CPU, peak process count, agent read/write bytes when available, and backend notes.
+  - When `response.usage` exists, render input/output/cache tokens plus provider-specific metrics such as Copilot `AI Credits`, total tokens, and reasoning tokens.
 4. Collapsed errors section when errors exist.
 5. The hidden review-history block:
 
@@ -253,10 +272,10 @@ Prompt history is not a request to repeat or validate older comments. It is only
 
 The history block must stay at the very end of the summary note.
 
-Prompting rules for the `## 🔍 Review Summary` section:
-- The summary template asks the model to mention the current commit using the shared markdown commit reference built from `CI_COMMIT_SHORT_SHA` and `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available.
-- The summary template also tells the model to use correct zero/singular/plural wording for the review-count lead sentence instead of literal `suggestion(s)`. When that count is zero, the lead sentence should end with `.` instead of `:`.
-- After the inline-review list, the template includes the separator plus the subscript history-exclusion note only when prior inline review history was passed into the prompt for duplicate suppression.
+Review-summary rendering rules:
+- The prompt returns only structured summary and inline-review data. The runtime generates the localized review-count lead sentence and the optional prior-history footer text itself.
+- After the inline-review list, the runtime includes the separator plus the localized history-exclusion note only when prior inline review history existed before the current run.
+- Inline rank tags inside both the summary list and inline discussions use the source/thinking language, even when the surrounding detail body is rendered in another display language.
 
 ## Inline Review Position Rules
 
@@ -280,6 +299,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - Generic stdout/stderr stream logging and marker-block capture live in `app/utils/std-handler.ts`; `app/services/copilot.ts` should keep only Copilot-specific argument building, process orchestration, and result parsing.
 - Agent runtime stats collection is provider-agnostic and lives in `app/utils/stats/`; `app/services/copilot.ts` should only start and stop the shared collector around the spawned child process.
 - Copilot stdout still feeds marker capture and file logging after the console print budget is exhausted; only live terminal printing is suppressed.
+- Copilot usage metrics are parsed from the CLI's trailing `AI Credits ...` and `Tokens ↑ ... • ↓ ...` lines and mapped into `response.usage.aiCredits`, `input`, `cacheRead`, `output`, `totalTokens`, and `reasoningTokens` when those lines are present.
 
 ### Pi
 - Default allowlist: `read,grep,find,ls,bash`.
@@ -303,7 +323,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 
 ## Logging
 
-`--log` is independent from `--debug`.
+`--log` is independent from `--dry-run` / `--debug`.
 
 - `--log`: write `.gitlab-copilot-ci.{yyyy-mm-dd.hh-mm-ss}.log` in the current directory.
 - `--log /path/to/dir`: write in the provided directory.

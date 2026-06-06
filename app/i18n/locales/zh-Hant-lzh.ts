@@ -3,8 +3,45 @@ import type { en } from "./en";
 
 export const zhHantLzh = {
   reviewSummary: {
+    title: ({ readableModelName }: { readableModelName: string }) =>
+      `📝 ${readableModelName}程式碼評審總述`,
+    walkthrough: {
+      title: "📋 梗概",
+    },
+    changes: {
+      title: "🚧 變更",
+      columns: {
+        layerFiles: "層 / 檔案",
+        summary: "概述",
+      },
+    },
+    reviewList: {
+      title: "🔍 評審撮要",
+      header: {
+        zero: "未見行內評議。",
+        one: ({ count }: { count: number }) => `得行內評議${count}則：`,
+        other: ({ count }: { count: number }) => `得行內評議${count}則：`,
+      },
+      footer: "<sub>前次評審之議，不錄於此。</sub>",
+      empty: "✨ 未見問題！",
+    },
+    otherSuggestions: {
+      title: "💡 餘議",
+      empty: "✨ 無復議。",
+    },
+    details: {
+      summary: "詳",
+    },
+    rank: {
+      high: "高",
+      medium: "中",
+      low: "低",
+    },
+    errors: {
+      summary: "⚠️ 錯誤",
+    },
     performanceMetrics: {
-      summary: "模型用度與效能矩陣",
+      summary: "📊 模型用度與效能矩陣",
     },
   },
   reviewProcess: {

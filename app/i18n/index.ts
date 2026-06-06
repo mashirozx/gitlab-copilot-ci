@@ -18,6 +18,15 @@ type RuntimeTranslationLeaf =
   | string
   | ((params: Record<string, InterpolationPrimitive>) => string);
 
+type TranslationControlParams = {
+  lang?: string;
+};
+
+type WithLanguageControl<TParams> =
+  TParams extends Record<string, InterpolationPrimitive>
+    ? TParams & TranslationControlParams
+    : TranslationControlParams;
+
 type I18nEntity = LocaleSchema;
 
 type TerminalTranslationKey<T> = {
@@ -91,10 +100,14 @@ type TranslationArgsForValue<
   TPath extends TranslationKey,
   TValue,
 > = TValue extends (...args: infer TArgs) => string
-  ? [key: TPath, ...args: TArgs]
+  ? TArgs extends [infer TParams]
+    ? [key: TPath, params: WithLanguageControl<TParams>]
+    : [key: TPath, params?: TranslationControlParams]
   : IsPluralLeaf<TValue> extends true
-    ? [key: TPath, ...ExtractPluralParams<TValue>]
-    : [key: TPath];
+    ? ExtractPluralParams<TValue> extends [infer TParams]
+      ? [key: TPath, params: WithLanguageControl<TParams>]
+      : [key: TPath, params: { count: number } & TranslationControlParams]
+    : [key: TPath, params?: TranslationControlParams];
 
 export type TranslationArgs<TPath extends TranslationKey> =
   TranslationArgsForValue<TPath, TranslationValueAtPath<LocaleSchema, TPath>>;
@@ -140,12 +153,9 @@ const pluralCategorySet = new Set<string>([
   "other",
 ]);
 const localeCache = new Map<SupportedLocaleKey, Promise<I18nEntity>>();
+const loadedLocales = new Map<SupportedLocaleKey, I18nEntity>();
 let initializedLocale: I18nEntity | null = null;
 let initializedLocaleCode: SupportedLocaleKey | null = null;
-let initializationState: {
-  localeKey: SupportedLocaleKey;
-  promise: Promise<I18nEntity>;
-} | null = null;
 
 const normalizeLocaleForLookup = ({
   languageTag,
@@ -238,9 +248,26 @@ const loadLocale = async ({
     return cachedLocale;
   }
 
-  const localePromise = localeLoaders[localeKey]();
+  const localePromise = localeLoaders[localeKey]().then((locale) => {
+    loadedLocales.set(localeKey, locale);
+    return locale;
+  });
   localeCache.set(localeKey, localePromise);
   return localePromise;
+};
+
+const stripLanguageControl = ({
+  params,
+}: {
+  params: Record<string, InterpolationPrimitive> | undefined;
+}): Record<string, InterpolationPrimitive> | undefined => {
+  if (params === undefined) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(params).filter(([key]) => key !== "lang"),
+  ) as Record<string, InterpolationPrimitive>;
 };
 
 const isPluralTranslationValue = (
@@ -286,6 +313,15 @@ const getTranslationValue = ({
     const nextValue = currentNode[keySegment];
 
     if (nextValue === undefined) {
+      const fallbackLocale = loadedLocales.get(DEFAULT_LOCALE);
+
+      if (fallbackLocale !== undefined && fallbackLocale !== locale) {
+        return getTranslationValue({
+          locale: fallbackLocale,
+          key,
+        });
+      }
+
       throw new Error(`Missing translation key "${key}".`);
     }
 
@@ -360,31 +396,39 @@ type Translator = <TPath extends TranslationKey>(
 export const initI18n = async ({
   languageTag,
   fallbackLanguageTag,
+  preloadLanguageTags = [],
 }: {
   languageTag?: string;
   fallbackLanguageTag?: string;
+  preloadLanguageTags?: string[];
 } = {}): Promise<void> => {
   const localeKey = resolveLocaleKey({ languageTag, fallbackLanguageTag });
+  const preloadLocaleKeys = [
+    DEFAULT_LOCALE,
+    localeKey,
+    ...preloadLanguageTags.map((preloadLanguageTag) =>
+      resolveLocaleKey({
+        languageTag: preloadLanguageTag,
+        fallbackLanguageTag,
+      }),
+    ),
+  ].filter(
+    (candidate, index, candidates) => candidates.indexOf(candidate) === index,
+  ) as SupportedLocaleKey[];
 
-  if (initializedLocale !== null && initializedLocaleCode === localeKey) {
-    return;
-  }
+  await Promise.all(
+    preloadLocaleKeys.map((preloadLocaleKey) =>
+      loadLocale({
+        localeKey: preloadLocaleKey,
+      }),
+    ),
+  );
 
-  if (initializationState?.localeKey !== localeKey) {
-    initializationState = {
-      localeKey,
-      promise: loadLocale({ localeKey }),
-    };
-  }
-
-  const locale = await initializationState.promise;
+  const locale =
+    loadedLocales.get(localeKey) ?? (await loadLocale({ localeKey }));
 
   initializedLocale = locale;
   initializedLocaleCode = localeKey;
-
-  if (initializationState?.localeKey === localeKey) {
-    initializationState = null;
-  }
 };
 
 export const getCurrentLocaleCode = (): SupportedLocaleKey => {
@@ -392,19 +436,32 @@ export const getCurrentLocaleCode = (): SupportedLocaleKey => {
 };
 
 export const t = ((...args: unknown[]) => {
-  const [key, params] = args as [
+  const [key, rawParams] = args as [
     TranslationKey,
-    Record<string, InterpolationPrimitive> | undefined,
+    (
+      | (Record<string, InterpolationPrimitive> & TranslationControlParams)
+      | undefined
+    ),
   ];
-  const locale = initializedLocale;
+  const requestedLanguageTag =
+    typeof rawParams?.lang === "string" ? rawParams.lang : undefined;
+  const localeCode = requestedLanguageTag
+    ? resolveLocaleKey({
+        languageTag: requestedLanguageTag,
+        fallbackLanguageTag: getCurrentLocaleCode(),
+      })
+    : getCurrentLocaleCode();
+  const locale =
+    loadedLocales.get(localeCode) ??
+    (localeCode === initializedLocaleCode ? initializedLocale : null);
 
   if (locale === null) {
     throw new Error(
-      "i18n has not been initialized. Call initI18n() and await it before using t().",
+      `Locale "${localeCode}" has not been initialized. Call initI18n() with preloadLanguageTags and await it before using t().`,
     );
   }
 
-  const localeCode = getCurrentLocaleCode();
+  const params = stripLanguageControl({ params: rawParams });
   const translationValue = getTranslationValue({ locale, key });
 
   if (isPluralTranslationValue(translationValue)) {

@@ -108,10 +108,10 @@ export const argv = yargs(hideBin(process.argv))
         prefix: arg,
       }),
   })
-  .option("debug", {
-    alias: "d",
+  .option("dry-run", {
+    alias: ["debug", "d"],
     describe:
-      "Debug mode: review only from the diff, skip reading local repository files",
+      "Run the real review pipeline but skip all GitLab writes, including inline comments, summary notes, and reviewing-marker notes.",
     type: "boolean",
     default: false,
   })
@@ -229,7 +229,7 @@ export const argv = yargs(hideBin(process.argv))
   })
   .option("thinking-lang", {
     describe:
-      "Source language for summary.content and reviews[].suggestion. Matching display languages reuse the original content instead of a translation entry.",
+      "Primary thinking language for prompt reasoning, default inline-rank labels, and the required language entry included in every language-keyed review and summary record.",
     type: "string",
     default: "en",
   })
