@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { initI18n } from "./i18n";
 import { buildCopilotPrompt } from "./prompts.ts";
 import { runCopilotReview } from "./services/copilot";
-import { gitlabService } from "./services/gitlab";
 import type { ReviewHistoryDiscussionEntity } from "./services/gitlab.types";
 import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
@@ -23,18 +22,33 @@ import {
 } from "./utils/diff-files";
 import { formatReviewLocation } from "./utils/review-helpers";
 import { buildReviewHistoryFileContent } from "./utils/review-history-file";
-import {
-  buildReviewingMarkerNoteBody,
-  shouldSkipForStaleCommit,
-  waitForPendingReviewToFinish,
-} from "./utils/review-process";
 import { getFormattedVersion } from "./utils/version";
 
 const main = async () => {
+  const requestedMetaOutput = process.argv
+    .slice(2)
+    .some(
+      (arg) =>
+        arg === "-h" || arg === "--help" || arg === "-v" || arg === "--version",
+    );
+
+  if (requestedMetaOutput) {
+    return;
+  }
+
   const errors: string[] = [];
   let reviewingMarkerNoteId: number | null = null;
   let tempDir: string | null = null;
   const isDryRun = argv["dry-run"];
+  const [{ gitlabService }, reviewProcess] = await Promise.all([
+    import("./services/gitlab"),
+    import("./utils/review-process"),
+  ]);
+  const {
+    buildReviewingMarkerNoteBody,
+    shouldSkipForStaleCommit,
+    waitForPendingReviewToFinish,
+  } = reviewProcess;
 
   await initI18n({
     preloadLanguageTags: getRequestedResponseLanguages({

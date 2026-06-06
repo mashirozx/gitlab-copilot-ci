@@ -271,6 +271,8 @@ export const argv = yargs(hideBin(process.argv))
     type: "string",
     default: "5",
   })
+  .help("help", "Show help information and exit")
+  .alias("h", "help")
   .version(
     "version",
     "Show version information and exit",

@@ -185,6 +185,7 @@ Language rendering rules:
 - When inline posting succeeds only after `recomputeReviewPositionFromDiffReference(...)` adjusts the location, the runtime must also render the summary from those recomputed coordinates so the summary line numbers and note links match the stored current-run history entry.
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
+- Help/version handling belongs at the entrypoint boundary: `app/main.ts` must return before dynamically importing GitLab-dependent runtime modules such as `app/services/gitlab.ts` or `app/utils/review-process.ts`, so `bun dev -h` and `bun dev -v` do not require MR/project arguments.
 
 ## Internal I18n
 
