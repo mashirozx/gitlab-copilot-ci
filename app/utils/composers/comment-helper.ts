@@ -4,6 +4,10 @@ import type {
   ReviewRankEntity,
   ReviewSuggestionEntity,
 } from "../../types/review.types";
+import {
+  getCurrentCommitShortSha,
+  getCurrentCommitUrl,
+} from "../commit-reference";
 
 const normalizeLanguageForComparison = ({
   language,
@@ -113,6 +117,15 @@ export const buildDetailsBlock = ({
   content: string;
 }): string => {
   return `<details>\n<summary>${summary}</summary>\n\n${content}\n\n</details>`;
+};
+
+export const buildCurrentCommitReference = (): string => {
+  const commitShortSha = getCurrentCommitShortSha();
+  const commitUrl = getCurrentCommitUrl();
+
+  return commitUrl
+    ? `[\`${commitShortSha}\`](${commitUrl})`
+    : `\`${commitShortSha}\``;
 };
 
 export const normalizeReviewRank = ({

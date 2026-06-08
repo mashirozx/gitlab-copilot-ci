@@ -17,11 +17,30 @@ export const en = defineLocale({
     reviewList: {
       title: "🔍 Review Summary",
       header: {
-        zero: "Found no inline review suggestions.",
-        one: ({ count }: { count: number }) =>
-          `Found ${count} inline review suggestion:`,
-        other: ({ count }: { count: number }) =>
-          `Found ${count} inline review suggestions:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `I found no inline review suggestions in the changes up to commit ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `I found ${count} inline review suggestion in the changes up to commit ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `I found ${count} inline review suggestions in the changes up to commit ${commitReference}:`,
       },
       footer: "Suggestions from previous review runs are not listed here.",
       empty: "✨ No issues found!",

@@ -26,12 +26,3 @@ export const getCurrentCommitUrl = (): string | undefined => {
 
   return `${projectUrl}/-/commit/${commitSha}`;
 };
-
-export const buildCurrentCommitReference = (): string => {
-  const commitShortSha = getCurrentCommitShortSha();
-  const commitUrl = getCurrentCommitUrl();
-
-  return commitUrl
-    ? `[\`${commitShortSha}\`](${commitUrl})`
-    : `\`${commitShortSha}\``;
-};

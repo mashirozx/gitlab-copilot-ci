@@ -18,11 +18,30 @@ export const id = {
     reviewList: {
       title: "🔍 Ringkasan Tinjauan",
       header: {
-        zero: "Tidak ada saran tinjauan inline yang ditemukan.",
-        one: ({ count }: { count: number }) =>
-          `Ditemukan ${count} saran tinjauan inline:`,
-        other: ({ count }: { count: number }) =>
-          `Ditemukan ${count} saran tinjauan inline:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Tidak ada saran tinjauan inline yang ditemukan dalam perubahan hingga commit ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Ditemukan ${count} saran tinjauan inline dalam perubahan hingga commit ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Ditemukan ${count} saran tinjauan inline dalam perubahan hingga commit ${commitReference}:`,
       },
       footer:
         "<sub>Saran dari putaran tinjauan sebelumnya tidak ditampilkan di sini.</sub>",

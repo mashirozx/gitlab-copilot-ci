@@ -18,11 +18,30 @@ export const ko = {
     reviewList: {
       title: "🔍 리뷰 요약",
       header: {
-        zero: "인라인 리뷰 제안이 없습니다.",
-        one: ({ count }: { count: number }) =>
-          `인라인 리뷰 제안 ${count}개를 찾았습니다:`,
-        other: ({ count }: { count: number }) =>
-          `인라인 리뷰 제안 ${count}개를 찾았습니다:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `커밋 ${commitReference}까지의 변경에서 인라인 리뷰 제안을 찾지 못했습니다:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `커밋 ${commitReference}까지의 변경에서 인라인 리뷰 제안 ${count}개를 찾았습니다:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `커밋 ${commitReference}까지의 변경에서 인라인 리뷰 제안 ${count}개를 찾았습니다:`,
       },
       footer: "<sub>이전 리뷰 실행의 제안은 여기에 포함되지 않습니다.</sub>",
       empty: "✨ 문제가 발견되지 않았습니다!",

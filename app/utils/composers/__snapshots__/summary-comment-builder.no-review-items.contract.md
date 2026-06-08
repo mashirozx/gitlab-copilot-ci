@@ -23,7 +23,7 @@
 <details>
 <summary>詳細</summary>
 
-インラインのレビュー指摘はありません。
+コミット [`12345678`](https://gitlab.example.com/group/repo-name/-/commit/1234567890abcdef1234567890abcdef12345678) までの変更では、インラインのレビュー指摘はありません:
 
 ✨ 問題は見つかりませんでした!
 
@@ -66,7 +66,7 @@ English changes.
 <details>
 <summary>Details</summary>
 
-Found no inline review suggestions.
+I found no inline review suggestions in the changes up to commit [`12345678`](https://gitlab.example.com/group/repo-name/-/commit/1234567890abcdef1234567890abcdef12345678):
 
 ✨ No issues found!
 

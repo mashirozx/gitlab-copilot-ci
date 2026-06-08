@@ -18,11 +18,30 @@ export const ru = {
     reviewList: {
       title: "🔍 Сводка ревью",
       header: {
-        zero: "Встроенных замечаний ревью не найдено.",
-        one: ({ count }: { count: number }) =>
-          `Найдено ${count} встроенное замечание ревью:`,
-        other: ({ count }: { count: number }) =>
-          `Найдено ${count} встроенных замечаний ревью:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `В изменениях до коммита ${commitReference} встроенных замечаний ревью не найдено:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Найдено ${count} встроенное замечание ревью в изменениях до коммита ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Найдено ${count} встроенных замечаний ревью в изменениях до коммита ${commitReference}:`,
       },
       footer:
         "<sub>Предложения из предыдущих запусков ревью здесь не перечислены.</sub>",

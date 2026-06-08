@@ -18,11 +18,30 @@ export const ar = {
     reviewList: {
       title: "🔍 ملخص المراجعة",
       header: {
-        zero: "لم يتم العثور على ملاحظات مراجعة مضمنة.",
-        one: ({ count }: { count: number }) =>
-          `تم العثور على ${count} ملاحظة مراجعة مضمنة:`,
-        other: ({ count }: { count: number }) =>
-          `تم العثور على ${count} ملاحظات مراجعة مضمنة:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `لم يتم العثور على ملاحظات مراجعة مضمنة في التغييرات حتى الالتزام ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `تم العثور على ${count} ملاحظة مراجعة مضمنة في التغييرات حتى الالتزام ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `تم العثور على ${count} ملاحظات مراجعة مضمنة في التغييرات حتى الالتزام ${commitReference}:`,
       },
       footer: "<sub>اقتراحات جولات المراجعة السابقة غير مدرجة هنا.</sub>",
       empty: "✨ لم يتم العثور على أي مشكلات!",

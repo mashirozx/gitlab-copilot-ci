@@ -18,11 +18,30 @@ export const pt = {
     reviewList: {
       title: "🔍 Resumo da revisão",
       header: {
-        zero: "Nenhuma sugestão de revisão inline foi encontrada.",
-        one: ({ count }: { count: number }) =>
-          `${count} sugestão de revisão inline foi encontrada:`,
-        other: ({ count }: { count: number }) =>
-          `${count} sugestões de revisão inline foram encontradas:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Nenhuma sugestão de revisão inline foi encontrada nas alterações até o commit ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} sugestão de revisão inline foi encontrada nas alterações até o commit ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} sugestões de revisão inline foram encontradas nas alterações até o commit ${commitReference}:`,
       },
       footer:
         "<sub>As sugestões de execuções de revisão anteriores não são listadas aqui.</sub>",

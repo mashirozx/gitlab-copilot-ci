@@ -18,11 +18,30 @@ export const de = {
     reviewList: {
       title: "🔍 Review-Zusammenfassung",
       header: {
-        zero: "Es wurden keine Inline-Review-Hinweise gefunden.",
-        one: ({ count }: { count: number }) =>
-          `Es wurde ${count} Inline-Review-Hinweis gefunden:`,
-        other: ({ count }: { count: number }) =>
-          `Es wurden ${count} Inline-Review-Hinweise gefunden:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Es wurden keine Inline-Review-Hinweise in den Änderungen bis Commit ${commitReference} gefunden:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Es wurde ${count} Inline-Review-Hinweis in den Änderungen bis Commit ${commitReference} gefunden:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Es wurden ${count} Inline-Review-Hinweise in den Änderungen bis Commit ${commitReference} gefunden:`,
       },
       footer:
         "<sub>Vorschläge aus früheren Review-Läufen werden hier nicht aufgeführt.</sub>",

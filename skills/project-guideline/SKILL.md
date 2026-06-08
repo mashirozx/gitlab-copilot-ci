@@ -111,12 +111,13 @@ Rules:
 | `app/utils/diff-files.ts` | Writes paginated unified diff files and can recompute positions from `diff_file` / `diff_line_code` references |
 | `app/utils/review-helpers.ts` | Pure helpers for review line/location formatting |
 | `app/utils/composers/review-comment-builder.ts` | Renders inline review comment bodies plus requested/translated display-language selection helpers |
+| `app/utils/composers/reviewing-comment-builder.ts` | Renders the top-level review-in-progress marker note body using the current commit reference |
 | `app/utils/composers/comment-helper.ts` | Shared comment-formatting and localization helpers reused by both comment builders |
 | `app/utils/lang.ts` | Shared language display-name and flag helpers for collapsed-language headers, with cached Intl/flag lookups |
 | `app/utils/composers/summary-comment-builder.ts` | Renders summary markdown, performance/errors, history trimming, and encoded history blocks |
 | `app/utils/time.ts` | Temporal-based time helpers and async sleep utility |
 | `app/utils/model-name-parser.ts` | Shared model parsing helpers |
-| `app/utils/commit-reference.ts` | Shared current-commit short SHA / URL / markdown reference helpers used by prompts and reviewing-marker notes |
+| `app/utils/commit-reference.ts` | Shared current-commit SHA, short SHA, and URL helpers |
 | `app/utils/model-display.ts` | Shared normalized model display string for summaries and inline reviews |
 | `app/utils/pi-message-formatter.ts` | Human-readable Pi console event formatter |
 | `app/utils/pi-usage-collector.ts` | Pi usage extraction helpers |
@@ -254,6 +255,8 @@ Prompt history is not a request to repeat or validate older comments. It is only
 
 1. `<!-- <prefix>-summary-marker -->`
 2. Rendered summary markdown in the requested display languages, built from `response.readableModelName`, `response.summary.walkthrough`, `response.summary.changes`, `response.summary.otherSuggestions`, and `response.reviews[].suggestions[lang].abstract`. The runtime owns the final GitLab layout and localizes the main title, section titles, review-count lead sentence, changes-table headers, history footer, and rank tags.
+  - The localized `## 🔍 Review Summary` lead sentence should scope findings to the current CI commit reference rendered by `buildCurrentCommitReference()` from `app/utils/composers/comment-helper.ts`. In English, the preferred phrasing is `I found 2 inline review suggestions in the changes up to commit [\`12345678\`](...)`.
+  - The review-in-progress marker note body should be rendered by `app/utils/composers/reviewing-comment-builder.ts`, not by `app/utils/review-process.ts`, so the markdown shape stays covered by a dedicated contract snapshot.
   - `summary.changes[*][lang].layers[*].files` stay plain path strings in model output. `app/utils/composers/summary-comment-builder.ts` wraps long file paths when rendering the `Layer / File(s)` table column so narrow GitLab tables stay readable.
   - Languages listed in `--collapsed-lang` render inside top-level `<details>` blocks whose `<summary>` label uses `Intl.DisplayNames` to show the language name in that language, and appends a flag emoji when the language tag includes a region or an explicit alias. Plain `en` is treated as `en-GB` for the flag. `zh`, `zh-Hans`, `zh-Hant`, `zh-lzh`, `zh-Hans-lzh`, and `zh-Hant-lzh` all alias to the `zh-CN` flag. When Bun `Intl` cannot resolve the classical Chinese tags, fall back to `文言文`, `文言文（简体）`, or `文言文（繁體）` as appropriate.
   - Section-level collapsing for `🚧 Changes` and `🔍 Review Summary` is runtime-owned. When `--collapse-changes-summary` or `--collapse-review-summary` is enabled, `app/utils/composers/summary-comment-builder.ts` wraps the rendered section body in a nested `<details>` block with summary label `Details`.

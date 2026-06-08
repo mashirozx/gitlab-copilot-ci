@@ -1,38 +1,11 @@
 import { REVIEW_PENDING_POLL_INTERVAL_MS } from "../constants";
-import { t } from "../i18n/index";
 import { gitlabService } from "../services/gitlab";
 import { logger } from "../services/logger";
 import { argv } from "./argv";
-import {
-  buildCurrentCommitReference,
-  getCurrentCommitSha,
-} from "./commit-reference";
+import { getCurrentCommitSha } from "./commit-reference";
 import * as time from "./time";
 
-export const currentCommitSha = (): string | undefined => getCurrentCommitSha();
-
 const processMaxPendingTimeMinutes = argv["process-max-pending-time"];
-
-export const buildReviewingMarkerNoteBody = ({
-  htmlMarkerPrefix,
-}: {
-  htmlMarkerPrefix: string;
-}): string => {
-  const reviewingMarker = `${htmlMarkerPrefix}-reviewing-marker`;
-  const commitReference = buildCurrentCommitReference();
-
-  const body = t("reviewProcess.reviewingMarker.body", {
-    commitReference,
-  });
-  const manualDeleteHint = t("reviewProcess.reviewingMarker.manualDeleteHint");
-
-  return `<!-- ${reviewingMarker} -->
-${body}
-
-***
-
-<sub>${manualDeleteHint}</sub>`;
-};
 
 export const waitForPendingReviewToFinish = async ({
   ignoreReviewingNoteId,
@@ -74,7 +47,7 @@ export const shouldSkipForStaleCommit = ({
 }: {
   mergeRequestHeadSha: string;
 }): boolean => {
-  const commitSha = currentCommitSha();
+  const commitSha = getCurrentCommitSha();
 
   if (!commitSha) {
     logger.warn(

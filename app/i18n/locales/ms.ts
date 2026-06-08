@@ -18,11 +18,30 @@ export const ms = {
     reviewList: {
       title: "🔍 Ringkasan Semakan",
       header: {
-        zero: "Tiada cadangan semakan sebaris ditemui.",
-        one: ({ count }: { count: number }) =>
-          `${count} cadangan semakan sebaris ditemui:`,
-        other: ({ count }: { count: number }) =>
-          `${count} cadangan semakan sebaris ditemui:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Tiada cadangan semakan sebaris ditemui dalam perubahan sehingga commit ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} cadangan semakan sebaris ditemui dalam perubahan sehingga commit ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} cadangan semakan sebaris ditemui dalam perubahan sehingga commit ${commitReference}:`,
       },
       footer:
         "<sub>Cadangan daripada larian semakan terdahulu tidak disenaraikan di sini.</sub>",

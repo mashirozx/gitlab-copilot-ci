@@ -18,11 +18,30 @@ export const it = {
     reviewList: {
       title: "🔍 Riepilogo revisione",
       header: {
-        zero: "Non sono stati trovati suggerimenti di revisione inline.",
-        one: ({ count }: { count: number }) =>
-          `È stato trovato ${count} suggerimento di revisione inline:`,
-        other: ({ count }: { count: number }) =>
-          `Sono stati trovati ${count} suggerimenti di revisione inline:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Non sono stati trovati suggerimenti di revisione inline nelle modifiche fino al commit ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `È stato trovato ${count} suggerimento di revisione inline nelle modifiche fino al commit ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Sono stati trovati ${count} suggerimenti di revisione inline nelle modifiche fino al commit ${commitReference}:`,
       },
       footer:
         "<sub>I suggerimenti delle esecuzioni di revisione precedenti non sono elencati qui.</sub>",

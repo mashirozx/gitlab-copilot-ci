@@ -18,10 +18,29 @@ export const zh = {
     reviewList: {
       title: "🔍 审查摘要",
       header: {
-        zero: "未发现行内审查建议。",
-        one: ({ count }: { count: number }) => `发现 ${count} 条行内审查建议：`,
-        other: ({ count }: { count: number }) =>
-          `发现 ${count} 条行内审查建议：`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) => `在截至提交 ${commitReference} 的变更中未发现行内审查建议：`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `在截至提交 ${commitReference} 的变更中发现 ${count} 条行内审查建议：`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `在截至提交 ${commitReference} 的变更中发现 ${count} 条行内审查建议：`,
       },
       footer: "<sub>此处不包含过往审查轮次中的建议。</sub>",
       empty: "✨ 未发现问题！",

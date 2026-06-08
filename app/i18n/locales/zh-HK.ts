@@ -18,10 +18,29 @@ export const zhHK = {
     reviewList: {
       title: "🔍 審查摘要",
       header: {
-        zero: "未發現行內審查建議。",
-        one: ({ count }: { count: number }) => `發現 ${count} 條行內審查建議：`,
-        other: ({ count }: { count: number }) =>
-          `發現 ${count} 條行內審查建議：`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) => `在截至提交 ${commitReference} 的變更中未發現行內審查建議：`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `在截至提交 ${commitReference} 的變更中發現 ${count} 條行內審查建議：`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `在截至提交 ${commitReference} 的變更中發現 ${count} 條行內審查建議：`,
       },
       footer: "<sub>此處不包含過往審查輪次中的建議。</sub>",
       empty: "✨ 未發現問題！",

@@ -12,15 +12,9 @@ import { REVIEW_PENDING_POLL_INTERVAL_MS } from "../constants";
 import * as time from "./time";
 
 const originalCommitSha = process.env.CI_COMMIT_SHA;
-const originalCommitShortSha = process.env.CI_COMMIT_SHORT_SHA;
-const originalProjectUrl = process.env.CI_PROJECT_URL;
 const testCommitSha = "1234567890abcdef";
-const testCommitShortSha = "12345678";
-const testProjectUrl = "https://gitlab.example.com/group/project";
 
 process.env.CI_COMMIT_SHA = testCommitSha;
-process.env.CI_COMMIT_SHORT_SHA = testCommitShortSha;
-process.env.CI_PROJECT_URL = testProjectUrl;
 
 const gitlabServiceMock = {
   getReviewingMarkerNote: async ({
@@ -65,13 +59,9 @@ mock.module("./argv", () => ({
   },
 }));
 
-const { initI18n } = await import("../i18n/index");
-
-const {
-  buildReviewingMarkerNoteBody,
-  shouldSkipForStaleCommit,
-  waitForPendingReviewToFinish,
-} = await import("./review-process");
+const { shouldSkipForStaleCommit, waitForPendingReviewToFinish } = await import(
+  "./review-process"
+);
 
 const createMergeRequestNote = ({
   id,
@@ -115,8 +105,6 @@ afterEach(() => {
   loggerMock.warn = (_message: string): void => {};
 
   process.env.CI_COMMIT_SHA = testCommitSha;
-  process.env.CI_COMMIT_SHORT_SHA = testCommitShortSha;
-  process.env.CI_PROJECT_URL = testProjectUrl;
 });
 
 afterAll(() => {
@@ -125,33 +113,6 @@ afterAll(() => {
   } else {
     process.env.CI_COMMIT_SHA = originalCommitSha;
   }
-
-  if (originalCommitShortSha === undefined) {
-    delete process.env.CI_COMMIT_SHORT_SHA;
-  } else {
-    process.env.CI_COMMIT_SHORT_SHA = originalCommitShortSha;
-  }
-
-  if (originalProjectUrl === undefined) {
-    delete process.env.CI_PROJECT_URL;
-  } else {
-    process.env.CI_PROJECT_URL = originalProjectUrl;
-  }
-});
-
-describe("buildReviewingMarkerNoteBody", () => {
-  test("renders the current commit link when project and commit env vars exist", async () => {
-    await initI18n();
-
-    const noteBody = buildReviewingMarkerNoteBody({
-      htmlMarkerPrefix: "copilot",
-    });
-
-    expect(noteBody).toContain("<!-- copilot-reviewing-marker -->");
-    expect(noteBody).toContain(
-      "[`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef)",
-    );
-  });
 });
 
 describe("waitForPendingReviewToFinish", () => {

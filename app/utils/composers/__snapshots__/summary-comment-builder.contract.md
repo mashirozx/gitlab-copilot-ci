@@ -23,7 +23,7 @@
 <details>
 <summary>詳細</summary>
 
-インラインのレビュー指摘が 1 件あります:
+コミット [`12345678`](https://gitlab.example.com/group/repo-name/-/commit/1234567890abcdef1234567890abcdef12345678) までの変更で、インラインのレビュー指摘が 1 件あります:
 
 1. [`src/a.ts:10`](https://gitlab.example.com/group/repo-name/-/merge_requests/1#note_18239) $\colorbox{#ff4d4f}{\color{white}{\text{高}}}$ 新しいフィールドを直接使います。
 
@@ -66,7 +66,7 @@ English changes.
 <details>
 <summary>Details</summary>
 
-Found 1 inline review suggestion:
+I found 1 inline review suggestion in the changes up to commit [`12345678`](https://gitlab.example.com/group/repo-name/-/commit/1234567890abcdef1234567890abcdef12345678):
 
 1. [`src/a.ts:10`](https://gitlab.example.com/group/repo-name/-/merge_requests/1#note_18239) $\colorbox{#ff4d4f}{\color{white}{\text{HIGH}}}$ Use the new fields directly.
 

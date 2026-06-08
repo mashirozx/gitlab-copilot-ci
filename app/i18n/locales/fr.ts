@@ -18,11 +18,30 @@ export const fr = {
     reviewList: {
       title: "🔍 Résumé de revue",
       header: {
-        zero: "Aucune suggestion de revue en ligne n'a été trouvée.",
-        one: ({ count }: { count: number }) =>
-          `${count} suggestion de revue en ligne a été trouvée :`,
-        other: ({ count }: { count: number }) =>
-          `${count} suggestions de revue en ligne ont été trouvées :`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Aucune suggestion de revue en ligne n'a été trouvée dans les changements jusqu'au commit ${commitReference} :`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} suggestion de revue en ligne a été trouvée dans les changements jusqu'au commit ${commitReference} :`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} suggestions de revue en ligne ont été trouvées dans les changements jusqu'au commit ${commitReference} :`,
       },
       footer:
         "<sub>Les suggestions des exécutions de revue précédentes ne sont pas listées ici.</sub>",

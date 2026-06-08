@@ -40,15 +40,15 @@ const main = async () => {
   let reviewingMarkerNoteId: number | null = null;
   let tempDir: string | null = null;
   const isDryRun = argv["dry-run"];
-  const [{ gitlabService }, reviewProcess] = await Promise.all([
-    import("./services/gitlab"),
-    import("./utils/review-process"),
-  ]);
-  const {
-    buildReviewingMarkerNoteBody,
-    shouldSkipForStaleCommit,
-    waitForPendingReviewToFinish,
-  } = reviewProcess;
+  const [{ gitlabService }, reviewingCommentBuilder, reviewProcess] =
+    await Promise.all([
+      import("./services/gitlab"),
+      import("./utils/composers/reviewing-comment-builder"),
+      import("./utils/review-process"),
+    ]);
+  const { buildReviewingMarkerNoteBody } = reviewingCommentBuilder;
+  const { shouldSkipForStaleCommit, waitForPendingReviewToFinish } =
+    reviewProcess;
 
   await initI18n({
     preloadLanguageTags: getRequestedResponseLanguages({

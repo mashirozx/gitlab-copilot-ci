@@ -50,6 +50,16 @@ describe("i18n types", () => {
         },
       ]
     >();
+    expect<TranslationArgs<"reviewSummary.reviewList.header">>().type.toBe<
+      [
+        "reviewSummary.reviewList.header",
+        {
+          count: number;
+          commitReference: string;
+          lang?: string;
+        },
+      ]
+    >();
   });
 
   test("translation argument tuples reject wrong placeholder names by shape", () => {
@@ -86,6 +96,14 @@ describe("i18n types", () => {
         {
           count: number;
           extra: boolean;
+        },
+      ]
+    >();
+    expect<TranslationArgs<"reviewSummary.reviewList.header">>().type.not.toBe<
+      [
+        "reviewSummary.reviewList.header",
+        {
+          count: number;
         },
       ]
     >();

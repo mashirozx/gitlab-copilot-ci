@@ -18,11 +18,30 @@ export const fa = {
     reviewList: {
       title: "🔍 خلاصه بازبینی",
       header: {
-        zero: "هیچ پیشنهاد بازبینی درون‌خطی پیدا نشد.",
-        one: ({ count }: { count: number }) =>
-          `${count} پیشنهاد بازبینی درون‌خطی پیدا شد:`,
-        other: ({ count }: { count: number }) =>
-          `${count} پیشنهاد بازبینی درون‌خطی پیدا شد:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `هیچ پیشنهاد بازبینی درون‌خطی در تغییرات تا کامیت ${commitReference} پیدا نشد:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} پیشنهاد بازبینی درون‌خطی در تغییرات تا کامیت ${commitReference} پیدا شد:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `${count} پیشنهاد بازبینی درون‌خطی در تغییرات تا کامیت ${commitReference} پیدا شد:`,
       },
       footer:
         "<sub>پیشنهادهای اجراهای بازبینی قبلی در اینجا فهرست نمی‌شوند.</sub>",

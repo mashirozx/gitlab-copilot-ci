@@ -15,6 +15,8 @@ const contractEnv = {
   CI_PROJECT_ID: "1",
   CI_MERGE_REQUEST_IID: "1",
   CI_PROJECT_URL: "https://gitlab.example.com/group/repo-name",
+  CI_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
+  CI_COMMIT_SHORT_SHA: "12345678",
 } as const;
 
 const buildSnapshotPath = ({ fileName }: { fileName: string }): URL => {
@@ -308,6 +310,12 @@ const loadSummaryCommentBuilder = async () => {
       },
       get CI_PROJECT_URL() {
         return contractEnv.CI_PROJECT_URL;
+      },
+      get CI_COMMIT_SHA() {
+        return contractEnv.CI_COMMIT_SHA;
+      },
+      get CI_COMMIT_SHORT_SHA() {
+        return contractEnv.CI_COMMIT_SHORT_SHA;
       },
     },
   }));

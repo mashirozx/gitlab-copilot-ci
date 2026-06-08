@@ -18,11 +18,30 @@ export const th = {
     reviewList: {
       title: "🔍 สรุปการรีวิว",
       header: {
-        zero: "ไม่พบข้อเสนอแนะการรีวิวแบบอินไลน์",
-        one: ({ count }: { count: number }) =>
-          `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการ:`,
-        other: ({ count }: { count: number }) =>
-          `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการ:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `ไม่พบข้อเสนอแนะการรีวิวแบบอินไลน์ในความเปลี่ยนแปลงจนถึงคอมมิต ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการในความเปลี่ยนแปลงจนถึงคอมมิต ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการในความเปลี่ยนแปลงจนถึงคอมมิต ${commitReference}:`,
       },
       footer: "<sub>ข้อเสนอแนะจากรอบการรีวิวก่อนหน้าไม่ได้แสดงไว้ที่นี่</sub>",
       empty: "✨ ไม่พบปัญหา!",

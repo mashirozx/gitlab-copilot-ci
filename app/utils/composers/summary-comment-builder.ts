@@ -14,6 +14,7 @@ import { env } from "../env";
 import { formatCollapsedLanguageHeader } from "../lang.ts";
 import { modelDisplayName } from "../model-display.ts";
 import {
+  buildCurrentCommitReference,
   buildDetailsBlock,
   getLocalizedRecordValue,
   getRankInlineMath,
@@ -292,6 +293,7 @@ const buildSummaryLanguageBlock = ({
     response.readableModelName.trim().length > 0
       ? response.readableModelName
       : modelDisplayName;
+  const commitReference = buildCurrentCommitReference();
   const changesSectionContent = maybeCollapseSection({
     content:
       changesTable.trim().length > 0
@@ -303,6 +305,7 @@ const buildSummaryLanguageBlock = ({
   const reviewSummaryContent = [
     t("reviewSummary.reviewList.header", {
       count: response.reviews.length,
+      commitReference,
       lang: language,
     }),
     formatReviewLine({

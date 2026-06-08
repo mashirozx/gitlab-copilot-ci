@@ -18,11 +18,30 @@ export const ta = {
     reviewList: {
       title: "🔍 மதிப்பாய்வு சுருக்கம்",
       header: {
-        zero: "Inline மதிப்பாய்வு பரிந்துரைகள் எதுவும் கிடைக்கவில்லை.",
-        one: ({ count }: { count: number }) =>
-          `${count} inline மதிப்பாய்வு பரிந்துரை கிடைத்தது:`,
-        other: ({ count }: { count: number }) =>
-          `${count} inline மதிப்பாய்வு பரிந்துரைகள் கிடைத்தன:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `கமிட் ${commitReference} வரை உள்ள மாற்றங்களில் எந்த inline மதிப்பாய்வு பரிந்துரைகளும் கிடைக்கவில்லை:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `கமிட் ${commitReference} வரை உள்ள மாற்றங்களில் ${count} inline மதிப்பாய்வு பரிந்துரை கிடைத்தது:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `கமிட் ${commitReference} வரை உள்ள மாற்றங்களில் ${count} inline மதிப்பாய்வு பரிந்துரைகள் கிடைத்தன:`,
       },
       footer:
         "<sub>முந்தைய மதிப்பாய்வு ஓட்டங்களின் பரிந்துரைகள் இங்கு பட்டியலிடப்படவில்லை.</sub>",

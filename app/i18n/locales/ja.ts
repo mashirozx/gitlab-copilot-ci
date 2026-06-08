@@ -18,11 +18,30 @@ export const ja = {
     reviewList: {
       title: "🔍 レビュー要約",
       header: {
-        zero: "インラインのレビュー指摘はありません。",
-        one: ({ count }: { count: number }) =>
-          `インラインのレビュー指摘が ${count} 件あります:`,
-        other: ({ count }: { count: number }) =>
-          `インラインのレビュー指摘が ${count} 件あります:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `コミット ${commitReference} までの変更では、インラインのレビュー指摘はありません:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `コミット ${commitReference} までの変更で、インラインのレビュー指摘が ${count} 件あります:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `コミット ${commitReference} までの変更で、インラインのレビュー指摘が ${count} 件あります:`,
       },
       footer:
         "<sub>過去のレビュー実行で出された提案はここには含めていません。</sub>",

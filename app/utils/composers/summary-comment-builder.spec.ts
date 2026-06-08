@@ -5,6 +5,9 @@ process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
 process.env.CI_MERGE_REQUEST_IID ??= "1";
+process.env.CI_PROJECT_URL ??= "https://gitlab.example.com/group/repo-name";
+process.env.CI_COMMIT_SHA ??= "1234567890abcdef1234567890abcdef12345678";
+process.env.CI_COMMIT_SHORT_SHA ??= "12345678";
 
 const originalArgv = [...process.argv];
 

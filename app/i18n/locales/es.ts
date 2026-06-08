@@ -18,11 +18,30 @@ export const es = {
     reviewList: {
       title: "🔍 Resumen de revisión",
       header: {
-        zero: "No se encontraron sugerencias de revisión en línea.",
-        one: ({ count }: { count: number }) =>
-          `Se encontró ${count} sugerencia de revisión en línea:`,
-        other: ({ count }: { count: number }) =>
-          `Se encontraron ${count} sugerencias de revisión en línea:`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `No se encontraron sugerencias de revisión en línea en los cambios hasta el commit ${commitReference}:`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Se encontró ${count} sugerencia de revisión en línea en los cambios hasta el commit ${commitReference}:`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) =>
+          `Se encontraron ${count} sugerencias de revisión en línea en los cambios hasta el commit ${commitReference}:`,
       },
       footer:
         "<sub>Las sugerencias de ejecuciones de revisión anteriores no se enumeran aquí.</sub>",

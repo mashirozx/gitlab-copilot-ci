@@ -18,9 +18,27 @@ export const zhHantLzh = {
     reviewList: {
       title: "🔍 評審撮要",
       header: {
-        zero: "未見行內評議。",
-        one: ({ count }: { count: number }) => `得行內評議${count}則：`,
-        other: ({ count }: { count: number }) => `得行內評議${count}則：`,
+        zero: ({
+          count: _count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) => `至提交${commitReference}之變更，未見行內評議：`,
+        one: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) => `至提交${commitReference}之變更，得行內評議${count}則：`,
+        other: ({
+          count,
+          commitReference,
+        }: {
+          count: number;
+          commitReference: string;
+        }) => `至提交${commitReference}之變更，得行內評議${count}則：`,
       },
       footer: "<sub>前次評審之議，不錄於此。</sub>",
       empty: "✨ 未見問題！",
