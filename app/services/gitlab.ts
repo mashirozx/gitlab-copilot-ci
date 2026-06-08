@@ -66,6 +66,157 @@ const getStringProperty = ({
   return typeof property === "string" ? property : undefined;
 };
 
+const getObjectProperty = ({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>;
+  key: string;
+}): Record<string, unknown> | undefined => {
+  const property = value[key];
+
+  return property && typeof property === "object"
+    ? (property as Record<string, unknown>)
+    : undefined;
+};
+
+const getNumberProperty = ({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>;
+  key: string;
+}): number | undefined => {
+  const property = value[key];
+
+  return typeof property === "number" ? property : undefined;
+};
+
+const getHeaderValue = ({
+  headers,
+  name,
+}: {
+  headers: unknown;
+  name: string;
+}): string | undefined => {
+  if (headers instanceof Headers) {
+    return headers.get(name) ?? undefined;
+  }
+
+  if (Array.isArray(headers)) {
+    const matchedHeader = headers.find(
+      (entry): entry is [string, string] =>
+        Array.isArray(entry) &&
+        entry.length >= 2 &&
+        typeof entry[0] === "string" &&
+        entry[0].toLowerCase() === name.toLowerCase() &&
+        typeof entry[1] === "string",
+    );
+
+    return matchedHeader?.[1];
+  }
+
+  if (headers && typeof headers === "object") {
+    const headerRecord = headers as Record<string, unknown>;
+    const directHeader = headerRecord[name];
+
+    if (typeof directHeader === "string") {
+      return directHeader;
+    }
+
+    const matchedKey = Object.keys(headerRecord).find(
+      (key) => key.toLowerCase() === name.toLowerCase(),
+    );
+
+    return matchedKey && typeof headerRecord[matchedKey] === "string"
+      ? (headerRecord[matchedKey] as string)
+      : undefined;
+  }
+
+  return undefined;
+};
+
+const buildGitLabRequestFailureMessage = ({
+  error,
+}: {
+  error: unknown;
+}): string | null => {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const cause = getObjectProperty({
+    value: error as Record<string, unknown>,
+    key: "cause",
+  });
+
+  if (!cause) {
+    return null;
+  }
+
+  const response = getObjectProperty({
+    value: cause,
+    key: "response",
+  });
+  const request = getObjectProperty({
+    value: cause,
+    key: "request",
+  });
+  const requestId = getHeaderValue({
+    headers: response?.headers,
+    name: "x-request-id",
+  });
+  const status = response
+    ? getNumberProperty({
+        value: response,
+        key: "status",
+      })
+    : undefined;
+  const method = request
+    ? getStringProperty({
+        value: request,
+        key: "method",
+      })
+    : undefined;
+  const url =
+    (request
+      ? getStringProperty({
+          value: request,
+          key: "url",
+        })
+      : undefined) ??
+    (response
+      ? getStringProperty({
+          value: response,
+          key: "url",
+        })
+      : undefined);
+
+  if (!requestId && status === undefined && !method && !url) {
+    return null;
+  }
+
+  const parts = ["[GitLab] API request failed"];
+
+  if (status !== undefined) {
+    parts.push(`status=${status}`);
+  }
+
+  if (method) {
+    parts.push(`method=${method}`);
+  }
+
+  if (url) {
+    parts.push(`url=${url}`);
+  }
+
+  if (requestId) {
+    parts.push(`x-request-id=${requestId}`);
+  }
+
+  return parts.join(" ");
+};
+
 const getNullableLineProperty = ({
   value,
   key,
@@ -354,11 +505,34 @@ export class GitLabService {
     });
   }
 
+  private withGitLabRequestLogging = async <T>({
+    request,
+  }: {
+    request: () => Promise<T>;
+  }): Promise<T> => {
+    try {
+      return await request();
+    } catch (error) {
+      const failureMessage = buildGitLabRequestFailureMessage({ error });
+
+      if (failureMessage) {
+        logger.error(failureMessage);
+      }
+
+      throw error;
+    }
+  };
+
   getMergeRequest = async () =>
-    this.client.MergeRequests.show(this.projectId, this.mrIid);
+    this.withGitLabRequestLogging({
+      request: () => this.client.MergeRequests.show(this.projectId, this.mrIid),
+    });
 
   private getMergeRequestNotes = async (): Promise<MergeRequestNoteSchema[]> =>
-    this.client.MergeRequestNotes.all(this.projectId, this.mrIid);
+    this.withGitLabRequestLogging({
+      request: () =>
+        this.client.MergeRequestNotes.all(this.projectId, this.mrIid),
+    });
 
   private getMergeRequestDiscussions = async (): Promise<
     DiscussionSchema[]
@@ -366,14 +540,13 @@ export class GitLabService {
     const discussions: DiscussionSchema[] = [];
 
     for (let page = 1; ; page += 1) {
-      const pageDiscussions = await this.client.MergeRequestDiscussions.all(
-        this.projectId,
-        this.mrIid,
-        {
-          page,
-          perPage: this.discussionPageSize,
-        },
-      );
+      const pageDiscussions = await this.withGitLabRequestLogging({
+        request: () =>
+          this.client.MergeRequestDiscussions.all(this.projectId, this.mrIid, {
+            page,
+            perPage: this.discussionPageSize,
+          }),
+      });
 
       if (pageDiscussions.length === 0) {
         break;
@@ -397,14 +570,13 @@ export class GitLabService {
     // at 20 here, a max page limit of N means at most N * 20 diff entries are
     // handed to the LLM.
     for (let page = 1; page <= this.maxGitDiffPage; page += 1) {
-      const diffs = await this.client.MergeRequests.allDiffs(
-        this.projectId,
-        this.mrIid,
-        {
-          page,
-          perPage: this.diffPageSize,
-        },
-      );
+      const diffs = await this.withGitLabRequestLogging({
+        request: () =>
+          this.client.MergeRequests.allDiffs(this.projectId, this.mrIid, {
+            page,
+            perPage: this.diffPageSize,
+          }),
+      });
 
       if (diffs.length === 0) {
         break;
@@ -528,7 +700,14 @@ export class GitLabService {
   };
 
   deleteMergeRequestNote = async ({ noteId }: { noteId: number }) =>
-    this.client.MergeRequestNotes.remove(this.projectId, this.mrIid, noteId);
+    this.withGitLabRequestLogging({
+      request: () =>
+        this.client.MergeRequestNotes.remove(
+          this.projectId,
+          this.mrIid,
+          noteId,
+        ),
+    });
 
   createReviewDiscussion = async ({
     review,
@@ -573,13 +752,15 @@ export class GitLabService {
       review,
     });
 
-    const discussion: DiscussionSchema =
-      await this.client.MergeRequestDiscussions.create(
-        this.projectId,
-        this.mrIid,
-        commentBody,
-        { position },
-      );
+    const discussion: DiscussionSchema = await this.withGitLabRequestLogging({
+      request: () =>
+        this.client.MergeRequestDiscussions.create(
+          this.projectId,
+          this.mrIid,
+          commentBody,
+          { position },
+        ),
+    });
 
     const createdNote = discussion.notes?.find((note) => !note.system);
 
@@ -608,18 +789,28 @@ export class GitLabService {
   };
 
   createSummaryNote = async ({ summaryBody }: { summaryBody: string }) =>
-    this.client.MergeRequestNotes.create(
-      this.projectId,
-      this.mrIid,
-      summaryBody,
-    );
+    this.withGitLabRequestLogging({
+      request: () =>
+        this.client.MergeRequestNotes.create(
+          this.projectId,
+          this.mrIid,
+          summaryBody,
+        ),
+    });
 
   createReviewingMarkerNote = async ({
     noteBody,
   }: {
     noteBody: string;
   }): Promise<MergeRequestNoteSchema> =>
-    this.client.MergeRequestNotes.create(this.projectId, this.mrIid, noteBody);
+    this.withGitLabRequestLogging({
+      request: () =>
+        this.client.MergeRequestNotes.create(
+          this.projectId,
+          this.mrIid,
+          noteBody,
+        ),
+    });
 }
 
 export const gitlabService = new GitLabService();

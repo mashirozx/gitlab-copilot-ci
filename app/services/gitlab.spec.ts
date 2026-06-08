@@ -3,7 +3,7 @@ import type { DiscussionSchema } from "@gitbeaker/rest";
 
 const loggerMock = {
   debug: (..._args: unknown[]) => {},
-  error: (..._args: unknown[]) => {},
+  error: mock((..._args: unknown[]) => {}),
   info: (..._args: unknown[]) => {},
   start: (..._args: unknown[]) => {},
   success: (..._args: unknown[]) => {},
@@ -362,6 +362,44 @@ describe("filterExistingUnresolvedReviewHistory", () => {
       removedDeletedCount: 1,
       existingUnresolvedCount: 0,
     });
+  });
+});
+
+describe("GitLabService request failure logging", () => {
+  test("logs the GitLab x-request-id for failed API requests", async () => {
+    const service = new GitLabService();
+    const requestError = Object.assign(new Error("404 Not found"), {
+      cause: {
+        request: {
+          method: "GET",
+          url: "https://gitlab.example.com/api/v4/projects/1/merge_requests/1/notes",
+        },
+        response: {
+          status: 404,
+          url: "https://gitlab.example.com/api/v4/projects/1/merge_requests/1/notes",
+          headers: new Headers({
+            "x-request-id": "req-404-test",
+          }),
+        },
+      },
+    });
+    const mergeRequestNotesAllMock = mock(async () => {
+      throw requestError;
+    });
+
+    service["client"].MergeRequestNotes.all = mergeRequestNotesAllMock;
+    loggerMock.error.mockClear();
+
+    await expect(service.getExistingSummaryNote()).rejects.toThrow(
+      "404 Not found",
+    );
+
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.stringContaining("x-request-id=req-404-test"),
+    );
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.stringContaining("status=404"),
+    );
   });
 });
 

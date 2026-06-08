@@ -96,7 +96,7 @@ Rules:
 | `app/main.ts` | Orchestrates debounce, stale-commit skipping, diff fetch, prompt generation, agent execution, inline discussion posting, summary replacement, and cleanup of the reviewing marker note |
 | `app/constants.ts` | Shared JSON markers and CLI environment defaults |
 | `app/prompts.ts` | Builds the review prompt, including diff-reading instructions, deferred duplicate-suppression history guidance, translation requirements, and diff-position guidance |
-| `app/services/gitlab.ts` | GitLab API wrapper for MR fetch, diff pagination, note lookup/creation/deletion, history parsing, and inline discussion creation |
+| `app/services/gitlab.ts` | GitLab API wrapper for MR fetch, diff pagination, note lookup/creation/deletion, history parsing, inline discussion creation, and failed-request logging with GitLab `x-request-id` correlation ids |
 | `app/services/gitlab.types.ts` | GitLab-facing entities, review-history payload types, MR note types, and diff result types |
 | `app/services/copilot.ts` | GitHub Copilot CLI invocation and Copilot-specific response handling |
 | `app/services/pi.ts` | Pi invocation, Pi-event interpretation, incremental marked-review-JSON capture from streamed assistant text, human-readable console formatting, and usage extraction |
@@ -192,6 +192,7 @@ Language rendering rules:
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
 - Help/version handling belongs at the entrypoint boundary: `app/main.ts` must return before dynamically importing GitLab-dependent runtime modules such as `app/services/gitlab.ts` or `app/utils/review-process.ts`, so `bun dev -h` and `bun dev -v` do not require MR/project arguments.
+- Failed GitLab API calls should be logged before rethrowing, and that log line must include the GitLab `x-request-id` response header when present so operators can correlate CI failures with GitLab server logs.
 
 ## Internal I18n
 
