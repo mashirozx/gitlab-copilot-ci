@@ -4,14 +4,14 @@ A Bun-based GitLab CI review binary that analyzes merge request diffs with eithe
 
 ## Binary Artifacts
 
-| Platform | Architecture | Path | Usage |
-|----------|--------------|------|-------|
-| macOS | Apple Silicon | `./dist/gitlab-copilot-ci-darwin-arm64` | `./dist/gitlab-copilot-ci-darwin-arm64 [options]` |
-| macOS | Intel x86_64 | `./dist/gitlab-copilot-ci-darwin-x64` | `./dist/gitlab-copilot-ci-darwin-x64 [options]` |
-| Linux | x86_64 | `./dist/gitlab-copilot-ci-linux-x64` | `./dist/gitlab-copilot-ci-linux-x64 [options]` |
-| Linux | ARM64 | `./dist/gitlab-copilot-ci-linux-arm64` | `./dist/gitlab-copilot-ci-linux-arm64 [options]` |
-| Windows | x86_64 | `./dist/gitlab-copilot-ci-win-x64.exe` | `.\dist\gitlab-copilot-ci-win-x64.exe [options]` |
-| Windows | ARM64 | `./dist/gitlab-copilot-ci-win-arm64.exe` | `.\dist\gitlab-copilot-ci-win-arm64.exe [options]` |
+| Platform | Architecture | Download |
+|----------|--------------|----------|
+| macOS | Apple Silicon | [gitlab-copilot-ci-darwin-arm64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-darwin-arm64) |
+| macOS | Intel x86_64 | [gitlab-copilot-ci-darwin-x64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-darwin-x64) |
+| Linux | x86_64 | [gitlab-copilot-ci-linux-x64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-x64) |
+| Linux | ARM64 | [gitlab-copilot-ci-linux-arm64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-arm64) |
+| Windows | x86_64 | [gitlab-copilot-ci-win-x64.exe](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-win-x64.exe) |
+| Windows | ARM64 | [gitlab-copilot-ci-win-arm64.exe](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-win-arm64.exe) |
 
 ## Usage
 
