@@ -1,5 +1,5 @@
 <!-- copilot-reviewing-marker -->
-⚠️ Code review is in progress... I am reviewing commit [`12345678`](https://gitlab.example.com/group/project/-/commit/1234567890abcdef). To avoid conflicts, I will hold further reviews until the current one is concluded.
+⚠️ Code review is in progress... I am reviewing commit [`12345678`](https://gitlab.example.com/group/repo-name/-/commit/1234567890abcdef1234567890abcdef12345678). To avoid conflicts, I will hold further reviews until the current one is concluded.
 
 ***
 

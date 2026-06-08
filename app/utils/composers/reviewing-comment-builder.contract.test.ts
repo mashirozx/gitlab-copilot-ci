@@ -1,18 +1,38 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { initI18n } from "../../i18n";
-import { buildReviewingMarkerNoteBody } from "./reviewing-comment-builder";
 
-const originalCommitSha = process.env.CI_COMMIT_SHA;
-const originalCommitShortSha = process.env.CI_COMMIT_SHORT_SHA;
-const originalProjectUrl = process.env.CI_PROJECT_URL;
+const contractEnv = {
+  CI_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
+  CI_COMMIT_SHORT_SHA: "12345678",
+  CI_PROJECT_URL: "https://gitlab.example.com/group/repo-name",
+} as const;
 
-process.env.CI_COMMIT_SHA = "1234567890abcdef";
-process.env.CI_COMMIT_SHORT_SHA = "12345678";
-process.env.CI_PROJECT_URL = "https://gitlab.example.com/group/project";
+const loadReviewingCommentBuilder = async () => {
+  mock.module("../env", () => ({
+    env: {
+      get CI_COMMIT_SHA() {
+        return contractEnv.CI_COMMIT_SHA;
+      },
+      get CI_COMMIT_SHORT_SHA() {
+        return contractEnv.CI_COMMIT_SHORT_SHA;
+      },
+      get CI_PROJECT_URL() {
+        return contractEnv.CI_PROJECT_URL;
+      },
+    },
+  }));
+
+  return import(`./reviewing-comment-builder?contract=${Date.now()}`);
+};
 
 await initI18n({
   languageTag: "en",
   preloadLanguageTags: ["en"],
+});
+
+afterEach(() => {
+  mock.restore();
+  mock.clearAllMocks();
 });
 
 const snapshotPath = new URL(
@@ -30,6 +50,8 @@ const readContractSnapshot = async ({
 
 describe("reviewing-comment-builder contract", () => {
   test("renders the review-in-progress note body consistently", async () => {
+    const { buildReviewingMarkerNoteBody } =
+      await loadReviewingCommentBuilder();
     const body = buildReviewingMarkerNoteBody({
       htmlMarkerPrefix: "copilot",
     });
@@ -37,24 +59,4 @@ describe("reviewing-comment-builder contract", () => {
 
     expect(body).toBe(expectedSnapshot);
   });
-});
-
-afterAll(() => {
-  if (originalCommitSha === undefined) {
-    delete process.env.CI_COMMIT_SHA;
-  } else {
-    process.env.CI_COMMIT_SHA = originalCommitSha;
-  }
-
-  if (originalCommitShortSha === undefined) {
-    delete process.env.CI_COMMIT_SHORT_SHA;
-  } else {
-    process.env.CI_COMMIT_SHORT_SHA = originalCommitShortSha;
-  }
-
-  if (originalProjectUrl === undefined) {
-    delete process.env.CI_PROJECT_URL;
-  } else {
-    process.env.CI_PROJECT_URL = originalProjectUrl;
-  }
 });
