@@ -99,7 +99,7 @@ Rules:
 | `app/services/gitlab.ts` | GitLab API wrapper for MR fetch, diff pagination, note lookup/creation/deletion, history parsing, and inline discussion creation |
 | `app/services/gitlab.types.ts` | GitLab-facing entities, review-history payload types, MR note types, and diff result types |
 | `app/services/copilot.ts` | GitHub Copilot CLI invocation and Copilot-specific response handling |
-| `app/services/pi.ts` | Pi invocation, Pi-event interpretation, human-readable console formatting, and usage extraction |
+| `app/services/pi.ts` | Pi invocation, Pi-event interpretation, incremental marked-review-JSON capture from streamed assistant text, human-readable console formatting, and usage extraction |
 | `app/services/logger.ts` | Shared `consola` logger and optional file logging |
 | `app/i18n/index.ts` | Typed runtime i18n helper for locale resolution, one-time async initialization, dot-path keys, plural selection, and dispatch to per-locale dictionaries |
 | `app/i18n/prompts.ts` | Prompt-specific language helper text, such as the shared classical Chinese script note derived from `--thinking-lang` and any requested translation languages |
@@ -170,6 +170,11 @@ Model display rules:
 - `--collapse-review-summary`: wrap the rendered `## 🔍 Review Summary` section in a runtime-owned `<details>` block with summary label `Details`. Default: `false`.
 - `--ignored-rank`: repeatable prompt-side rank suppression request with values `HIGH`, `MEDIUM`, `LOW`.
 - `--version` / `-v`: print version info and exit.
+
+Pi JSON parsing rules:
+- `app/services/pi.ts` must capture review JSON incrementally from streamed assistant text events (`text_delta`, `text_end`, `message_end`) using the shared marked-JSON capture helper instead of relying only on the final `agent_end` payload.
+- Final `agent_end` assistant text remains a fallback source when no streamed marker block was captured.
+- Keep focused coverage in `app/services/pi.spec.ts` for cases where streamed assistant text contains a complete marker block but the final `agent_end` text is truncated or otherwise malformed.
 
 Language rendering rules:
 - The agent response shape is direct and normalized at the source: `readableModelName`, `summary.walkthrough`, `summary.changes`, `summary.otherSuggestions`, and `reviews[].suggestions[lang].{detail,abstract}`. There is no runtime normalization layer and no legacy `summary.content`, `summary.translations`, `reviews[].suggestion`, or `reviews[].translations` contract.

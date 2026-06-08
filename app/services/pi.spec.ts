@@ -21,6 +21,18 @@ const loggerMock = {
 
 const writeLogStreamMock = (_text: string) => {};
 
+const validReviewResponseJson = JSON.stringify({
+  readableModelName: "GPT-5.4",
+  summary: {
+    walkthrough: {
+      en: "ok",
+    },
+    changes: [],
+    otherSuggestions: {},
+  },
+  reviews: [],
+});
+
 type MockChildProcess = EventEmitter & {
   stdout: EventEmitter;
   stderr: EventEmitter;
@@ -88,7 +100,7 @@ describe("runPiReview", () => {
           type: "agent_end",
           messages: {
             role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
           },
         })}\n`,
       ),
@@ -120,7 +132,7 @@ describe("runPiReview", () => {
           type: "agent_end",
           message: {
             role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
           },
         })}\n`,
       ),
@@ -130,7 +142,105 @@ describe("runPiReview", () => {
     const result = await reviewPromise;
 
     expect(result.errors).toBeUndefined();
-    expect(result.summary.content).toBe("ok");
+    expect(result.summary.walkthrough.en).toBe("ok");
+    expect(result.reviews).toEqual([]);
+  });
+
+  test("prefers incrementally captured marked JSON when agent_end text is truncated", async () => {
+    const child = createMockChildProcess();
+    nextChildFactory = () => child;
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+    });
+
+    const markedJson = `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+
+    child.emit("spawn");
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_start",
+          },
+        })}\n${JSON.stringify({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_delta",
+            delta: markedJson.slice(0, 20),
+          },
+        })}\n${JSON.stringify({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_delta",
+            delta: markedJson.slice(20),
+          },
+        })}\n${JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: markedJson,
+          },
+        })}\n${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}`,
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.errors).toBeUndefined();
+    expect(result.summary.walkthrough.en).toBe("ok");
+    expect(result.reviews).toEqual([]);
+  });
+
+  test("captures marked JSON from text_end content without relying on text_delta", async () => {
+    const child = createMockChildProcess();
+    nextChildFactory = () => child;
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+    });
+
+    const markedJson = `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+
+    child.emit("spawn");
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_start",
+          },
+        })}\n${JSON.stringify({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_end",
+            content: markedJson,
+          },
+        })}\n${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: "truncated",
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.errors).toBeUndefined();
+    expect(result.summary.walkthrough.en).toBe("ok");
     expect(result.reviews).toEqual([]);
   });
 
@@ -158,7 +268,7 @@ describe("runPiReview", () => {
       const reviewPromise = runPiReview({
         prompt: "review this diff",
       });
-      const largeAssistantContent = `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
+      const largeAssistantContent = `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
 
       child.emit("spawn");
       child.stdout.emit(
@@ -178,7 +288,7 @@ describe("runPiReview", () => {
       const result = await reviewPromise;
 
       expect(result.errors).toBeUndefined();
-      expect(result.summary.content).toBe("ok");
+      expect(result.summary.walkthrough.en).toBe("ok");
       expect(stdoutWriteCalls).toEqual([]);
       expect(warnCalls).toHaveLength(1);
       expect(warnCalls[0]).toContain("20% safety margin");
@@ -225,7 +335,7 @@ describe("runPiReview", () => {
             type: "agent_end",
             message: {
               role: "assistant",
-              content: `${REVIEW_RESPONSE_JSON_START_MARKER}{"summary":{"content":"ok","translations":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`,
+              content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`,
             },
           })}\n`,
         ),
@@ -235,7 +345,7 @@ describe("runPiReview", () => {
       const result = await reviewPromise;
 
       expect(result.errors).toBeUndefined();
-      expect(result.summary.content).toBe("ok");
+      expect(result.summary.walkthrough.en).toBe("ok");
       expect(stdoutWriteCalls.length).toBeGreaterThan(0);
       expect(warnCalls).toHaveLength(0);
     } finally {
