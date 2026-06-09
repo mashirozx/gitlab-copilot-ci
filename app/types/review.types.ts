@@ -85,6 +85,7 @@ export type ReviewResponseEntity = {
   summary: ReviewSummaryEntity;
   reviews: ReviewItemEntity[];
   errors?: string[];
+  withCriticalError?: boolean;
   context?: {
     total_length?: number;
     used_length?: number;

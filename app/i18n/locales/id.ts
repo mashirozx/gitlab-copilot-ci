@@ -65,6 +65,18 @@ export const id = {
     performanceMetrics: {
       summary: "📊 Matriks Penggunaan Model dan Kinerja",
     },
+    criticalError: {
+      message:
+        "⚠ Pipeline peninjauan gagal dengan galat kritis. Periksa job GitLab atau jalankan ulang pipeline.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ Pipeline peninjauan gagal dengan galat kritis. [**Periksa detail pipeline**](${linkToJobDetail}) atau [**coba ulang pipeline**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

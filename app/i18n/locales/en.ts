@@ -63,6 +63,18 @@ export const en = defineLocale({
     performanceMetrics: {
       summary: "📊 Model Usage & Performance Matrix",
     },
+    criticalError: {
+      message:
+        "⚠ The review pipeline failed with a critical error. Please check the pipeline job in GitLab or retry the pipeline.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ The review pipeline failed with a critical error. Please [**check the pipeline detail**](${linkToJobDetail}) or [**retry the pipeline**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

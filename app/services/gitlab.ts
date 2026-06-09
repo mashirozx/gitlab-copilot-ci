@@ -1,6 +1,7 @@
 import {
   type DiscussionSchema,
   Gitlab,
+  type MergeRequestDiffSchema,
   type MergeRequestNoteSchema,
 } from "@gitbeaker/rest";
 import type { ReviewItemEntity } from "../types/review.types";
@@ -570,13 +571,28 @@ export class GitLabService {
     // at 20 here, a max page limit of N means at most N * 20 diff entries are
     // handed to the LLM.
     for (let page = 1; page <= this.maxGitDiffPage; page += 1) {
-      const diffs = await this.withGitLabRequestLogging({
-        request: () =>
-          this.client.MergeRequests.allDiffs(this.projectId, this.mrIid, {
-            page,
-            perPage: this.diffPageSize,
-          }),
-      });
+      let diffs: MergeRequestDiffSchema[];
+
+      try {
+        diffs = await this.withGitLabRequestLogging({
+          request: () =>
+            this.client.MergeRequests.allDiffs(this.projectId, this.mrIid, {
+              page,
+              perPage: this.diffPageSize,
+            }),
+        });
+      } catch (error) {
+        const message = `[GitLab] Failed to fetch merge request diffs.`;
+        logger.error(message);
+        logger.error(error);
+
+        return {
+          changes: [],
+          pages: [{ page: 1, diffs: [] }],
+          errors: [...errors, message],
+          withCriticalError: true,
+        };
+      }
 
       if (diffs.length === 0) {
         break;
@@ -603,6 +619,7 @@ export class GitLabService {
       changes: pages.flatMap((page) => page.diffs),
       pages,
       errors,
+      withCriticalError: false,
     };
   };
 

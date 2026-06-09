@@ -365,6 +365,28 @@ describe("filterExistingUnresolvedReviewHistory", () => {
   });
 });
 
+describe("getMergeRequestDiffs", () => {
+  test("returns a critical error result when fetching diffs fails", async () => {
+    const service = new GitLabService();
+    const failingError = new Error("boom");
+    const mergeRequestDiffsAll = service["client"].MergeRequests
+      .allDiffs as ReturnType<typeof mock>;
+
+    mergeRequestDiffsAll.mockImplementationOnce(async () => {
+      throw failingError;
+    });
+
+    const result = await service.getMergeRequestDiffs();
+
+    expect(result.withCriticalError).toBe(true);
+    expect(result.errors).toEqual([
+      "[GitLab] Failed to fetch merge request diffs.",
+    ]);
+    expect(result.changes).toEqual([]);
+    expect(result.pages).toEqual([{ page: 1, diffs: [] }]);
+  });
+});
+
 describe("GitLabService request failure logging", () => {
   test("logs the GitLab x-request-id for failed API requests", async () => {
     const service = new GitLabService();

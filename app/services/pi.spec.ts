@@ -201,6 +201,35 @@ describe("runPiReview", () => {
     expect(result.reviews).toEqual([]);
   });
 
+  test("marks the review response as critical when the agent writes to stderr", async () => {
+    const child = createMockChildProcess();
+    nextChildFactory = () => child;
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.stderr.emit("data", Buffer.from("fatal provider error\n"));
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.withCriticalError).toBe(true);
+  });
+
   test("captures marked JSON from text_end content without relying on text_delta", async () => {
     const child = createMockChildProcess();
     nextChildFactory = () => child;

@@ -64,6 +64,18 @@ export const th = {
     performanceMetrics: {
       summary: "📊 เมทริกซ์การใช้งานโมเดลและประสิทธิภาพ",
     },
+    criticalError: {
+      message:
+        "⚠ ไปป์ไลน์การรีวิวล้มเหลวด้วยข้อผิดพลาดร้ายแรง โปรดตรวจสอบงาน GitLab หรือรันไปป์ไลน์อีกครั้ง",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ ไปป์ไลน์การรีวิวล้มเหลวด้วยข้อผิดพลาดร้ายแรง โปรด[**ตรวจสอบรายละเอียดไปป์ไลน์**](${linkToJobDetail}) หรือ [**ลองรันไปป์ไลน์อีกครั้ง**](${linkToJobRetry})`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

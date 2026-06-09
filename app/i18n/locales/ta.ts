@@ -65,6 +65,18 @@ export const ta = {
     performanceMetrics: {
       summary: "📊 மாதிரி பயன்பாடு மற்றும் செயல்திறன் அட்டவணை",
     },
+    criticalError: {
+      message:
+        "⚠ மதிப்பாய்வு குழாய் ஒரு முக்கிய பிழையால் தோல்வியடைந்தது. GitLab பணியை சரிபார்க்கவும் அல்லது குழாயை மீண்டும் இயக்கவும்.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ மதிப்பாய்வு குழாய் ஒரு முக்கிய பிழையால் தோல்வியடைந்தது. [**குழாய் விவரங்களை பார்க்கவும்**](${linkToJobDetail}) அல்லது [**குழாயை மீண்டும் முயற்சிக்கவும்**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

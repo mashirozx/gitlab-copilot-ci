@@ -65,6 +65,18 @@ export const es = {
     performanceMetrics: {
       summary: "📊 Matriz de Uso del Modelo y Rendimiento",
     },
+    criticalError: {
+      message:
+        "⚠ La canalizacion de revision fallo con un error critico. Revisa el trabajo de GitLab o vuelve a ejecutar la canalizacion.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ La canalizacion de revision fallo con un error critico. [**Revisa el detalle de la canalizacion**](${linkToJobDetail}) o [**vuelve a intentar la canalizacion**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

@@ -65,6 +65,18 @@ export const de = {
     performanceMetrics: {
       summary: "📊 Modellnutzung & Leistungsmatrix",
     },
+    criticalError: {
+      message:
+        "⚠ Die Review-Pipeline ist mit einem kritischen Fehler fehlgeschlagen. Bitte prufe den GitLab-Job oder starte die Pipeline erneut.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ Die Review-Pipeline ist mit einem kritischen Fehler fehlgeschlagen. Bitte [**die Pipeline-Details prufen**](${linkToJobDetail}) oder [**die Pipeline erneut ausfuhren**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

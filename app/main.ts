@@ -20,6 +20,7 @@ import {
   colorizeDiffLineCode,
   recomputeReviewPositionFromDiffReference,
 } from "./utils/diff-files";
+import { buildEmptyReviewResponse } from "./utils/empty-review-response";
 import { formatReviewLocation } from "./utils/review-helpers";
 import { buildReviewHistoryFileContent } from "./utils/review-history-file";
 import { getFormattedVersion } from "./utils/version";
@@ -112,6 +113,7 @@ const main = async () => {
       changes,
       pages: diffPages,
       errors: diffFetchErrors,
+      withCriticalError: diffFetchCriticalError,
     } = await gitlabService.getMergeRequestDiffs();
     errors.push(...diffFetchErrors);
     const createdTempDir = mkdtempSync(join(tmpdir(), "copilot-review-"));
@@ -145,17 +147,21 @@ const main = async () => {
     logger.info(`[LLM] Using service: ${argv["agent"]}`);
 
     // B. Ask the configured LLM CLI to review the diff and read repo files as needed
-    const reviewRunner =
-      argv["agent"] === "pi" ? runPiReview : runCopilotReview;
-    const prompt = buildCopilotPrompt({
-      diffFilePaths,
-      title: mr.title,
-      description: mr.description,
-      reviewHistoryFilePath: reviewHistoryFilePath ?? undefined,
-    });
-    const response = await reviewRunner({
-      prompt,
-    });
+    const response = diffFetchCriticalError
+      ? buildEmptyReviewResponse({
+          duration: 0,
+          error:
+            diffFetchErrors[0] ??
+            "[GitLab] Failed to fetch merge request diffs.",
+        })
+      : await (argv["agent"] === "pi" ? runPiReview : runCopilotReview)({
+          prompt: buildCopilotPrompt({
+            diffFilePaths,
+            title: mr.title,
+            description: mr.description,
+            reviewHistoryFilePath: reviewHistoryFilePath ?? undefined,
+          }),
+        });
     const reviews = [...response.reviews];
 
     if (response.errors) errors.push(...response.errors);
@@ -252,6 +258,8 @@ const main = async () => {
       response: {
         ...response,
         reviews,
+        withCriticalError:
+          response.withCriticalError || diffFetchCriticalError || false,
       },
       reviewHistory: trimReviewHistoryRuns({
         reviewHistory:

@@ -65,6 +65,18 @@ export const fr = {
     performanceMetrics: {
       summary: "📊 Matrice d'utilisation du modèle et des performances",
     },
+    criticalError: {
+      message:
+        "⚠ Le pipeline de revue a echoue avec une erreur critique. Veuillez verifier le job GitLab ou relancer le pipeline.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ Le pipeline de revue a echoue avec une erreur critique. Veuillez [**consulter le detail du pipeline**](${linkToJobDetail}) ou [**relancer le pipeline**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

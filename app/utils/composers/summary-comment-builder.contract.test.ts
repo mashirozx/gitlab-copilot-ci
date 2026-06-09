@@ -8,6 +8,8 @@ process.env.CI_SERVER_URL = "https://gitlab.example.com";
 process.env.CI_PROJECT_ID = "1";
 process.env.CI_MERGE_REQUEST_IID = "1";
 process.env.CI_PROJECT_URL = "https://gitlab.example.com/group/repo-name";
+process.env.CI_JOB_URL =
+  "https://gitlab.example.com/group/repo-name/-/jobs/15536";
 
 const contractEnv = {
   GITLAB_TOKEN: "test-gitlab-token",
@@ -15,6 +17,7 @@ const contractEnv = {
   CI_PROJECT_ID: "1",
   CI_MERGE_REQUEST_IID: "1",
   CI_PROJECT_URL: "https://gitlab.example.com/group/repo-name",
+  CI_JOB_URL: "https://gitlab.example.com/group/repo-name/-/jobs/15536",
   CI_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
   CI_COMMIT_SHORT_SHA: "12345678",
 } as const;
@@ -277,6 +280,17 @@ const scenarios = [
       }),
     ],
   },
+  {
+    name: "renders the critical error warning block",
+    snapshotFile: "summary-comment-builder.critical-error.contract.md",
+    response: {
+      ...buildResponse(),
+      withCriticalError: true,
+    },
+    reviewHistory: [],
+    hasPreviousReviewHistory: false,
+    currentRunDiscussions: [],
+  },
 ] as const;
 
 const loadSummaryCommentBuilder = async () => {
@@ -310,6 +324,9 @@ const loadSummaryCommentBuilder = async () => {
       },
       get CI_PROJECT_URL() {
         return contractEnv.CI_PROJECT_URL;
+      },
+      get CI_JOB_URL() {
+        return contractEnv.CI_JOB_URL;
       },
       get CI_COMMIT_SHA() {
         return contractEnv.CI_COMMIT_SHA;

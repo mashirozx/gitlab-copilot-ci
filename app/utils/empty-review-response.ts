@@ -17,5 +17,6 @@ export const buildEmptyReviewResponse = ({
     reviews: [],
     duration,
     errors: [error],
+    withCriticalError: true,
   };
 };

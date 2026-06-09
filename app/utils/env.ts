@@ -2,6 +2,12 @@ export const env = {
   get AGENT_BIN(): string | undefined {
     return process.env.AGENT_BIN;
   },
+  get CI_JOB_ID(): string | undefined {
+    return process.env.CI_JOB_ID;
+  },
+  get CI_JOB_URL(): string | undefined {
+    return process.env.CI_JOB_URL;
+  },
   get CI_COMMIT_SHA(): string | undefined {
     return process.env.CI_COMMIT_SHA;
   },

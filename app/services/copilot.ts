@@ -219,6 +219,7 @@ export const runCopilotReview = async ({
     const stderrTail: string[] = [];
     let stdoutUsageOutputCapture = "";
     let stderrUsageOutputCapture = "";
+    let hasStderrOutput = false;
     const stdoutJsonCapture = createMarkedJsonCaptureState();
     const stderrJsonCapture = createMarkedJsonCaptureState();
     const stdoutPrintBudget = createStdoutPrintBudgetState();
@@ -330,6 +331,11 @@ export const runCopilotReview = async ({
 
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
+
+      if (text.trim().length > 0) {
+        hasStderrOutput = true;
+      }
+
       stderrUsageOutputCapture = appendUsageOutputCapture({
         buffer: stderrUsageOutputCapture,
         text,
@@ -422,6 +428,7 @@ export const runCopilotReview = async ({
         }
 
         result.duration = duration;
+        result.withCriticalError = result.withCriticalError || hasStderrOutput;
 
         getContextInfo(env)
           .then((contextInfo) => {

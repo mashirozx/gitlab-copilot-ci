@@ -65,6 +65,18 @@ export const it = {
     performanceMetrics: {
       summary: "📊 Matrice di Utilizzo del Modello e Prestazioni",
     },
+    criticalError: {
+      message:
+        "⚠ La pipeline di revisione non e riuscita a causa di un errore critico. Controlla il job GitLab o riesegui la pipeline.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ La pipeline di revisione non e riuscita a causa di un errore critico. [**Controlla i dettagli della pipeline**](${linkToJobDetail}) oppure [**riprova la pipeline**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

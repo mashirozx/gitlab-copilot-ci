@@ -33,4 +33,5 @@ export type MergeRequestDiffsResultDataType = {
   changes: MergeRequestDiffSchema[];
   pages: MergeRequestDiffPageDataType[];
   errors: string[];
+  withCriticalError?: boolean;
 };

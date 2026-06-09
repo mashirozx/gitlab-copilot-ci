@@ -65,6 +65,18 @@ export const fa = {
     performanceMetrics: {
       summary: "📊 ماتریس مصرف مدل و عملکرد",
     },
+    criticalError: {
+      message:
+        "⚠ خط لوله بازبيني با يک خطاي بحراني شکست خورد. لطفاً کار GitLab را بررسي کنيد يا خط لوله را دوباره اجرا کنيد.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ خط لوله بازبيني با يک خطاي بحراني شکست خورد. لطفاً [**جزئيات خط لوله را بررسي کنيد**](${linkToJobDetail}) يا [**خط لوله را دوباره اجرا کنيد**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

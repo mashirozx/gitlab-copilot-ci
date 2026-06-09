@@ -63,6 +63,18 @@ export const zh = {
     performanceMetrics: {
       summary: "📊 模型用量与性能矩阵",
     },
+    criticalError: {
+      message:
+        "⚠ 审查流水线因严重错误而失败。请检查 GitLab 作业，或重新运行流水线。",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ 审查流水线因严重错误而失败。请[**查看流水线详情**](${linkToJobDetail})，或[**重试流水线**](${linkToJobRetry})。`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

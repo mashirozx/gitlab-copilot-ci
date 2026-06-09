@@ -61,6 +61,17 @@ export const zhLzh = {
     performanceMetrics: {
       summary: "📊 模型用度与效能矩阵",
     },
+    criticalError: {
+      message: "⚠ 审视流水失于重错。请察 GitLab 作业，或更行流水。",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ 审视流水失于重错。请[**察流水详情**](${linkToJobDetail})，或[**重试流水**](${linkToJobRetry})。`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

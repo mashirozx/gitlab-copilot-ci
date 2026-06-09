@@ -164,4 +164,24 @@ describe("runCopilotReview", () => {
     expect(section).toContain("- 🔢 **Total tokens**: 2332600");
     expect(section).toContain("- 🧠 **Reasoning tokens**: 15700");
   });
+
+  test("marks the review response as critical when the agent writes to stderr", async () => {
+    const child = createMockChildProcess();
+
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+    const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+
+    child.emit("spawn");
+    child.stderr.emit("data", Buffer.from("fatal stderr\n"));
+    child.stdout.emit("data", Buffer.from(jsonText));
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.withCriticalError).toBe(true);
+  });
 });

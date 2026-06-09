@@ -57,6 +57,58 @@ const buildInlineReviewNoteUrl = ({
   return `${projectUrl}/-/merge_requests/${mergeRequestIid}#note_${noteId}`;
 };
 
+const buildJobDetailUrl = (): string | null => {
+  const directJobUrl = env.CI_JOB_URL?.trim();
+
+  if (directJobUrl) {
+    return directJobUrl;
+  }
+
+  const projectUrl = env.CI_PROJECT_URL?.trim();
+  const jobId = env.CI_JOB_ID?.trim();
+
+  if (!projectUrl || !jobId) {
+    return null;
+  }
+
+  return `${projectUrl}/-/jobs/${jobId}`;
+};
+
+const buildJobRetryUrl = ({
+  jobDetailUrl,
+}: {
+  jobDetailUrl: string | null;
+}): string | null => {
+  if (!jobDetailUrl) {
+    return null;
+  }
+
+  return `${jobDetailUrl.replace(/\/$/, "")}/retry`;
+};
+
+const buildCriticalErrorBlock = ({
+  language,
+}: {
+  language: string;
+}): string => {
+  const jobDetailUrl = buildJobDetailUrl();
+  const jobRetryUrl = buildJobRetryUrl({
+    jobDetailUrl,
+  });
+  const content =
+    jobDetailUrl && jobRetryUrl
+      ? t("reviewSummary.criticalError.messageWithLinks", {
+          lang: language,
+          linkToJobDetail: jobDetailUrl,
+          linkToJobRetry: jobRetryUrl,
+        })
+      : t("reviewSummary.criticalError.message", {
+          lang: language,
+        });
+
+  return `> [!warning] ${content}`;
+};
+
 const isSameReviewLocation = ({
   left,
   right,
@@ -323,6 +375,11 @@ const buildSummaryLanguageBlock = ({
     .join("\n\n");
   const sections = [
     `# ${t("reviewSummary.title", { readableModelName, lang: language })}`,
+    response.withCriticalError
+      ? buildCriticalErrorBlock({
+          language,
+        })
+      : null,
     `## ${t("reviewSummary.walkthrough.title", { lang: language })}`,
     walkthrough ?? "",
     `## ${t("reviewSummary.changes.title", { lang: language })}`,
@@ -336,7 +393,10 @@ const buildSummaryLanguageBlock = ({
     `## ${t("reviewSummary.otherSuggestions.title", { lang: language })}`,
     otherSuggestions ??
       t("reviewSummary.otherSuggestions.empty", { lang: language }),
-  ].filter((section) => section.trim().length > 0);
+  ].filter(
+    (section): section is string =>
+      section !== null && section.trim().length > 0,
+  );
 
   return sections.join("\n\n");
 };

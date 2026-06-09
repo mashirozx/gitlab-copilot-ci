@@ -65,6 +65,18 @@ export const ms = {
     performanceMetrics: {
       summary: "📊 Matriks Penggunaan Model dan Prestasi",
     },
+    criticalError: {
+      message:
+        "⚠ Saluran semakan gagal dengan ralat kritikal. Sila semak tugas GitLab atau jalankan semula saluran.",
+      messageWithLinks: ({
+        linkToJobDetail,
+        linkToJobRetry,
+      }: {
+        linkToJobDetail: string;
+        linkToJobRetry: string;
+      }) =>
+        `⚠ Saluran semakan gagal dengan ralat kritikal. Sila [**semak butiran saluran**](${linkToJobDetail}) atau [**cuba semula saluran**](${linkToJobRetry}).`,
+    },
   },
   reviewProcess: {
     reviewingMarker: {

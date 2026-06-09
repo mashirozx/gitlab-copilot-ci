@@ -60,6 +60,7 @@ type PiJsonEvent = {
 
 type PiRuntimeState = {
   agentEndEvent: PiJsonEvent | null;
+  hasStderrOutput: boolean;
   markedJsonCapture: ReturnType<typeof createMarkedJsonCaptureState>;
   pendingAssistantMessage: string;
   usage?: ReviewResponseEntity["usage"];
@@ -356,6 +357,7 @@ export const runPiReview = async ({
     const stdoutPrintBudget = createStdoutPrintBudgetState();
     const piRuntimeState: PiRuntimeState = {
       agentEndEvent: null,
+      hasStderrOutput: false,
       markedJsonCapture: createMarkedJsonCaptureState(),
       pendingAssistantMessage: "",
       usage: undefined,
@@ -441,6 +443,11 @@ export const runPiReview = async ({
 
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
+
+      if (text.trim().length > 0) {
+        piRuntimeState.hasStderrOutput = true;
+      }
+
       stderrConsoleBuffer += text;
       stderrConsoleBuffer = flushPiConsoleBuffer({
         buffer: stderrConsoleBuffer,
@@ -577,6 +584,8 @@ export const runPiReview = async ({
             ...result,
             duration,
             usage,
+            withCriticalError:
+              result.withCriticalError || piRuntimeState.hasStderrOutput,
           },
         });
       } catch (error) {
