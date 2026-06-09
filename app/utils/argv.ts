@@ -37,7 +37,6 @@ export const argv = yargs(hideBin(process.argv))
     describe: "Agent provider to use for code review",
     type: "string",
     choices: ["github-copilot-cli", "pi"] as const,
-    default: "github-copilot-cli",
   })
   .option("gitlab-token", {
     describe: "GitLab API token",

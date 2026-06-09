@@ -80,8 +80,8 @@ export const en = defineLocale({
     reviewingMarker: {
       body: ({ commitReference }: { commitReference: string }) =>
         `⚠️ Code review is in progress... I am reviewing commit ${commitReference}. To avoid conflicts, I will hold further reviews until the current one is concluded.`,
-      manualDeleteHint:
-        "Feel free to manually delete this comment if the review process seems stuck, which should unblock it. Just make sure to check the status of the latest review CI workflow first-ensure it's still running, or trigger a rerun if necessary.",
+      manualDeleteHint: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `Feel free to manually delete this comment if [**the review process**](${linkToJobDetail}) seems stuck, which should unblock it. Just make sure to check the status of the latest review CI workflow first-ensure it's still running, or trigger a rerun if necessary.`,
       queueNotice: {
         zero: "No additional reviews are waiting behind the current one.",
         one: ({ count }: { count: number }) =>

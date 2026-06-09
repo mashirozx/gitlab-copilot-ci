@@ -1,13 +1,20 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { initI18n } from "../../i18n";
 
 const contractEnv = {
   CI_COMMIT_SHA: "1234567890abcdef1234567890abcdef12345678",
   CI_COMMIT_SHORT_SHA: "12345678",
   CI_PROJECT_URL: "https://gitlab.example.com/group/repo-name",
+  CI_JOB_URL: "https://gitlab.example.com/group/repo-name/-/jobs/15536",
 } as const;
 
 const loadReviewingCommentBuilder = async () => {
+  mock.module("../argv", () => ({
+    argv: {
+      "thinking-lang": "en",
+      agent: "github-copilot-cli",
+    },
+  }));
+
   mock.module("../env", () => ({
     env: {
       get CI_COMMIT_SHA() {
@@ -19,16 +26,20 @@ const loadReviewingCommentBuilder = async () => {
       get CI_PROJECT_URL() {
         return contractEnv.CI_PROJECT_URL;
       },
+      get CI_JOB_URL() {
+        return contractEnv.CI_JOB_URL;
+      },
     },
   }));
 
+  const { initI18n } = await import("../../i18n");
+  await initI18n({
+    languageTag: "en",
+    preloadLanguageTags: ["en"],
+  });
+
   return import(`./reviewing-comment-builder?contract=${Date.now()}`);
 };
-
-await initI18n({
-  languageTag: "en",
-  preloadLanguageTags: ["en"],
-});
 
 afterEach(() => {
   mock.restore();

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { ReviewResponseEntity } from "../../types/review.types";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
@@ -9,24 +9,27 @@ process.env.CI_PROJECT_URL ??= "https://gitlab.example.com/group/repo-name";
 process.env.CI_COMMIT_SHA ??= "1234567890abcdef1234567890abcdef12345678";
 process.env.CI_COMMIT_SHORT_SHA ??= "12345678";
 
-const originalArgv = [...process.argv];
+mock.module("../argv", () => ({
+  argv: {
+    agent: "github-copilot-cli",
+    "agent-bin": undefined,
+    "collapsed-lang": [],
+    "collapse-changes-summary": false,
+    "collapse-review-summary": false,
+    "html-marker-prefix": "copilot",
+    lang: [],
+    "max-history-length": 12,
+    model: "openai/gpt-5.4-mini:xhigh",
+    "mr-iid": process.env.CI_MERGE_REQUEST_IID,
+    "thinking-lang": "en",
+  },
+}));
 
-process.argv = [
-  originalArgv[0] ?? "bun",
-  originalArgv[1] ?? "test",
-  "--gitlab-token",
-  process.env.GITLAB_TOKEN,
-  "--gitlab-url",
-  process.env.CI_SERVER_URL,
-  "--project-id",
-  process.env.CI_PROJECT_ID,
-  "--mr-iid",
-  process.env.CI_MERGE_REQUEST_IID,
-  "--thinking-lang",
-  "en",
-  "--model",
-  "openai/gpt-5.4-mini:xhigh",
-];
+mock.module("../model-display.ts", () => ({
+  getModelDisplayName: ({ hideEffort }: { hideEffort?: boolean } = {}) =>
+    hideEffort ? "gpt-5.4-mini" : "gpt-5.4-mini <kbd>xhigh</kbd>",
+  modelDisplayName: "gpt-5.4-mini <kbd>xhigh</kbd>",
+}));
 
 const { initI18n } = await import("../../i18n");
 await initI18n({
@@ -35,7 +38,8 @@ await initI18n({
 });
 
 const { formatCollapsedLanguageHeader } = await import("../lang");
-const { modelDisplayName } = await import("../model-display.ts");
+const summaryCommentBuilderModulePath =
+  "./summary-comment-builder?spec=summary-comment-builder";
 const {
   buildPerformanceMetricsSection,
   buildSummaryNote,
@@ -43,7 +47,7 @@ const {
   getAgentDisplayLabel,
   renderSummaryComment,
   trimReviewHistoryRuns,
-} = await import("./summary-comment-builder");
+} = await import(summaryCommentBuilderModulePath);
 
 const buildResponse = (): ReviewResponseEntity => ({
   readableModelName: "GPT-5.4",
@@ -187,6 +191,44 @@ describe("renderSummaryComment", () => {
       "Suggestions from previous review runs are not listed here.",
     );
   });
+
+  test("falls back to argv model when readableModelName is empty", () => {
+    const rendered = renderSummaryComment({
+      response: {
+        ...buildResponse(),
+        readableModelName: "",
+      },
+      displayLanguages: ["en"],
+      collapsedLanguages: [],
+      hasPreviousReviewHistory: false,
+    });
+
+    expect(rendered).toContain("# 📝 Code Review Summary by gpt-5.4-mini");
+    expect(rendered).not.toContain(
+      "# 📝 Code Review Summary by gpt-5.4-mini <kbd>xhigh</kbd>",
+    );
+  });
+
+  test("omits walkthrough and suggestion sections when the response has a critical error", () => {
+    const rendered = renderSummaryComment({
+      response: {
+        ...buildResponse(),
+        withCriticalError: true,
+      },
+      displayLanguages: ["en"],
+      collapsedLanguages: [],
+      hasPreviousReviewHistory: false,
+    });
+
+    expect(rendered).toContain("# 📝 Code Review Summary by GPT-5.4");
+    expect(rendered).toContain(
+      "> [!warning] ⚠ The review pipeline failed with a critical error.",
+    );
+    expect(rendered).not.toContain("## 📋 Walkthrough");
+    expect(rendered).not.toContain("## 🚧 Changes");
+    expect(rendered).not.toContain("## 🔍 Review Summary");
+    expect(rendered).not.toContain("## 💡 Other Suggestions");
+  });
 });
 
 describe("getAgentDisplayLabel", () => {
@@ -228,7 +270,7 @@ describe("buildPerformanceMetricsSection", () => {
       agentDisplay: "GitHub Copilot CLI 1.0.54",
     });
 
-    expect(section).toContain(`- 🤖 **Model**: ${modelDisplayName}`);
+    expect(section).toContain("- 🤖 **Model**: gpt-5.4-mini <kbd>xhigh</kbd>");
     expect(section).toContain("- 🧰 **Agent**: GitHub Copilot CLI 1.0.54");
     expect(section).toContain("- ⏱️ **Time taken**: 1s (1234ms)");
     expect(section).toContain("- 🪙 **AI Credits**: 126");

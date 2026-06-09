@@ -82,8 +82,8 @@ export const es = {
     reviewingMarker: {
       body: ({ commitReference }: { commitReference: string }) =>
         `⚠️ La revisión de código está en curso... Estoy revisando el commit ${commitReference}. Para evitar conflictos, mantendré en espera las revisiones posteriores hasta que termine la actual.`,
-      manualDeleteHint:
-        "Si el proceso de revisión parece atascado, puedes eliminar manualmente este comentario para desbloquearlo. Antes de hacerlo, comprueba el estado del flujo de CI de revisión más reciente para asegurarte de que sigue ejecutándose o vuelve a lanzarlo si hace falta.",
+      manualDeleteHint: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `Si [**el proceso de revisión**](${linkToJobDetail}) parece atascado, puedes eliminar manualmente este comentario para desbloquearlo. Antes de hacerlo, comprueba el estado del flujo de CI de revisión más reciente para asegurarte de que sigue ejecutándose o vuelve a lanzarlo si hace falta.`,
       queueNotice: {
         zero: "No hay revisiones adicionales esperando detrás de la revisión actual.",
         one: ({ count }: { count: number }) =>

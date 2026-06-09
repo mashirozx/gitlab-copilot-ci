@@ -80,8 +80,8 @@ export const zhTW = {
     reviewingMarker: {
       body: ({ commitReference }: { commitReference: string }) =>
         `⚠️ 程式碼審查進行中……我正在審查提交 ${commitReference}。為避免衝突，在目前審查完成之前，我會暫停後續審查。`,
-      manualDeleteHint:
-        "如果審查流程看起來卡住了，你可以手動刪除這則留言來解除阻塞。但請先確認最新的審查 CI 工作流程狀態，確保它仍在執行，或在必要時重新觸發一次。",
+      manualDeleteHint: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `如果 [**審查流程**](${linkToJobDetail}) 看起來卡住了，你可以手動刪除這則留言來解除阻塞。但請先確認最新的審查 CI 工作流程狀態，確保它仍在執行，或在必要時重新觸發一次。`,
       queueNotice: {
         zero: "目前審查之後，沒有其他審查在等待。",
         one: ({ count }: { count: number }) =>

@@ -52,15 +52,19 @@ describe("t", () => {
   test("supports zh-Hans and zh-Hant locale variants directly", async () => {
     const { t: tHans } = await loadI18nModule({ thinkingLang: "zh-Hans" });
 
-    expect(tHans("reviewProcess.reviewingMarker.manualDeleteHint")).toContain(
-      "手动删除这条评论",
-    );
+    expect(
+      tHans("reviewProcess.reviewingMarker.manualDeleteHint", {
+        linkToJobDetail: "https://gitlab.example.com/jobs/1",
+      }),
+    ).toContain("[**审查流程**](https://gitlab.example.com/jobs/1)");
 
     const { t: tHant } = await loadI18nModule({ thinkingLang: "zh-Hant" });
 
-    expect(tHant("reviewProcess.reviewingMarker.manualDeleteHint")).toContain(
-      "手動刪除這則留言",
-    );
+    expect(
+      tHant("reviewProcess.reviewingMarker.manualDeleteHint", {
+        linkToJobDetail: "https://gitlab.example.com/jobs/1",
+      }),
+    ).toContain("[**審查流程**](https://gitlab.example.com/jobs/1)");
   });
 
   test("supports classical Chinese locales directly", async () => {
@@ -90,9 +94,11 @@ describe("t", () => {
     });
 
     expect(resolveLocaleKey()).toBe("en");
-    expect(t("reviewProcess.reviewingMarker.manualDeleteHint")).toContain(
-      "manually delete this comment",
-    );
+    expect(
+      t("reviewProcess.reviewingMarker.manualDeleteHint", {
+        linkToJobDetail: "https://gitlab.example.com/jobs/1",
+      }),
+    ).toContain("[**the review process**](https://gitlab.example.com/jobs/1)");
   });
 
   test("interpolates placeholders using typed parameter names", async () => {

@@ -8,6 +8,7 @@ import {
   getCurrentCommitShortSha,
   getCurrentCommitUrl,
 } from "../commit-reference";
+import { env } from "../env";
 
 const normalizeLanguageForComparison = ({
   language,
@@ -126,6 +127,35 @@ export const buildCurrentCommitReference = (): string => {
   return commitUrl
     ? `[\`${commitShortSha}\`](${commitUrl})`
     : `\`${commitShortSha}\``;
+};
+
+export const buildJobDetailUrl = (): string | null => {
+  const directJobUrl = env.CI_JOB_URL?.trim();
+
+  if (directJobUrl) {
+    return directJobUrl;
+  }
+
+  const projectUrl = env.CI_PROJECT_URL?.trim();
+  const jobId = env.CI_JOB_ID?.trim();
+
+  if (!projectUrl || !jobId) {
+    return null;
+  }
+
+  return `${projectUrl}/-/jobs/${jobId}`;
+};
+
+export const buildJobRetryUrl = ({
+  jobDetailUrl,
+}: {
+  jobDetailUrl: string | null;
+}): string | null => {
+  if (!jobDetailUrl) {
+    return null;
+  }
+
+  return `${jobDetailUrl.replace(/\/$/, "")}/retry`;
 };
 
 export const normalizeReviewRank = ({

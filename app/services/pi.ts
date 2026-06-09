@@ -60,7 +60,6 @@ type PiJsonEvent = {
 
 type PiRuntimeState = {
   agentEndEvent: PiJsonEvent | null;
-  hasStderrOutput: boolean;
   markedJsonCapture: ReturnType<typeof createMarkedJsonCaptureState>;
   pendingAssistantMessage: string;
   usage?: ReviewResponseEntity["usage"];
@@ -357,7 +356,6 @@ export const runPiReview = async ({
     const stdoutPrintBudget = createStdoutPrintBudgetState();
     const piRuntimeState: PiRuntimeState = {
       agentEndEvent: null,
-      hasStderrOutput: false,
       markedJsonCapture: createMarkedJsonCaptureState(),
       pendingAssistantMessage: "",
       usage: undefined,
@@ -404,6 +402,7 @@ export const runPiReview = async ({
     const runtimeStatsCollector = startRuntimeStatsCollector({
       rootPid: child.pid ?? null,
     });
+    let processStartErrorMessage: string | null = null;
 
     const finalizeResult = async ({
       result,
@@ -443,10 +442,6 @@ export const runPiReview = async ({
 
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-
-      if (text.trim().length > 0) {
-        piRuntimeState.hasStderrOutput = true;
-      }
 
       stderrConsoleBuffer += text;
       stderrConsoleBuffer = flushPiConsoleBuffer({
@@ -509,6 +504,38 @@ export const runPiReview = async ({
 
       logger.info(`[Pi] Process exited with code ${code}`);
 
+      const exitedWithCriticalFailure = code !== 0;
+      const processStartErrorWithExitCode = processStartErrorMessage
+        ? `${processStartErrorMessage}. Exit code: ${code}`
+        : null;
+
+      if (exitedWithCriticalFailure) {
+        const errMsg =
+          processStartErrorWithExitCode ??
+          `[Pi] Pi JSON mode exited with code ${code}`;
+        const recentOutput = getRecentProcessOutputText({
+          stdoutTail: piRuntimeState.stdoutTail,
+          stderrTail: piRuntimeState.stderrTail,
+        });
+        logger.error(errMsg);
+
+        if (recentOutput) {
+          logger.info("[Pi] Recent output:", recentOutput);
+        }
+
+        const duration = getElapsedMilliseconds({
+          startTimeMs: startTime,
+        });
+        void finalizeResult({
+          result: buildEmptyReviewResponse({
+            duration,
+            error: errMsg,
+            withCriticalError: true,
+          }),
+        });
+        return;
+      }
+
       try {
         const agentEndEvent = piRuntimeState.agentEndEvent;
 
@@ -516,7 +543,9 @@ export const runPiReview = async ({
           const duration = getElapsedMilliseconds({
             startTimeMs: startTime,
           });
-          const errMsg = `[Pi] Pi JSON mode exited before returning an agent_end event. Exit code: ${code}`;
+          const errMsg =
+            processStartErrorWithExitCode ??
+            `[Pi] Pi JSON mode exited before returning an agent_end event. Exit code: ${code}`;
           const recentOutput = getRecentProcessOutputText({
             stdoutTail: piRuntimeState.stdoutTail,
             stderrTail: piRuntimeState.stderrTail,
@@ -531,6 +560,7 @@ export const runPiReview = async ({
             result: buildEmptyReviewResponse({
               duration,
               error: errMsg,
+              withCriticalError: exitedWithCriticalFailure,
             }),
           });
           return;
@@ -554,7 +584,7 @@ export const runPiReview = async ({
         if (!jsonText) {
           const errMsg = assistantError
             ? `[Pi] Pi JSON mode returned an assistant error before review JSON was produced. Exit code: ${code}. Error: ${assistantError}`
-            : `[Pi] Pi JSON mode: no JSON found in assistant output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
+            : `[Pi] Pi JSON mode: no review JSON found in LLM output. Exit code: ${code}`;
           logger.error(errMsg);
           logger.info("[Pi] Assistant output:", assistantText);
           const duration = getElapsedMilliseconds({
@@ -585,7 +615,7 @@ export const runPiReview = async ({
             duration,
             usage,
             withCriticalError:
-              result.withCriticalError || piRuntimeState.hasStderrOutput,
+              result.withCriticalError || exitedWithCriticalFailure,
           },
         });
       } catch (error) {
@@ -617,15 +647,7 @@ export const runPiReview = async ({
       const errMsg = `[Pi] Pi CLI: failed to start process: ${error.message}`;
       logger.error(errMsg);
       logger.error(error);
-      const duration = getElapsedMilliseconds({
-        startTimeMs: startTime,
-      });
-      void finalizeResult({
-        result: buildEmptyReviewResponse({
-          duration,
-          error: errMsg,
-        }),
-      });
+      processStartErrorMessage = errMsg;
     });
   });
 };

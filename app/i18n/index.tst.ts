@@ -31,7 +31,10 @@ describe("i18n types", () => {
     expect<
       TranslationArgs<"reviewProcess.reviewingMarker.manualDeleteHint">
     >().type.toBe<
-      ["reviewProcess.reviewingMarker.manualDeleteHint", { lang?: string }?]
+      [
+        "reviewProcess.reviewingMarker.manualDeleteHint",
+        { linkToJobDetail: string; lang?: string },
+      ]
     >();
     expect<
       TranslationArgs<"reviewProcess.reviewingMarker.queueNotice">
@@ -114,6 +117,16 @@ describe("i18n types", () => {
         "reviewProcess.reviewingMarker.manualDeleteHint",
         {
           seconds: number;
+        },
+      ]
+    >();
+    expect<
+      TranslationArgs<"reviewProcess.reviewingMarker.manualDeleteHint">
+    >().type.not.toBe<
+      [
+        "reviewProcess.reviewingMarker.manualDeleteHint",
+        {
+          lang?: string;
         },
       ]
     >();

@@ -219,7 +219,6 @@ export const runCopilotReview = async ({
     const stderrTail: string[] = [];
     let stdoutUsageOutputCapture = "";
     let stderrUsageOutputCapture = "";
-    let hasStderrOutput = false;
     const stdoutJsonCapture = createMarkedJsonCaptureState();
     const stderrJsonCapture = createMarkedJsonCaptureState();
     const stdoutPrintBudget = createStdoutPrintBudgetState();
@@ -277,6 +276,7 @@ export const runCopilotReview = async ({
     const runtimeStatsCollector = startRuntimeStatsCollector({
       rootPid: child.pid ?? null,
     });
+    let processStartErrorMessage: string | null = null;
 
     const finalizeResult = async ({
       result,
@@ -332,10 +332,6 @@ export const runCopilotReview = async ({
     child.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
 
-      if (text.trim().length > 0) {
-        hasStderrOutput = true;
-      }
-
       stderrUsageOutputCapture = appendUsageOutputCapture({
         buffer: stderrUsageOutputCapture,
         text,
@@ -383,11 +379,45 @@ export const runCopilotReview = async ({
 
       logger.info(`[Copilot] Process exited with code ${code}`);
 
+      const exitedWithCriticalFailure = code !== 0;
+      const processStartErrorWithExitCode = processStartErrorMessage
+        ? `${processStartErrorMessage}. Exit code: ${code}`
+        : null;
+
+      if (exitedWithCriticalFailure) {
+        const errMsg =
+          processStartErrorWithExitCode ??
+          `[Copilot] Copilot CLI exited with code ${code}`;
+        const recentOutput = getRecentProcessOutputText({
+          stdoutTail,
+          stderrTail,
+        });
+        logger.error(errMsg);
+
+        if (recentOutput) {
+          logger.info("[Copilot] Recent output:", recentOutput);
+        }
+
+        const duration = getElapsedMilliseconds({
+          startTimeMs: startTime,
+        });
+        void finalizeResult({
+          result: buildEmptyReviewResponse({
+            duration,
+            error: errMsg,
+            withCriticalError: true,
+          }),
+        });
+        return;
+      }
+
       const jsonText =
         stdoutJsonCapture.markedJson ?? stderrJsonCapture.markedJson;
 
       if (!jsonText) {
-        const errMsg = `[Copilot] Copilot CLI: no JSON found in output (missing ${REVIEW_RESPONSE_JSON_START_MARKER}/${REVIEW_RESPONSE_JSON_END_MARKER} markers). Exit code: ${code}`;
+        const errMsg =
+          processStartErrorWithExitCode ??
+          `[Copilot] Copilot CLI: no review JSON found in LLM output. Exit code: ${code}`;
         const recentOutput = getRecentProcessOutputText({
           stdoutTail,
           stderrTail,
@@ -405,6 +435,7 @@ export const runCopilotReview = async ({
           result: buildEmptyReviewResponse({
             duration,
             error: errMsg,
+            withCriticalError: exitedWithCriticalFailure,
           }),
         });
         return;
@@ -428,7 +459,8 @@ export const runCopilotReview = async ({
         }
 
         result.duration = duration;
-        result.withCriticalError = result.withCriticalError || hasStderrOutput;
+        result.withCriticalError =
+          result.withCriticalError || exitedWithCriticalFailure;
 
         getContextInfo(env)
           .then((contextInfo) => {
@@ -471,15 +503,7 @@ export const runCopilotReview = async ({
       const errMsg = `[Copilot] Copilot CLI: failed to start process: ${err.message}`;
       logger.error(errMsg);
       logger.error(err);
-      const duration = getElapsedMilliseconds({
-        startTimeMs: startTime,
-      });
-      void finalizeResult({
-        result: buildEmptyReviewResponse({
-          duration,
-          error: errMsg,
-        }),
-      });
+      processStartErrorMessage = errMsg;
     });
   });
 };

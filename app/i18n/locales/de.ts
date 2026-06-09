@@ -82,8 +82,8 @@ export const de = {
     reviewingMarker: {
       body: ({ commitReference }: { commitReference: string }) =>
         `⚠️ Die Code-Review läuft... Ich prüfe gerade den Commit ${commitReference}. Um Konflikte zu vermeiden, halte ich weitere Reviews zurück, bis die aktuelle abgeschlossen ist.`,
-      manualDeleteHint:
-        "Wenn der Review-Prozess festzustecken scheint, kannst du diesen Kommentar manuell löschen, um ihn freizugeben. Prüfe aber vorher den Status des neuesten Review-CI-Workflows und stelle sicher, dass er noch läuft oder bei Bedarf erneut gestartet werden sollte.",
+      manualDeleteHint: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `Wenn [**der Review-Prozess**](${linkToJobDetail}) festzustecken scheint, kannst du diesen Kommentar manuell löschen, um ihn freizugeben. Prüfe aber vorher den Status des neuesten Review-CI-Workflows und stelle sicher, dass er noch läuft oder bei Bedarf erneut gestartet werden sollte.`,
       queueNotice: {
         zero: "Hinter der aktuellen Review warten keine weiteren Reviews.",
         one: ({ count }: { count: number }) =>

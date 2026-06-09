@@ -165,7 +165,7 @@ describe("runCopilotReview", () => {
     expect(section).toContain("- 🧠 **Reasoning tokens**: 15700");
   });
 
-  test("marks the review response as critical when the agent writes to stderr", async () => {
+  test("marks the review response as critical when the agent exits non-zero", async () => {
     const child = createMockChildProcess();
 
     nextChildFactory = () => child;
@@ -176,12 +176,34 @@ describe("runCopilotReview", () => {
     const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
 
     child.emit("spawn");
-    child.stderr.emit("data", Buffer.from("fatal stderr\n"));
     child.stdout.emit("data", Buffer.from(jsonText));
-    child.emit("close", 0);
+    child.emit("close", 1);
 
     const result = await reviewPromise;
 
     expect(result.withCriticalError).toBe(true);
+    expect(result.errors?.[0]).toBe("[Copilot] Copilot CLI exited with code 1");
+    expect(result.summary.walkthrough.en).toBeUndefined();
+  });
+
+  test("defers process start failures to the close handler", async () => {
+    const child = createMockChildProcess();
+
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("error", new Error("spawn ENOENT"));
+    child.emit("close", 1);
+
+    const result = await reviewPromise;
+
+    expect(result.withCriticalError).toBe(true);
+    expect(result.errors?.[0]).toContain(
+      "failed to start process: spawn ENOENT",
+    );
+    expect(result.errors?.[0]).toContain("Exit code: 1");
   });
 });

@@ -1,5 +1,8 @@
 import { t } from "../../i18n";
-import { buildCurrentCommitReference } from "./comment-helper";
+import {
+  buildCurrentCommitReference,
+  buildJobDetailUrl,
+} from "./comment-helper";
 
 export const buildReviewingMarkerNoteBody = ({
   htmlMarkerPrefix,
@@ -11,7 +14,9 @@ export const buildReviewingMarkerNoteBody = ({
   const body = t("reviewProcess.reviewingMarker.body", {
     commitReference,
   });
-  const manualDeleteHint = t("reviewProcess.reviewingMarker.manualDeleteHint");
+  const manualDeleteHint = t("reviewProcess.reviewingMarker.manualDeleteHint", {
+    linkToJobDetail: buildJobDetailUrl() ?? "#",
+  });
 
   return `<!-- ${reviewingMarker} -->
 ${body}

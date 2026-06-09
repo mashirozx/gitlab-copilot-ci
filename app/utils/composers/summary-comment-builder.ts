@@ -12,10 +12,12 @@ import type {
 import { argv } from "../argv";
 import { env } from "../env";
 import { formatCollapsedLanguageHeader } from "../lang.ts";
-import { modelDisplayName } from "../model-display.ts";
+import { getModelDisplayName, modelDisplayName } from "../model-display.ts";
 import {
   buildCurrentCommitReference,
   buildDetailsBlock,
+  buildJobDetailUrl,
+  buildJobRetryUrl,
   getLocalizedRecordValue,
   getRankInlineMath,
   normalizeReviewRank,
@@ -55,35 +57,6 @@ const buildInlineReviewNoteUrl = ({
   }
 
   return `${projectUrl}/-/merge_requests/${mergeRequestIid}#note_${noteId}`;
-};
-
-const buildJobDetailUrl = (): string | null => {
-  const directJobUrl = env.CI_JOB_URL?.trim();
-
-  if (directJobUrl) {
-    return directJobUrl;
-  }
-
-  const projectUrl = env.CI_PROJECT_URL?.trim();
-  const jobId = env.CI_JOB_ID?.trim();
-
-  if (!projectUrl || !jobId) {
-    return null;
-  }
-
-  return `${projectUrl}/-/jobs/${jobId}`;
-};
-
-const buildJobRetryUrl = ({
-  jobDetailUrl,
-}: {
-  jobDetailUrl: string | null;
-}): string | null => {
-  if (!jobDetailUrl) {
-    return null;
-  }
-
-  return `${jobDetailUrl.replace(/\/$/, "")}/retry`;
 };
 
 const buildCriticalErrorBlock = ({
@@ -344,7 +317,17 @@ const buildSummaryLanguageBlock = ({
   const readableModelName =
     response.readableModelName.trim().length > 0
       ? response.readableModelName
-      : modelDisplayName;
+      : getModelDisplayName({ hideEffort: true });
+
+  if (response.withCriticalError) {
+    return [
+      `# ${t("reviewSummary.title", { readableModelName, lang: language })}`,
+      buildCriticalErrorBlock({
+        language,
+      }),
+    ].join("\n\n");
+  }
+
   const commitReference = buildCurrentCommitReference();
   const changesSectionContent = maybeCollapseSection({
     content:
@@ -375,11 +358,6 @@ const buildSummaryLanguageBlock = ({
     .join("\n\n");
   const sections = [
     `# ${t("reviewSummary.title", { readableModelName, lang: language })}`,
-    response.withCriticalError
-      ? buildCriticalErrorBlock({
-          language,
-        })
-      : null,
     `## ${t("reviewSummary.walkthrough.title", { lang: language })}`,
     walkthrough ?? "",
     `## ${t("reviewSummary.changes.title", { lang: language })}`,

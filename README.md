@@ -31,7 +31,7 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `--agent` | `string` | `github-copilot-cli` | Agent provider to use for code review. Choices: `github-copilot-cli`, `pi`. |
+| `--agent` | `string` | required | Agent provider to use for code review. Choices: `github-copilot-cli`, `pi`. |
 | `--gitlab-token` | `string` | `GITLAB_TOKEN` | GitLab API token. |
 | `--gitlab-url` | `string` | `CI_SERVER_URL` | GitLab server URL. |
 | `--agent-bin` | `string` | `AGENT_BIN` when set | Agent CLI binary name or path. |
@@ -66,7 +66,7 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 
 No CLI argument is strictly required as long as the relevant environment variables are present.
 
-- `--agent` defaults to `github-copilot-cli`.
+- `--agent` is required.
 - `--gitlab-token`, `--gitlab-url`, `--project-id`, and `--mr-iid` typically come from the GitLab CI environment.
 
 ### Example GitLab CI/CD Configuration

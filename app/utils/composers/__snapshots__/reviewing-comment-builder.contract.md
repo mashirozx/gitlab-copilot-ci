@@ -3,4 +3,4 @@
 
 ***
 
-<sub>Feel free to manually delete this comment if the review process seems stuck, which should unblock it. Just make sure to check the status of the latest review CI workflow first-ensure it's still running, or trigger a rerun if necessary.</sub>
+<sub>Feel free to manually delete this comment if [**the review process**](https://gitlab.example.com/group/repo-name/-/jobs/15536) seems stuck, which should unblock it. Just make sure to check the status of the latest review CI workflow first-ensure it's still running, or trigger a rerun if necessary.</sub>

@@ -41,9 +41,11 @@ const getConfiguredEffortDisplay = ({
   return effort ?? DEFAULT_CONFIGURED_MODEL_EFFORT;
 };
 
-export const getModelDisplayName = ({ model }: { model?: string }): string => {
+export const getModelDisplayName = (opts?: {
+  hideEffort?: boolean;
+}): string => {
   const configuredModelSpec = getPromptModelSpec({
-    model,
+    model: argv["model"],
   });
 
   const configuredModelName = configuredModelSpec.model;
@@ -52,9 +54,7 @@ export const getModelDisplayName = ({ model }: { model?: string }): string => {
     return "";
   }
 
-  return `${normalizeConfiguredModelName({ model: configuredModelName })} <kbd>${getConfiguredEffortDisplay({ model: configuredModelName, effort: configuredModelSpec.effort })}</kbd>`;
+  return `${normalizeConfiguredModelName({ model: configuredModelName })}${!opts?.hideEffort ? ` <kbd>${getConfiguredEffortDisplay({ model: configuredModelName, effort: configuredModelSpec.effort })}</kbd>` : ""}`;
 };
 
-export const modelDisplayName = getModelDisplayName({
-  model: argv["model"],
-});
+export const modelDisplayName = getModelDisplayName();
