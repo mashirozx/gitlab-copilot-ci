@@ -67,15 +67,9 @@ export const ja = {
     },
     criticalError: {
       message:
-        "⚠ レビュー用パイプラインで重大なエラーが発生しました。GitLab のジョブを確認するか、パイプラインを再実行してください。",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ レビュー用パイプラインで重大なエラーが発生しました。[**パイプライン詳細を確認**](${linkToJobDetail})するか、[**パイプラインを再試行**](${linkToJobRetry})してください。`,
+        "⚠ レビュー用パイプラインで重大なエラーが発生しました。GitLab のジョブを確認し、このジョブを再試行してください。",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ レビュー用パイプラインで重大なエラーが発生しました。[**パイプライン詳細を確認**](${linkToJobDetail})し、このジョブを再試行してください。`,
     },
   },
   reviewProcess: {

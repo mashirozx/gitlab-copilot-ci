@@ -62,15 +62,9 @@ export const zhLzh = {
       summary: "📊 模型用度与效能矩阵",
     },
     criticalError: {
-      message: "⚠ 审视流水失于重错。请察 GitLab 作业，或更行流水。",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ 审视流水失于重错。请[**察流水详情**](${linkToJobDetail})，或[**重试流水**](${linkToJobRetry})。`,
+      message: "⚠ 审视流水失于重错。请察 GitLab 作业，并重试此作业。",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ 审视流水失于重错。请[**察流水详情**](${linkToJobDetail})，并重试此作业。`,
     },
   },
   reviewProcess: {

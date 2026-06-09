@@ -66,15 +66,9 @@ export const ar = {
     },
     criticalError: {
       message:
-        "⚠ فشل مسار المراجعة بسبب خطأ حرج. يرجى التحقق من مهمة GitLab أو إعادة تشغيل المسار.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ فشل مسار المراجعة بسبب خطأ حرج. يرجى [**التحقق من تفاصيل المسار**](${linkToJobDetail}) أو [**إعادة محاولة المسار**](${linkToJobRetry}).`,
+        "⚠ فشل مسار المراجعة بسبب خطأ حرج. يرجى التحقق من مهمة GitLab وإعادة محاولة هذه المهمة.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ فشل مسار المراجعة بسبب خطأ حرج. يرجى [**التحقق من تفاصيل المسار**](${linkToJobDetail}) وإعادة محاولة هذه المهمة.`,
     },
   },
   reviewProcess: {

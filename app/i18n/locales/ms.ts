@@ -67,15 +67,9 @@ export const ms = {
     },
     criticalError: {
       message:
-        "⚠ Saluran semakan gagal dengan ralat kritikal. Sila semak tugas GitLab atau jalankan semula saluran.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ Saluran semakan gagal dengan ralat kritikal. Sila [**semak butiran saluran**](${linkToJobDetail}) atau [**cuba semula saluran**](${linkToJobRetry}).`,
+        "⚠ Saluran semakan gagal dengan ralat kritikal. Sila semak tugas GitLab dan cuba semula job ini.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ Saluran semakan gagal dengan ralat kritikal. Sila [**semak butiran saluran**](${linkToJobDetail}) dan cuba semula job ini.`,
     },
   },
   reviewProcess: {

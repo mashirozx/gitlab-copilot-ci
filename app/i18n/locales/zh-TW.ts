@@ -65,15 +65,9 @@ export const zhTW = {
     },
     criticalError: {
       message:
-        "⚠ 審查流水線因嚴重錯誤而失敗。請檢查 GitLab 作業，或重新執行流水線。",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ 審查流水線因嚴重錯誤而失敗。請[**查看流水線詳情**](${linkToJobDetail})，或[**重試流水線**](${linkToJobRetry})。`,
+        "⚠ 審查流水線因嚴重錯誤而失敗。請檢查 GitLab 作業，並重試此作業。",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ 審查流水線因嚴重錯誤而失敗。請[**查看流水線詳情**](${linkToJobDetail})，並重試此作業。`,
     },
   },
   reviewProcess: {

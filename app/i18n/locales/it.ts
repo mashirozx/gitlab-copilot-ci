@@ -67,15 +67,9 @@ export const it = {
     },
     criticalError: {
       message:
-        "⚠ La pipeline di revisione non e riuscita a causa di un errore critico. Controlla il job GitLab o riesegui la pipeline.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ La pipeline di revisione non e riuscita a causa di un errore critico. [**Controlla i dettagli della pipeline**](${linkToJobDetail}) oppure [**riprova la pipeline**](${linkToJobRetry}).`,
+        "⚠ La pipeline di revisione non e riuscita a causa di un errore critico. Controlla il job GitLab e riprova questo job.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ La pipeline di revisione non e riuscita a causa di un errore critico. [**Controlla i dettagli della pipeline**](${linkToJobDetail}) e riprova questo job.`,
     },
   },
   reviewProcess: {

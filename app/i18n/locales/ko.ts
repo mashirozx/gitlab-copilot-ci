@@ -66,15 +66,9 @@ export const ko = {
     },
     criticalError: {
       message:
-        "⚠ 리뷰 파이프라인이 치명적인 오류로 실패했습니다. GitLab 작업을 확인하거나 파이프라인을 다시 실행하세요.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ 리뷰 파이프라인이 치명적인 오류로 실패했습니다. [**파이프라인 세부 정보를 확인**](${linkToJobDetail})하거나 [**파이프라인을 다시 시도**](${linkToJobRetry})하세요.`,
+        "⚠ 리뷰 파이프라인이 치명적인 오류로 실패했습니다. GitLab 작업을 확인하고 이 작업을 다시 시도하세요.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ 리뷰 파이프라인이 치명적인 오류로 실패했습니다. [**파이프라인 세부 정보를 확인**](${linkToJobDetail})하고 이 작업을 다시 시도하세요.`,
     },
   },
   reviewProcess: {

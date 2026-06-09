@@ -67,15 +67,9 @@ export const pt = {
     },
     criticalError: {
       message:
-        "⚠ O pipeline de revisao falhou com um erro critico. Verifique o job do GitLab ou execute o pipeline novamente.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ O pipeline de revisao falhou com um erro critico. [**Verifique os detalhes do pipeline**](${linkToJobDetail}) ou [**tente novamente o pipeline**](${linkToJobRetry}).`,
+        "⚠ O pipeline de revisao falhou com um erro critico. Verifique o job do GitLab e tente novamente este job.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ O pipeline de revisao falhou com um erro critico. [**Verifique os detalhes do pipeline**](${linkToJobDetail}) e tente novamente este job.`,
     },
   },
   reviewProcess: {

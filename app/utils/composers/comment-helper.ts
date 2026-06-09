@@ -146,18 +146,6 @@ export const buildJobDetailUrl = (): string | null => {
   return `${projectUrl}/-/jobs/${jobId}`;
 };
 
-export const buildJobRetryUrl = ({
-  jobDetailUrl,
-}: {
-  jobDetailUrl: string | null;
-}): string | null => {
-  if (!jobDetailUrl) {
-    return null;
-  }
-
-  return `${jobDetailUrl.replace(/\/$/, "")}/retry`;
-};
-
 export const normalizeReviewRank = ({
   rank,
 }: {

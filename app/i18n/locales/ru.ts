@@ -67,15 +67,9 @@ export const ru = {
     },
     criticalError: {
       message:
-        "⚠ Конвейер ревью завершился критической ошибкой. Проверьте задание GitLab или перезапустите конвейер.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ Конвейер ревью завершился критической ошибкой. [**Проверьте детали конвейера**](${linkToJobDetail}) или [**повторите запуск конвейера**](${linkToJobRetry}).`,
+        "⚠ Конвейер ревью завершился критической ошибкой. Проверьте задание GitLab и повторите этот job.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ Конвейер ревью завершился критической ошибкой. [**Проверьте детали конвейера**](${linkToJobDetail}) и повторите этот job.`,
     },
   },
   reviewProcess: {

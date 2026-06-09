@@ -17,7 +17,6 @@ import {
   buildCurrentCommitReference,
   buildDetailsBlock,
   buildJobDetailUrl,
-  buildJobRetryUrl,
   getLocalizedRecordValue,
   getRankInlineMath,
   normalizeReviewRank,
@@ -65,19 +64,14 @@ const buildCriticalErrorBlock = ({
   language: string;
 }): string => {
   const jobDetailUrl = buildJobDetailUrl();
-  const jobRetryUrl = buildJobRetryUrl({
-    jobDetailUrl,
-  });
-  const content =
-    jobDetailUrl && jobRetryUrl
-      ? t("reviewSummary.criticalError.messageWithLinks", {
-          lang: language,
-          linkToJobDetail: jobDetailUrl,
-          linkToJobRetry: jobRetryUrl,
-        })
-      : t("reviewSummary.criticalError.message", {
-          lang: language,
-        });
+  const content = jobDetailUrl
+    ? t("reviewSummary.criticalError.messageWithLinks", {
+        lang: language,
+        linkToJobDetail: jobDetailUrl,
+      })
+    : t("reviewSummary.criticalError.message", {
+        lang: language,
+      });
 
   return `> [!warning] ${content}`;
 };

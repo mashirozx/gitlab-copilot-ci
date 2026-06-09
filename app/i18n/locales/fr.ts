@@ -67,15 +67,9 @@ export const fr = {
     },
     criticalError: {
       message:
-        "⚠ Le pipeline de revue a echoue avec une erreur critique. Veuillez verifier le job GitLab ou relancer le pipeline.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ Le pipeline de revue a echoue avec une erreur critique. Veuillez [**consulter le detail du pipeline**](${linkToJobDetail}) ou [**relancer le pipeline**](${linkToJobRetry}).`,
+        "⚠ Le pipeline de revue a echoue avec une erreur critique. Veuillez verifier le job GitLab et relancer ce job.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ Le pipeline de revue a echoue avec une erreur critique. Veuillez [**consulter le detail du pipeline**](${linkToJobDetail}) et relancer ce job.`,
     },
   },
   reviewProcess: {

@@ -67,15 +67,9 @@ export const de = {
     },
     criticalError: {
       message:
-        "⚠ Die Review-Pipeline ist mit einem kritischen Fehler fehlgeschlagen. Bitte prufe den GitLab-Job oder starte die Pipeline erneut.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ Die Review-Pipeline ist mit einem kritischen Fehler fehlgeschlagen. Bitte [**die Pipeline-Details prufen**](${linkToJobDetail}) oder [**die Pipeline erneut ausfuhren**](${linkToJobRetry}).`,
+        "⚠ Die Review-Pipeline ist mit einem kritischen Fehler fehlgeschlagen. Bitte prufe den GitLab-Job und starte diesen Job erneut.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ Die Review-Pipeline ist mit einem kritischen Fehler fehlgeschlagen. Bitte [**die Pipeline-Details prufen**](${linkToJobDetail}) und diesen Job erneut starten.`,
     },
   },
   reviewProcess: {

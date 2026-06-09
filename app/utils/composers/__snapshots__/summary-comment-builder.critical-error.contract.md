@@ -1,7 +1,7 @@
 <!-- copilot-summary-marker -->
 # 📝 GPT-5.4 によるコードレビュー要約
 
-> [!warning] ⚠ レビュー用パイプラインで重大なエラーが発生しました。[**パイプライン詳細を確認**](https://gitlab.example.com/group/repo-name/-/jobs/15536)するか、[**パイプラインを再試行**](https://gitlab.example.com/group/repo-name/-/jobs/15536/retry)してください。
+> [!warning] ⚠ レビュー用パイプラインで重大なエラーが発生しました。[**パイプライン詳細を確認**](https://gitlab.example.com/group/repo-name/-/jobs/15536)し、このジョブを再試行してください。
 
 ---
 
@@ -10,7 +10,7 @@
 
 # 📝 Code Review Summary by GPT-5.4
 
-> [!warning] ⚠ The review pipeline failed with a critical error. Please [**check the pipeline detail**](https://gitlab.example.com/group/repo-name/-/jobs/15536) or [**retry the pipeline**](https://gitlab.example.com/group/repo-name/-/jobs/15536/retry).
+> [!warning] ⚠ The review pipeline failed with a critical error. Please [**check the pipeline detail**](https://gitlab.example.com/group/repo-name/-/jobs/15536) and retry this job.
 
 </details>
 

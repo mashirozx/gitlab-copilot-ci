@@ -67,15 +67,9 @@ export const ta = {
     },
     criticalError: {
       message:
-        "⚠ மதிப்பாய்வு குழாய் ஒரு முக்கிய பிழையால் தோல்வியடைந்தது. GitLab பணியை சரிபார்க்கவும் அல்லது குழாயை மீண்டும் இயக்கவும்.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ மதிப்பாய்வு குழாய் ஒரு முக்கிய பிழையால் தோல்வியடைந்தது. [**குழாய் விவரங்களை பார்க்கவும்**](${linkToJobDetail}) அல்லது [**குழாயை மீண்டும் முயற்சிக்கவும்**](${linkToJobRetry}).`,
+        "⚠ மதிப்பாய்வு குழாய் ஒரு முக்கிய பிழையால் தோல்வியடைந்தது. GitLab பணியை சரிபார்த்து இந்த job ஐ மீண்டும் முயற்சிக்கவும்.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ மதிப்பாய்வு குழாய் ஒரு முக்கிய பிழையால் தோல்வியடைந்தது. [**குழாய் விவரங்களை பார்க்கவும்**](${linkToJobDetail}) மற்றும் இந்த job ஐ மீண்டும் முயற்சிக்கவும்.`,
     },
   },
   reviewProcess: {

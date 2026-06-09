@@ -67,15 +67,9 @@ export const id = {
     },
     criticalError: {
       message:
-        "⚠ Pipeline peninjauan gagal dengan galat kritis. Periksa job GitLab atau jalankan ulang pipeline.",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ Pipeline peninjauan gagal dengan galat kritis. [**Periksa detail pipeline**](${linkToJobDetail}) atau [**coba ulang pipeline**](${linkToJobRetry}).`,
+        "⚠ Pipeline peninjauan gagal dengan galat kritis. Periksa job GitLab dan coba ulang job ini.",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ Pipeline peninjauan gagal dengan galat kritis. [**Periksa detail pipeline**](${linkToJobDetail}) dan coba ulang job ini.`,
     },
   },
   reviewProcess: {

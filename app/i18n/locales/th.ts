@@ -66,15 +66,9 @@ export const th = {
     },
     criticalError: {
       message:
-        "⚠ ไปป์ไลน์การรีวิวล้มเหลวด้วยข้อผิดพลาดร้ายแรง โปรดตรวจสอบงาน GitLab หรือรันไปป์ไลน์อีกครั้ง",
-      messageWithLinks: ({
-        linkToJobDetail,
-        linkToJobRetry,
-      }: {
-        linkToJobDetail: string;
-        linkToJobRetry: string;
-      }) =>
-        `⚠ ไปป์ไลน์การรีวิวล้มเหลวด้วยข้อผิดพลาดร้ายแรง โปรด[**ตรวจสอบรายละเอียดไปป์ไลน์**](${linkToJobDetail}) หรือ [**ลองรันไปป์ไลน์อีกครั้ง**](${linkToJobRetry})`,
+        "⚠ ไปป์ไลน์การรีวิวล้มเหลวด้วยข้อผิดพลาดร้ายแรง โปรดตรวจสอบงาน GitLab และลองรันงานนี้อีกครั้ง",
+      messageWithLinks: ({ linkToJobDetail }: { linkToJobDetail: string }) =>
+        `⚠ ไปป์ไลน์การรีวิวล้มเหลวด้วยข้อผิดพลาดร้ายแรง โปรด[**ตรวจสอบรายละเอียดไปป์ไลน์**](${linkToJobDetail}) และลองรันงานนี้อีกครั้ง`,
     },
   },
   reviewProcess: {
