@@ -239,7 +239,7 @@ Documentation maintenance rule:
 14. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
 15. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
 16. If not in `--dry-run`, post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
-17. Build the summary note from the structured response and replace the prior summary note unless `--dry-run` is enabled. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
+17. Build the summary note from the structured response and, unless `--dry-run` is enabled, post the new summary note before deleting any prior summary note. If posting the new summary fails, keep the old summary note in place. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
 18. Delete the reviewing-marker note in a `finally` block when one was created, unless stale-run cancellation already removed it early.
 
 ### Duplicate Suppression Semantics

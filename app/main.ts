@@ -301,17 +301,17 @@ const main = async () => {
     }
 
     try {
+      await gitlabService.createSummaryNote({
+        summaryBody,
+      });
+      logger.success("Posted copilot review summary comment");
+
       if (existingSummaryNote) {
         await gitlabService.deleteMergeRequestNote({
           noteId: existingSummaryNote.id,
         });
         logger.success("Deleted existing copilot review summary comment");
       }
-
-      await gitlabService.createSummaryNote({
-        summaryBody,
-      });
-      logger.success("Posted copilot review summary comment");
     } catch (e) {
       const msg = `Failed to post summary comment: ${e instanceof Error ? e.message : String(e)}`;
       logger.error(msg);
