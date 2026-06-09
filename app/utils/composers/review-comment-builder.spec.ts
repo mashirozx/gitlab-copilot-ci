@@ -1,9 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
 process.env.CI_PROJECT_ID ??= "1";
 process.env.CI_MERGE_REQUEST_IID ??= "1";
+
+const mockedArgv = {
+  agent: "github-copilot-cli",
+  "agent-bin": undefined,
+  "collapsed-lang": [],
+  "html-marker-prefix": "copilot",
+  lang: [],
+  model: "gpt-5.4",
+  "thinking-lang": "en",
+};
+
+mock.module("../../utils/argv", () => ({
+  argv: mockedArgv,
+}));
+mock.module("../argv", () => ({
+  argv: mockedArgv,
+}));
 
 const { initI18n } = await import("../../i18n");
 
@@ -19,6 +36,8 @@ const {
   getPromptTranslationLangs,
   getRequestedResponseLanguages,
 } = await import("./review-comment-builder");
+
+mock.restore();
 
 describe("review-comment-builder helpers", () => {
   test("excludes the thinking language from translation requests", () => {

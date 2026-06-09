@@ -1,15 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { initI18n } from "../../i18n";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { ReviewItemEntity } from "../../types/review.types";
-import {
-  buildReviewDiscussionBody,
-  getDisplayLanguages,
-} from "./review-comment-builder";
-
-await initI18n({
-  languageTag: "en",
-  preloadLanguageTags: ["en", "ja"],
-});
 
 const review: ReviewItemEntity = {
   file_path: "app/main.ts",
@@ -40,8 +30,45 @@ const readContractSnapshot = async ({
   return (await Bun.file(path).text()).replace(/\r?\n$/, "");
 };
 
+const loadReviewCommentBuilder = async () => {
+  const mockedArgv = {
+    agent: "github-copilot-cli",
+    "agent-bin": undefined,
+    "collapsed-lang": ["en"],
+    "html-marker-prefix": "copilot",
+    lang: ["ja"],
+    model: "gpt-5.4",
+    "thinking-lang": "en",
+  };
+
+  mock.module("../argv", () => ({
+    argv: mockedArgv,
+  }));
+  mock.module("../../utils/argv", () => ({
+    argv: mockedArgv,
+  }));
+  mock.module("../model-display.ts", () => ({
+    modelDisplayName: "gpt-5.4 <kbd>medium</kbd>",
+  }));
+
+  const { initI18n } = await import("../../i18n");
+  await initI18n({
+    languageTag: "en",
+    preloadLanguageTags: ["en", "ja"],
+  });
+
+  return import(`./review-comment-builder?contract=${Date.now()}`);
+};
+
+afterEach(() => {
+  mock.restore();
+  mock.clearAllMocks();
+});
+
 describe("review-comment-builder contract", () => {
   test("renders the inline review body consistently for display and collapsed languages", async () => {
+    const { buildReviewDiscussionBody, getDisplayLanguages } =
+      await loadReviewCommentBuilder();
     const displayLanguages = getDisplayLanguages({
       langs: ["ja"],
       collapsedLangs: ["en"],
