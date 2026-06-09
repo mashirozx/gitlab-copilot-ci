@@ -3,6 +3,10 @@ import { hideBin } from "yargs/helpers";
 import type { ReviewRankEntity } from "../types/review.types";
 import { env } from "./env";
 import { normalizeHtmlMarkerPrefix } from "./html-marker-prefix";
+import {
+  DEFAULT_REVIEW_MAX_PENDING_TIME_MS,
+  parsePollInterval,
+} from "./poll-interval";
 import { parseStdoutSize } from "./stdout-size";
 import { getFormattedVersion } from "./version";
 
@@ -175,24 +179,27 @@ export const argv = yargs(hideBin(process.argv))
       return arg;
     },
   })
-  .option("process-max-pending-time", {
+  .option("review-max-pending-time", {
     describe:
-      "Maximum number of minutes to wait for an existing in-progress review marker before skipping this run.",
-    type: "number",
-    default: 30,
-    coerce: (arg: number | undefined) => {
-      if (arg === undefined) {
-        return 30;
-      }
-
-      if (!Number.isInteger(arg) || arg <= 0) {
-        throw new Error(
-          "--process-max-pending-time must be a positive integer",
-        );
-      }
-
-      return arg;
-    },
+      "Maximum time to wait for an existing in-progress review marker before skipping this run. Accepts integer durations like 250ms, 10s, 30seconds, or 30minutes.",
+    type: "string",
+    default: "30minutes",
+    coerce: (arg: string | undefined) =>
+      parsePollInterval({
+        value: arg,
+        optionName: "--review-max-pending-time",
+      }),
+  })
+  .option("mr-check-interval", {
+    describe:
+      "Default poll interval shared by reviewing-comment waits and latest-commit stale checks. Accepts integer durations like 250ms, 10s, 30seconds, or 2minutes.",
+    type: "string",
+    default: "10s",
+    coerce: (arg: string | undefined) =>
+      parsePollInterval({
+        value: arg,
+        optionName: "--mr-check-interval",
+      }),
   })
   .option("instruction-files", {
     describe:
@@ -280,3 +287,7 @@ export const argv = yargs(hideBin(process.argv))
   .alias("v", "version")
   .demandOption(["agent"])
   .parseSync();
+
+if (argv["review-max-pending-time"] === undefined) {
+  argv["review-max-pending-time"] = DEFAULT_REVIEW_MAX_PENDING_TIME_MS;
+}

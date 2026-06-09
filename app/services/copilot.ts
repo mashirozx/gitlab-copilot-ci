@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -206,8 +207,14 @@ const getAllowedTools = (): string[] => {
 
 export const runCopilotReview = async ({
   prompt,
+  onChildProcessStarted,
 }: {
   prompt: string;
+  onChildProcessStarted?: ({
+    childProcess,
+  }: {
+    childProcess: ChildProcess;
+  }) => void;
 }): Promise<ReviewResponseEntity> => {
   logger.info("[Copilot] Calling copilot binary...");
 
@@ -270,8 +277,12 @@ export const runCopilotReview = async ({
     const agentBin = argv["agent-bin"] ?? env.COPILOT_BIN ?? "copilot";
 
     const child = spawn(agentBin, copilotArgs, {
+      detached: true,
       env: childEnv,
       stdio: "pipe",
+    });
+    onChildProcessStarted?.({
+      childProcess: child,
     });
     const runtimeStatsCollector = startRuntimeStatsCollector({
       rootPid: child.pid ?? null,
@@ -377,8 +388,6 @@ export const runCopilotReview = async ({
         });
       }
 
-      logger.info(`[Copilot] Process exited with code ${code}`);
-
       const exitedWithCriticalFailure = code !== 0;
       const processStartErrorWithExitCode = processStartErrorMessage
         ? `${processStartErrorMessage}. Exit code: ${code}`
@@ -392,11 +401,13 @@ export const runCopilotReview = async ({
           stdoutTail,
           stderrTail,
         });
-        logger.error(errMsg);
 
         if (recentOutput) {
           logger.info("[Copilot] Recent output:", recentOutput);
         }
+
+        logger.info(`[Copilot] Process exited with code ${code}`);
+        logger.error(errMsg);
 
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
@@ -422,11 +433,13 @@ export const runCopilotReview = async ({
           stdoutTail,
           stderrTail,
         });
-        logger.error(`[Copilot] ${errMsg}`);
 
         if (recentOutput) {
           logger.info("[Copilot] Recent output:", recentOutput);
         }
+
+        logger.info(`[Copilot] Process exited with code ${code}`);
+        logger.error(`[Copilot] ${errMsg}`);
 
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
@@ -442,6 +455,7 @@ export const runCopilotReview = async ({
       }
 
       try {
+        logger.info(`[Copilot] Process exited with code ${code}`);
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });

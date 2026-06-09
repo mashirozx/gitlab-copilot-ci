@@ -154,7 +154,8 @@ Model display rules:
 - `--mr-iid`: defaults to `CI_MERGE_REQUEST_IID`.
 - `--max-git-diff-page`: positive integer page limit for paginated MR diff fetches. Default: unlimited.
 - `--max-history-length`: positive integer cap for the number of review runs kept in the encoded summary history. Default: `12`.
-- `--process-max-pending-time`: positive integer number of minutes to wait for an existing reviewing marker before skipping the current run. Default: `30`.
+- `--review-max-pending-time`: maximum time to wait for an existing reviewing marker before skipping the current run. Accepts integer durations with suffixes `ms`, `milliseconds`, `s`, `seconds`, `minutes`, or `m`. Default: `30minutes`.
+- `--mr-check-interval`: shared reviewing-marker / latest-commit poll interval. Accepts integer durations with suffixes `ms`, `milliseconds`, `s`, `seconds`, `minutes`, or `m`. Default: `10s`.
 - `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
 - `--dry-run` / `--debug` / `-d`: run the real review pipeline but skip all GitLab writes, including inline comments, summary notes, and reviewing-marker notes.
 - `--log`: enable file logging; supports bare flag or a directory path.
@@ -223,22 +224,23 @@ Documentation maintenance rule:
 `app/main.ts` follows this sequence:
 
 1. Check for an existing `<!-- <prefix>-reviewing-marker -->` note.
-2. If present, wait 30 seconds and check again until the marker disappears or total wait exceeds `--process-max-pending-time` minutes.
+2. If present, wait for `--mr-check-interval` and check again until the marker disappears or total wait exceeds `--review-max-pending-time`.
 3. If the marker still exists at the limit, log a warning and exit successfully without reviewing.
-4. Fetch the merge request and compare `process.env.CI_COMMIT_SHA` to `mr.diff_refs.head_sha`.
+4. During each pending-review wait cycle, re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to `mr.diff_refs.head_sha`; if the MR head already moved, exit successfully without waiting further.
 5. If the MR head moved to a different commit, log a warning and exit successfully without reviewing.
 6. If not in `--dry-run`, post a new reviewing-marker note that references the current commit (`CI_COMMIT_SHORT_SHA` / `CI_PROJECT_URL/-/commit/CI_COMMIT_SHA` when available).
 7. Load the existing summary note, decode the review-history block if present, fetch all merge-request discussion pages from GitLab, drop any resolved stored discussions from that history snapshot, then flatten only the unresolved discussion content for later duplicate suppression.
 8. Fetch paginated MR diffs and write one temp file per page: `mr-diff.page-<n>.diff`.
 9. When unresolved prior inline history exists, write it to `prior-inline-review-history.md` in the same temp directory as the diff pages.
 10. Run the configured agent (`github-copilot-cli` or `pi`) with the generated prompt.
-11. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the response before final resolve.
-12. If not in `--dry-run`, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
-13. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
-14. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
-15. If not in `--dry-run`, post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
-16. Build the summary note from the structured response and replace the prior summary note unless `--dry-run` is enabled. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
-17. Delete the reviewing-marker note in a `finally` block when one was created.
+11. While the agent process is still alive, poll GitLab every 10 seconds; if the merge-request head SHA no longer matches `CI_COMMIT_SHA`, cancel the run, kill the agent process, and remove the current reviewing-marker note immediately when possible.
+12. When `--collect-runtime-stats` is enabled, start the shared runtime sampler around the spawned agent process and attach the collected parent/agent stats to the response before final resolve.
+13. If not in `--dry-run`, wait again for other reviewing-marker notes while ignoring this process's own reviewing-marker note id so the job does not block on itself.
+14. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
+15. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
+16. If not in `--dry-run`, post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
+17. Build the summary note from the structured response and replace the prior summary note unless `--dry-run` is enabled. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
+18. Delete the reviewing-marker note in a `finally` block when one was created, unless stale-run cancellation already removed it early.
 
 ### Duplicate Suppression Semantics
 

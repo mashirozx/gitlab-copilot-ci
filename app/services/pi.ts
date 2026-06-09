@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import {
   REVIEW_RESPONSE_JSON_END_MARKER,
@@ -341,8 +342,14 @@ const extractAssistantError = ({
 
 export const runPiReview = async ({
   prompt,
+  onChildProcessStarted,
 }: {
   prompt: string;
+  onChildProcessStarted?: ({
+    childProcess,
+  }: {
+    childProcess: ChildProcess;
+  }) => void;
 }): Promise<ReviewResponseEntity> => {
   logger.info("[Pi] Calling pi binary...");
 
@@ -396,8 +403,12 @@ export const runPiReview = async ({
 
     const child = spawn(agentBin, piArgs, {
       cwd: process.cwd(),
+      detached: true,
       env: childEnv,
       stdio: ["ignore", "pipe", "pipe"],
+    });
+    onChildProcessStarted?.({
+      childProcess: child,
     });
     const runtimeStatsCollector = startRuntimeStatsCollector({
       rootPid: child.pid ?? null,

@@ -9,6 +9,7 @@ import { runCopilotReview } from "./services/copilot";
 import type { ReviewHistoryDiscussionEntity } from "./services/gitlab.types";
 import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
+import { createReviewAgentStartedHandler } from "./services/review-agent-monitor";
 import { argv } from "./utils/argv";
 import { getRequestedResponseLanguages } from "./utils/composers/review-comment-builder";
 import {
@@ -50,6 +51,18 @@ const main = async () => {
   const { buildReviewingMarkerNoteBody } = reviewingCommentBuilder;
   const { shouldSkipForStaleCommit, waitForPendingReviewToFinish } =
     reviewProcess;
+  let staleCommitDetectedDuringAgentRun = false;
+
+  const { onChildProcessStarted, waitForActiveMonitorStop } =
+    createReviewAgentStartedHandler({
+      getReviewingMarkerNoteId: () => reviewingMarkerNoteId,
+      onStaleCommitDetected: () => {
+        staleCommitDetectedDuringAgentRun = true;
+      },
+      onReviewingMarkerDeleted: () => {
+        reviewingMarkerNoteId = null;
+      },
+    });
 
   await initI18n({
     preloadLanguageTags: getRequestedResponseLanguages({
@@ -161,7 +174,17 @@ const main = async () => {
             description: mr.description,
             reviewHistoryFilePath: reviewHistoryFilePath ?? undefined,
           }),
+          onChildProcessStarted,
         });
+
+    if (staleCommitDetectedDuringAgentRun) {
+      await waitForActiveMonitorStop();
+      logger.info(
+        "[GitLab] Exiting without posting review results because the merge request head changed during agent execution.",
+      );
+      return;
+    }
+
     const reviews = [...response.reviews];
 
     if (response.errors) errors.push(...response.errors);

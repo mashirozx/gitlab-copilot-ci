@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   REVIEW_RESPONSE_JSON_END_MARKER,
@@ -403,5 +404,42 @@ describe("runPiReview", () => {
       process.stdout.write = originalStdoutWrite;
       loggerMock.warn = originalWarn;
     }
+  });
+
+  test("exposes the child process as soon as the agent is created", async () => {
+    const child = createMockChildProcess();
+    const startedChildren: MockChildProcess[] = [];
+
+    nextChildFactory = () => child;
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+      onChildProcessStarted: ({
+        childProcess,
+      }: {
+        childProcess: ChildProcess;
+      }) => {
+        startedChildren.push(childProcess as MockChildProcess);
+      },
+    });
+
+    child.emit("spawn");
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(startedChildren).toEqual([child]);
   });
 });

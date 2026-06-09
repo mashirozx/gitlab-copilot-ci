@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   REVIEW_RESPONSE_JSON_END_MARKER,
@@ -205,5 +206,32 @@ describe("runCopilotReview", () => {
       "failed to start process: spawn ENOENT",
     );
     expect(result.errors?.[0]).toContain("Exit code: 1");
+  });
+
+  test("exposes the child process as soon as the agent is created", async () => {
+    const child = createMockChildProcess();
+    const startedChildren: MockChildProcess[] = [];
+
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+      onChildProcessStarted: ({
+        childProcess,
+      }: {
+        childProcess: ChildProcess;
+      }) => {
+        startedChildren.push(childProcess as MockChildProcess);
+      },
+    });
+    const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+
+    child.emit("spawn");
+    child.stdout.emit("data", Buffer.from(jsonText));
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(startedChildren).toEqual([child]);
   });
 });
