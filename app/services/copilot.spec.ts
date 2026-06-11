@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import {
-  REVIEW_RESPONSE_JSON_END_MARKER,
-  REVIEW_RESPONSE_JSON_START_MARKER,
-} from "../constants";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
@@ -35,6 +31,8 @@ const createMockChildProcess = (): MockChildProcess => {
 };
 
 let nextChildFactory = (): MockChildProcess => createMockChildProcess();
+let mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
+  '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
 
 mock.module("./logger", () => ({
   logger: loggerMock,
@@ -61,7 +59,8 @@ mock.module("node:child_process", () => ({
 
 mock.module("node:fs", () => ({
   readdirSync: () => [],
-  readFileSync: () => "",
+  readFileSync: (path: string, encoding: BufferEncoding) =>
+    mockReadFileSync(path, encoding),
 }));
 
 const { runCopilotReview } = await import(`./copilot?test=${Date.now()}`);
@@ -79,6 +78,8 @@ afterEach(() => {
   mock.restore();
   mock.clearAllMocks();
   nextChildFactory = (): MockChildProcess => createMockChildProcess();
+  mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
+    '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
 });
 
 describe("runCopilotReview", () => {
@@ -104,7 +105,7 @@ describe("runCopilotReview", () => {
       const reviewPromise = runCopilotReview({
         prompt: "review this diff",
       });
-      const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
+      const jsonText = `agent output ${"a".repeat(1024 * 1024)}`;
 
       child.emit("spawn");
       child.stdout.emit("data", Buffer.from(jsonText));
@@ -134,7 +135,7 @@ describe("runCopilotReview", () => {
     const reviewPromise = runCopilotReview({
       prompt: "review this diff",
     });
-    const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+    const jsonText = "agent output";
 
     child.emit("spawn");
     child.stdout.emit("data", Buffer.from("AI Credits 126 (10m 47s)\n"));
@@ -174,7 +175,7 @@ describe("runCopilotReview", () => {
     const reviewPromise = runCopilotReview({
       prompt: "review this diff",
     });
-    const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+    const jsonText = "agent output";
 
     child.emit("spawn");
     child.stdout.emit("data", Buffer.from(jsonText));
@@ -208,6 +209,28 @@ describe("runCopilotReview", () => {
     expect(result.errors?.[0]).toContain("Exit code: 1");
   });
 
+  test("reads review JSON from shared output path", async () => {
+    const child = createMockChildProcess();
+
+    nextChildFactory = () => child;
+    mockReadFileSync = (_path, _encoding) =>
+      '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.stdout.emit("data", Buffer.from("no markers in stdout"));
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.errors).toBeUndefined();
+    expect(result.summary.walkthrough.en).toBe("ok");
+    expect(result.reviews).toEqual([]);
+  });
+
   test("exposes the child process as soon as the agent is created", async () => {
     const child = createMockChildProcess();
     const startedChildren: MockChildProcess[] = [];
@@ -224,7 +247,7 @@ describe("runCopilotReview", () => {
         startedChildren.push(childProcess as MockChildProcess);
       },
     });
-    const jsonText = `${REVIEW_RESPONSE_JSON_START_MARKER}{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}${REVIEW_RESPONSE_JSON_END_MARKER}`;
+    const jsonText = "agent output";
 
     child.emit("spawn");
     child.stdout.emit("data", Buffer.from(jsonText));

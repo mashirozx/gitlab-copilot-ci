@@ -3,10 +3,7 @@ import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
-  REVIEW_RESPONSE_JSON_END_MARKER,
-  REVIEW_RESPONSE_JSON_START_MARKER,
-} from "../constants";
+import { outputJsonPath } from "../constants";
 import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
@@ -15,12 +12,11 @@ import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
+import { readReviewOutputJsonFile } from "../utils/review-output-json";
 import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
   appendRecentOutputLine,
-  consumeMarkedJsonChunk,
   consumeStdoutPrintBudget,
-  createMarkedJsonCaptureState,
   createStdoutPrintBudgetState,
   flushLoggedStreamBuffer,
   getRecentProcessOutputText,
@@ -226,8 +222,6 @@ export const runCopilotReview = async ({
     const stderrTail: string[] = [];
     let stdoutUsageOutputCapture = "";
     let stderrUsageOutputCapture = "";
-    const stdoutJsonCapture = createMarkedJsonCaptureState();
-    const stderrJsonCapture = createMarkedJsonCaptureState();
     const stdoutPrintBudget = createStdoutPrintBudgetState();
 
     const childEnv = withCliColorEnv({ env: { ...process.env } });
@@ -321,12 +315,6 @@ export const runCopilotReview = async ({
         process.stdout.write(text);
       }
 
-      consumeMarkedJsonChunk({
-        state: stdoutJsonCapture,
-        text,
-        startMarker: REVIEW_RESPONSE_JSON_START_MARKER,
-        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
-      });
       stdoutLogBuffer += text;
       stdoutLogBuffer = flushLoggedStreamBuffer({
         buffer: stdoutLogBuffer,
@@ -348,12 +336,6 @@ export const runCopilotReview = async ({
         text,
       });
       process.stderr.write(text);
-      consumeMarkedJsonChunk({
-        state: stderrJsonCapture,
-        text,
-        startMarker: REVIEW_RESPONSE_JSON_START_MARKER,
-        endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
-      });
       stderrLogBuffer += text;
       stderrLogBuffer = flushLoggedStreamBuffer({
         buffer: stderrLogBuffer,
@@ -422,13 +404,16 @@ export const runCopilotReview = async ({
         return;
       }
 
-      const jsonText =
-        stdoutJsonCapture.markedJson ?? stderrJsonCapture.markedJson;
+      const { jsonText, error: jsonReadError } = readReviewOutputJsonFile();
+
+      if (jsonText) {
+        logger.info(`[Copilot] Read JSON output from file: ${outputJsonPath}`);
+      }
 
       if (!jsonText) {
         const errMsg =
           processStartErrorWithExitCode ??
-          `[Copilot] Copilot CLI: no review JSON found in LLM output. Exit code: ${code}`;
+          `[Copilot] Copilot CLI: no review JSON found in output file. ${jsonReadError ?? "Unknown read error"}. Exit code: ${code}`;
         const recentOutput = getRecentProcessOutputText({
           stdoutTail,
           stderrTail,

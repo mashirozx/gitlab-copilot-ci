@@ -1,5 +1,7 @@
-export const REVIEW_RESPONSE_JSON_START_MARKER = "[COPILOT_JSON_START]";
-export const REVIEW_RESPONSE_JSON_END_MARKER = "[COPILOT_JSON_END]";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+export const outputJsonPath = join(tmpdir(), "output.json");
 
 export const CLI_COLOR_ENV_DEFAULTS = {
   FORCE_COLOR: "1",

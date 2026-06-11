@@ -5,13 +5,6 @@ import {
   STDOUT_PRINT_SAFETY_MARGIN_RATIO,
 } from "./stdout-size";
 
-type MarkedJsonCaptureState = {
-  buffer: string;
-  capturedParts: string[];
-  markedJson: string | null;
-  isCapturing: boolean;
-};
-
 type StdoutPrintBudgetState = {
   totalBytes: number;
   isSuppressed: boolean;
@@ -22,15 +15,6 @@ const getStdoutPrintBudgetBytesFromArgv = (): number => {
   return getStdoutPrintBudgetBytes({
     maxStdoutSizeBytes: argv["max-stdout-size"],
   });
-};
-
-export const createMarkedJsonCaptureState = (): MarkedJsonCaptureState => {
-  return {
-    buffer: "",
-    capturedParts: [],
-    markedJson: null,
-    isCapturing: false,
-  };
 };
 
 export const createStdoutPrintBudgetState = (): StdoutPrintBudgetState => {
@@ -123,61 +107,6 @@ export const flushLoggedStreamBuffer = ({
   return trailing;
 };
 
-export const consumeMarkedJsonChunk = ({
-  state,
-  text,
-  startMarker,
-  endMarker,
-}: {
-  state: MarkedJsonCaptureState;
-  text: string;
-  startMarker: string;
-  endMarker: string;
-}): void => {
-  if (state.markedJson !== null) {
-    return;
-  }
-
-  state.buffer += text;
-
-  while (state.buffer.length > 0) {
-    if (!state.isCapturing) {
-      const startIndex = state.buffer.indexOf(startMarker);
-
-      if (startIndex === -1) {
-        const keepLength = Math.max(startMarker.length - 1, 0);
-        state.buffer = state.buffer.slice(-keepLength);
-        return;
-      }
-
-      state.isCapturing = true;
-      state.buffer = state.buffer.slice(startIndex + startMarker.length);
-    }
-
-    const endIndex = state.buffer.indexOf(endMarker);
-
-    if (endIndex !== -1) {
-      state.capturedParts.push(state.buffer.slice(0, endIndex));
-      state.markedJson = state.capturedParts.join("").trim();
-      state.buffer = "";
-      state.capturedParts = [];
-      state.isCapturing = false;
-      return;
-    }
-
-    const keepLength = Math.max(endMarker.length - 1, 0);
-
-    if (state.buffer.length <= keepLength) {
-      return;
-    }
-
-    state.capturedParts.push(
-      state.buffer.slice(0, state.buffer.length - keepLength),
-    );
-    state.buffer = state.buffer.slice(-keepLength);
-  }
-};
-
 export const getRecentProcessOutputText = ({
   stdoutTail,
   stderrTail,
@@ -193,4 +122,4 @@ export const getRecentProcessOutputText = ({
   return lines.join("\n").trim();
 };
 
-export type { MarkedJsonCaptureState, StdoutPrintBudgetState };
+export type { StdoutPrintBudgetState };

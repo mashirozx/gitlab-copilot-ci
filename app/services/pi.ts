@@ -1,24 +1,20 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
-import {
-  REVIEW_RESPONSE_JSON_END_MARKER,
-  REVIEW_RESPONSE_JSON_START_MARKER,
-} from "../constants";
+import { outputJsonPath } from "../constants";
 import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
 import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
-import { extractMarkedJsonText, parseJson, tryParseJson } from "../utils/json";
+import { parseJson, tryParseJson } from "../utils/json";
 import { createPiMessageFormatter } from "../utils/pi-message-formatter";
 import { getPiUsage } from "../utils/pi-usage-collector";
+import { readReviewOutputJsonFile } from "../utils/review-output-json";
 import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
   appendRecentOutputLine,
-  consumeMarkedJsonChunk,
   consumeStdoutPrintBudget,
-  createMarkedJsonCaptureState,
   createStdoutPrintBudgetState,
   flushLoggedStreamBuffer,
   getRecentProcessOutputText,
@@ -61,119 +57,9 @@ type PiJsonEvent = {
 
 type PiRuntimeState = {
   agentEndEvent: PiJsonEvent | null;
-  markedJsonCapture: ReturnType<typeof createMarkedJsonCaptureState>;
-  pendingAssistantMessage: string;
   usage?: ReviewResponseEntity["usage"];
   stdoutTail: string[];
   stderrTail: string[];
-};
-
-const isPiTextContentArray = (value: unknown): value is PiTextContent[] => {
-  return Array.isArray(value);
-};
-
-const getEventMessagesForStreaming = ({
-  event,
-}: {
-  event: PiJsonEvent;
-}): PiMessage[] => {
-  const messages = Array.isArray(event.messages) ? event.messages : [];
-
-  return [
-    ...messages,
-    ...(event.assistantMessageEvent?.partial
-      ? [event.assistantMessageEvent.partial]
-      : []),
-    ...(event.message ? [event.message] : []),
-  ];
-};
-
-const appendAssistantTextToMarkedJsonCapture = ({
-  state,
-  text,
-}: {
-  state: PiRuntimeState;
-  text: string;
-}): void => {
-  if (!text) {
-    return;
-  }
-
-  consumeMarkedJsonChunk({
-    state: state.markedJsonCapture,
-    text,
-    startMarker: REVIEW_RESPONSE_JSON_START_MARKER,
-    endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
-  });
-};
-
-const syncAssistantMessageCapture = ({
-  state,
-  nextText,
-}: {
-  state: PiRuntimeState;
-  nextText: string;
-}): void => {
-  if (!nextText) {
-    return;
-  }
-
-  const appendedText = nextText.startsWith(state.pendingAssistantMessage)
-    ? nextText.slice(state.pendingAssistantMessage.length)
-    : nextText;
-
-  state.pendingAssistantMessage = nextText;
-  appendAssistantTextToMarkedJsonCapture({
-    state,
-    text: appendedText,
-  });
-};
-
-const updateMarkedJsonCaptureFromEvent = ({
-  event,
-  state,
-}: {
-  event: PiJsonEvent;
-  state: PiRuntimeState;
-}): void => {
-  const partialEventType = event.assistantMessageEvent?.type;
-
-  if (partialEventType === "text_start") {
-    state.pendingAssistantMessage = "";
-    return;
-  }
-
-  if (
-    partialEventType === "text_delta" &&
-    typeof event.assistantMessageEvent?.delta === "string"
-  ) {
-    state.pendingAssistantMessage += event.assistantMessageEvent.delta;
-    appendAssistantTextToMarkedJsonCapture({
-      state,
-      text: event.assistantMessageEvent.delta,
-    });
-    return;
-  }
-
-  if (
-    partialEventType === "text_end" &&
-    typeof event.assistantMessageEvent?.content === "string"
-  ) {
-    syncAssistantMessageCapture({
-      state,
-      nextText: event.assistantMessageEvent.content,
-    });
-    return;
-  }
-
-  if (event.type === "message_end" || event.type === "agent_end") {
-    syncAssistantMessageCapture({
-      state,
-      nextText: extractAssistantText({
-        messages: getEventMessagesForStreaming({ event }),
-      }),
-    });
-  }
 };
 
 const consumePiStdoutLine = ({
@@ -200,11 +86,6 @@ const consumePiStdoutLine = ({
     logger.warn(`[Pi] Failed to parse JSON event line: ${trimmedLine}`);
     return;
   }
-
-  updateMarkedJsonCaptureFromEvent({
-    event,
-    state,
-  });
 
   const usage = getPiUsage({ event });
 
@@ -287,35 +168,6 @@ const writeBudgetedStdout = ({
   }
 };
 
-const extractAssistantText = ({
-  messages,
-}: {
-  messages?: PiMessage[];
-}): string => {
-  const assistantMessage = [...(messages ?? [])]
-    .reverse()
-    .find((message) => message.role === "assistant");
-
-  if (!assistantMessage) {
-    return "";
-  }
-
-  if (typeof assistantMessage.content === "string") {
-    return assistantMessage.content;
-  }
-
-  if (!isPiTextContentArray(assistantMessage.content)) {
-    return "";
-  }
-
-  const content = assistantMessage.content;
-
-  return content
-    .filter((item) => item.type === "text")
-    .map((item) => item.text ?? "")
-    .join("");
-};
-
 const extractAssistantMessage = ({
   messages,
 }: {
@@ -363,8 +215,6 @@ export const runPiReview = async ({
     const stdoutPrintBudget = createStdoutPrintBudgetState();
     const piRuntimeState: PiRuntimeState = {
       agentEndEvent: null,
-      markedJsonCapture: createMarkedJsonCaptureState(),
-      pendingAssistantMessage: "",
       usage: undefined,
       stdoutTail: [],
       stderrTail: [],
@@ -578,26 +428,24 @@ export const runPiReview = async ({
         }
 
         const eventMessages = getEventMessages({ event: agentEndEvent });
-        const assistantText = extractAssistantText({
-          messages: eventMessages,
-        });
         const assistantError = extractAssistantError({
           messages: eventMessages,
         });
-        const jsonText =
-          piRuntimeState.markedJsonCapture.markedJson ??
-          extractMarkedJsonText({
-            text: assistantText,
-            marker: REVIEW_RESPONSE_JSON_START_MARKER,
-            endMarker: REVIEW_RESPONSE_JSON_END_MARKER,
-          });
+
+        const { jsonText: outputFileJsonText, error: outputJsonReadError } =
+          readReviewOutputJsonFile();
+
+        if (outputFileJsonText) {
+          logger.info(`[Pi] Read JSON output from file: ${outputJsonPath}`);
+        }
+
+        const jsonText: string | null = outputFileJsonText;
 
         if (!jsonText) {
           const errMsg = assistantError
             ? `[Pi] Pi JSON mode returned an assistant error before review JSON was produced. Exit code: ${code}. Error: ${assistantError}`
-            : `[Pi] Pi JSON mode: no review JSON found in LLM output. Exit code: ${code}`;
+            : `[Pi] Pi JSON mode: no review JSON found in output file. ${outputJsonReadError ?? "Unknown read error"}. Exit code: ${code}`;
           logger.error(errMsg);
-          logger.info("[Pi] Assistant output:", assistantText);
           const duration = getElapsedMilliseconds({
             startTimeMs: startTime,
           });

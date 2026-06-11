@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import {
-  REVIEW_RESPONSE_JSON_END_MARKER,
-  REVIEW_RESPONSE_JSON_START_MARKER,
-} from "../constants";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
@@ -47,6 +43,8 @@ const createMockChildProcess = (): MockChildProcess => {
 };
 
 let nextChildFactory = (): MockChildProcess => createMockChildProcess();
+let mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
+  validReviewResponseJson;
 
 mock.module("./logger", () => ({
   logger: loggerMock,
@@ -75,6 +73,12 @@ mock.module("node:child_process", () => ({
   }),
 }));
 
+mock.module("node:fs", () => ({
+  readdirSync: () => [],
+  readFileSync: (path: string, encoding: BufferEncoding) =>
+    mockReadFileSync(path, encoding),
+}));
+
 const { argv } = await import("../utils/argv");
 const { runPiReview } = await import(`./pi?test=${Date.now()}`);
 
@@ -82,6 +86,8 @@ afterEach(() => {
   mock.restore();
   mock.clearAllMocks();
   nextChildFactory = (): MockChildProcess => createMockChildProcess();
+  mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
+    validReviewResponseJson;
 });
 
 describe("runPiReview", () => {
@@ -101,7 +107,7 @@ describe("runPiReview", () => {
           type: "agent_end",
           messages: {
             role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+            content: "assistant content",
           },
         })}\n`,
       ),
@@ -133,62 +139,7 @@ describe("runPiReview", () => {
           type: "agent_end",
           message: {
             role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
-          },
-        })}\n`,
-      ),
-    );
-    child.emit("close", 0);
-
-    const result = await reviewPromise;
-
-    expect(result.errors).toBeUndefined();
-    expect(result.summary.walkthrough.en).toBe("ok");
-    expect(result.reviews).toEqual([]);
-  });
-
-  test("prefers incrementally captured marked JSON when agent_end text is truncated", async () => {
-    const child = createMockChildProcess();
-    nextChildFactory = () => child;
-
-    const reviewPromise = runPiReview({
-      prompt: "review this diff",
-    });
-
-    const markedJson = `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`;
-
-    child.emit("spawn");
-    child.stdout.emit(
-      "data",
-      Buffer.from(
-        `${JSON.stringify({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_start",
-          },
-        })}\n${JSON.stringify({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_delta",
-            delta: markedJson.slice(0, 20),
-          },
-        })}\n${JSON.stringify({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_delta",
-            delta: markedJson.slice(20),
-          },
-        })}\n${JSON.stringify({
-          type: "message_end",
-          message: {
-            role: "assistant",
-            content: markedJson,
-          },
-        })}\n${JSON.stringify({
-          type: "agent_end",
-          message: {
-            role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}`,
+            content: "assistant content",
           },
         })}\n`,
       ),
@@ -218,7 +169,7 @@ describe("runPiReview", () => {
           type: "agent_end",
           message: {
             role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+            content: "assistant content",
           },
         })}\n`,
       ),
@@ -252,36 +203,24 @@ describe("runPiReview", () => {
     expect(result.errors?.[0]).toContain("Exit code: 1");
   });
 
-  test("captures marked JSON from text_end content without relying on text_delta", async () => {
+  test("reads review JSON from shared output path", async () => {
     const child = createMockChildProcess();
     nextChildFactory = () => child;
+    mockReadFileSync = (_path, _encoding) => validReviewResponseJson;
 
     const reviewPromise = runPiReview({
       prompt: "review this diff",
     });
-
-    const markedJson = `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`;
 
     child.emit("spawn");
     child.stdout.emit(
       "data",
       Buffer.from(
         `${JSON.stringify({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_start",
-          },
-        })}\n${JSON.stringify({
-          type: "message_update",
-          assistantMessageEvent: {
-            type: "text_end",
-            content: markedJson,
-          },
-        })}\n${JSON.stringify({
           type: "agent_end",
           message: {
             role: "assistant",
-            content: "truncated",
+            content: "no markers",
           },
         })}\n`,
       ),
@@ -319,7 +258,7 @@ describe("runPiReview", () => {
       const reviewPromise = runPiReview({
         prompt: "review this diff",
       });
-      const largeAssistantContent = `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`;
+      const largeAssistantContent = `${"a".repeat(1024 * 1024)}`;
 
       child.emit("spawn");
       child.stdout.emit(
@@ -386,7 +325,7 @@ describe("runPiReview", () => {
             type: "agent_end",
             message: {
               role: "assistant",
-              content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}${"a".repeat(1024 * 1024)}`,
+              content: `${"a".repeat(1024 * 1024)}`,
             },
           })}\n`,
         ),
@@ -431,7 +370,7 @@ describe("runPiReview", () => {
           type: "agent_end",
           message: {
             role: "assistant",
-            content: `${REVIEW_RESPONSE_JSON_START_MARKER}${validReviewResponseJson}${REVIEW_RESPONSE_JSON_END_MARKER}`,
+            content: "assistant content",
           },
         })}\n`,
       ),

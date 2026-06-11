@@ -86,6 +86,8 @@ Rules:
 - Resolved historical inline discussions must never be embedded into the prompt duplicate-suppression section and must never remain in the hidden base64 review-history payload.
 - The next run flattens prior `content` items, writes them to a temp Markdown file beside the diff pages, formats them as repeated review blocks with a small `Diff` table plus a freeform `Suggestions` section, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
 - The next run flattens prior `suggestion` items, writes them to a temp Markdown file beside the diff pages, formats them as repeated review blocks with a small `Diff` table plus a freeform `Suggestions` section, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
+- The runtime uses a shared constant output path `join(tmpdir(), "output.json")` for JSON handoff. Prompt instructions tell the model to use Node.js `fs.writeFileSync()` to write the final JSON payload there, without requiring minification and without returning JSON in the final response message.
+- Agent services (`copilot` and `pi`) read that shared output file after the agent process exits. Review JSON markers are no longer used for service-level parsing.
 - Summary parsing should accept older stored history entries that used `content` instead of `suggestion`, but all newly written history payloads should store `suggestion`.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
 
@@ -94,12 +96,12 @@ Rules:
 | File | Purpose |
 |------|---------|
 | `app/main.ts` | Orchestrates debounce, stale-commit skipping, diff fetch, prompt generation, agent execution, inline discussion posting, summary replacement, and cleanup of the reviewing marker note |
-| `app/constants.ts` | Shared JSON markers and CLI environment defaults |
+| `app/constants.ts` | Shared output-file path and CLI environment defaults |
 | `app/prompts.ts` | Builds the review prompt, including diff-reading instructions, deferred duplicate-suppression history guidance, translation requirements, and diff-position guidance |
 | `app/services/gitlab.ts` | GitLab API wrapper for MR fetch, diff pagination, note lookup/creation/deletion, history parsing, inline discussion creation, and failed-request logging with GitLab `x-request-id` correlation ids |
 | `app/services/gitlab.types.ts` | GitLab-facing entities, review-history payload types, MR note types, and diff result types |
-| `app/services/copilot.ts` | GitHub Copilot CLI invocation and Copilot-specific response handling |
-| `app/services/pi.ts` | Pi invocation, Pi-event interpretation, incremental marked-review-JSON capture from streamed assistant text, human-readable console formatting, and usage extraction |
+| `app/services/copilot.ts` | GitHub Copilot CLI invocation, output-file JSON reading from `output.json`, and Copilot-specific usage extraction |
+| `app/services/pi.ts` | Pi invocation, Pi-event interpretation, shared output-file JSON handoff reading, human-readable console formatting, and usage extraction |
 | `app/services/logger.ts` | Shared `consola` logger and optional file logging |
 | `app/i18n/index.ts` | Typed runtime i18n helper for locale resolution, one-time async initialization, dot-path keys, plural selection, and dispatch to per-locale dictionaries |
 | `app/i18n/prompts.ts` | Prompt-specific language helper text, such as the shared classical Chinese script note derived from `--thinking-lang` and any requested translation languages |

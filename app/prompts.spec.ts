@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { outputJsonPath } from "./constants";
 
 const originalArgv = [...process.argv];
 const originalCommitSha = process.env.CI_COMMIT_SHA;
@@ -250,5 +251,30 @@ describe("buildCopilotPrompt", () => {
     expect(prompt).toContain(
       "补充说明：这里的“文言文”指古典汉语书面语。在每条翻译中请使用繁體漢字。",
     );
+  });
+
+  test("instructs file-based JSON output", async () => {
+    const { buildCopilotPrompt } = await loadPromptsModule();
+    const prompt = buildCopilotPrompt({
+      diffFilePaths: ["mr-diff.page-1.diff"],
+      title: "Test MR",
+      description: null,
+      reviewHistoryFilePath: undefined,
+    });
+
+    expect(prompt).toContain(
+      `Write the final JSON directly to this file using Node.js: ${outputJsonPath}`,
+    );
+    expect(prompt).toContain(
+      "Use Node.js fs.writeFileSync() to write the JSON output to that file path.",
+    );
+    expect(prompt).toContain("The JSON output does not need to be minified.");
+    expect(prompt).toContain(
+      "After writing the file successfully, do not output the JSON in the final response message. The runtime will read the file directly.",
+    );
+    expect(prompt).toContain(
+      "Do not wrap the JSON with markers. Write only the JSON object to the file, nothing else.",
+    );
+    expect(prompt).not.toContain("Wrap the JSON like this:");
   });
 });

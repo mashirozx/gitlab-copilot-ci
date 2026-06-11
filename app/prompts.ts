@@ -1,7 +1,4 @@
-import {
-  REVIEW_RESPONSE_JSON_END_MARKER,
-  REVIEW_RESPONSE_JSON_START_MARKER,
-} from "./constants";
+import { outputJsonPath } from "./constants";
 import { buildSpecialLanguageInstructions } from "./i18n/prompts";
 import { argv } from "./utils/argv";
 import { getRequestedResponseLanguages } from "./utils/composers/review-comment-builder";
@@ -202,6 +199,8 @@ You must obey the additional required instructions above unless they conflict wi
 - Use this configured runtime model string as the source of truth for the human-readable model name in "readableModelName" instead of guessing from runtime self-identification.`
     : "";
 
+  const outputJsonInstruction = `- Write the final JSON directly to this file using Node.js: ${outputJsonPath}`;
+
   return `You are a senior code reviewer working in this repository.
 
 Read-only task:
@@ -307,11 +306,10 @@ ${ignoredRankInstruction}
 - Before emitting the final response, construct the full JSON payload with local Node.js and serialize it with Node's JSON.stringify(). Prefer this over hand-writing JSON text.
 - If the Node.js step throws any syntax, reference, or serialization error, fix the payload immediately and rerun the same Node.js JSON.stringify() step until it succeeds.
 - If you loaded the deferred history file, finish filtering duplicate inline review items before this JSON.stringify() step.
-- Only after Node.js successfully prints valid minified JSON may you wrap it with the start/end markers and return it.
-- A valid workflow is: build the full payload as a JavaScript object in Node.js, run JSON.stringify(payload), inspect any thrown error, correct the object, and rerun until JSON.stringify(payload) succeeds.
-- Output the JSON on a single line, minified (no newlines).
-- Wrap the JSON like this: ${REVIEW_RESPONSE_JSON_START_MARKER}{...}${REVIEW_RESPONSE_JSON_END_MARKER}
-- First output the start marker, then the minified JSON object, then the end marker, all on one line.
-- Do not include any extra prose before or after the wrapped JSON line.
+${outputJsonInstruction}
+- Use Node.js fs.writeFileSync() to write the JSON output to that file path.
+- The JSON output does not need to be minified.
+- After writing the file successfully, do not output the JSON in the final response message. The runtime will read the file directly.
+- Do not wrap the JSON with markers. Write only the JSON object to the file, nothing else.
 - Respect repository instruction files you found, especially any merge request review-specific rules.`;
 };
