@@ -33,7 +33,7 @@
     "consola": "3.4.2",
     "husky": "9.1.7",
     "tablemark": "4.1.0",
-    "temporal-polyfill": "0.3.2",
+    "temporal-polyfill": "1.0.1",
     "tstyche": "7.2.1",
     "typescript": "npm:@typescript/native-preview@7.0.0-dev.20260511.1",
     "yargs": "18.0.0"
