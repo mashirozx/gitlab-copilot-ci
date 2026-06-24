@@ -8,10 +8,19 @@ A Bun-based GitLab CI review binary that analyzes merge request diffs with eithe
 |----------|--------------|----------|
 | macOS | Apple Silicon | [gitlab-copilot-ci-darwin-arm64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-darwin-arm64) |
 | macOS | Intel x86_64 | [gitlab-copilot-ci-darwin-x64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-darwin-x64) |
-| Linux | x86_64 | [gitlab-copilot-ci-linux-x64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-x64) |
-| Linux | ARM64 | [gitlab-copilot-ci-linux-arm64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-arm64) |
+| Linux (glibc) | x86_64 | [gitlab-copilot-ci-linux-x64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-x64) |
+| Linux (glibc) | ARM64 | [gitlab-copilot-ci-linux-arm64](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-arm64) |
+| Linux (musl) | x86_64 | [gitlab-copilot-ci-linux-x64-musl](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-x64-musl) |
+| Linux (musl) | ARM64 | [gitlab-copilot-ci-linux-arm64-musl](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-linux-arm64-musl) |
 | Windows | x86_64 | [gitlab-copilot-ci-win-x64.exe](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-win-x64.exe) |
 | Windows | ARM64 | [gitlab-copilot-ci-win-arm64.exe](https://github.com/mashirozx/gitlab-copilot-ci/releases/latest/download/gitlab-copilot-ci-win-arm64.exe) |
+
+### Linux Artifact Choice
+
+- Use `linux-x64` or `linux-arm64` on glibc-based distros such as Debian and Ubuntu.
+- Use `linux-x64-musl` or `linux-arm64-musl` on musl-based distros such as Alpine.
+- If you run a musl binary on Alpine via `gcompat`, treat that as a compatibility layer for glibc-targeted programs, not a replacement for native musl builds. Prefer the `*-musl` artifacts when your container or host is Alpine.
+- A glibc-targeted binary will usually fail on plain Alpine without `gcompat`, and a musl-targeted binary will usually fail on Debian or Ubuntu because those systems do not ship the musl loader by default.
 
 ## Usage
 
@@ -136,6 +145,8 @@ bun run build:darwin-arm64
 bun run build:darwin-x64
 bun run build:linux-x64
 bun run build:linux-arm64
+bun run build:linux-x64-musl
+bun run build:linux-arm64-musl
 bun run build:win-x64
 bun run build:win-arm64
 

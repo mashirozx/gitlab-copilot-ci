@@ -28,6 +28,8 @@ keywords:
 - **Context**: This repository's own CI builds and publishes release binaries.
 - **Purpose**: Validate, package, and publish `gitlab-copilot-ci` artifacts.
 - **Entry Points**: `scripts/ci/ensure-release.ts`, `scripts/ci/build-and-publish.ts`, `scripts/ci/publish-release.ts`.
+- **Artifact variants**: Release CI publishes both glibc Linux artifacts (`linux-x64`, `linux-arm64`) and musl Linux artifacts (`linux-x64-musl`, `linux-arm64-musl`). Use glibc artifacts for Debian/Ubuntu-class environments and musl artifacts for Alpine-class environments.
+- **Compatibility note**: `gcompat` is only a compatibility layer for running many glibc binaries on Alpine. It is not the same as a native musl build and should not replace the `*-musl` artifacts when Alpine is the intended runtime.
 - **Post-release trigger**: `.gitlab-ci.yml` includes a `trigger:runner` job in a dedicated `trigger` stage. When `RUNNER_TRIGGER_TOKEN` is set on `main`, it runs after `release:publish`, reads `RELEASE_TAG` from the `release:check` dotenv artifact, and POSTs `TARGET_JOB` plus `GITLAB_COPILOT_CLI_VERSION` to `RUNNER_TRIGGER_URL`.
 - **Validation Gates**: Both GitHub Actions and GitLab CI run explicit `bun run lint`, `bun run test`, `bun run typecheck`, and `bun run tsgo` jobs before build/release steps proceed.
 

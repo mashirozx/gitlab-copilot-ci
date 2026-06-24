@@ -39,19 +39,16 @@ const commit =
     encoding: "utf-8",
   }).trim();
 
-// Get platform and architecture
-const platform = `${process.platform}-${process.arch}`;
+// Strip "bun-" prefix from target for output filename and normalize Windows names
+// (e.g., "bun-linux-arm64" → "linux-arm64", "bun-linux-arm64-musl" → "linux-arm64-musl")
+const platformTarget = target.replace(/^bun-/, "").replace(/^windows-/, "win-");
 
 // Build with version information embedded
 // Bun --define format: VAR=VALUE (values are JS expressions, strings must be quoted in the value itself)
 const defineVersion = `__BUILD_VERSION__="${pkg.version}"`;
 const defineCommit = `__BUILD_COMMIT__="${commit}"`;
-const definePlatform = `__BUILD_PLATFORM__="${platform}"`;
+const definePlatform = `__BUILD_PLATFORM__="${platformTarget}"`;
 const defineRepo = `__BUILD_REPO__="${repo}"`;
-
-// Strip "bun-" prefix from target for output filename and normalize Windows names
-// (e.g., "bun-linux-arm64" → "linux-arm64", "bun-windows-arm64" → "win-arm64")
-const platformTarget = target.replace(/^bun-/, "").replace(/^windows-/, "win-");
 
 console.log(
   `Building ${target} with version ${pkg.version} (${commit.slice(0, 7)})`,
