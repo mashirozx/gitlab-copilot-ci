@@ -5,6 +5,7 @@ export const ja = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 ${readableModelName} によるコードレビュー要約`,
+    viewDetail: "詳細を見る",
     walkthrough: {
       title: "📋 ウォークスルー",
     },
@@ -25,7 +26,7 @@ export const ja = {
           count: number;
           commitReference: string;
         }) =>
-          `コミット ${commitReference} までの変更では、インラインのレビュー指摘はありません:`,
+          `✨ コミット ${commitReference} までの変更では、インラインのレビュー指摘はありません。`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const ja = {
       },
       footer:
         "<sub>過去のレビュー実行で出された提案はここには含めていません。</sub>",
-      empty: "✨ 問題は見つかりませんでした!",
     },
     otherSuggestions: {
       title: "💡 その他の提案",

@@ -118,6 +118,12 @@ export const argv = yargs(hideBin(process.argv))
     type: "boolean",
     default: false,
   })
+  .option("post-summary-with-snippet", {
+    describe:
+      "Create a GitLab project snippet for the full summary content, then post a reduced summary comment that links to that snippet.",
+    type: "boolean",
+    default: false,
+  })
   .option("log", {
     describe:
       "Enable log file writing. Pass without a value to write to the current directory, or provide a path: --log /path/to/dir.",

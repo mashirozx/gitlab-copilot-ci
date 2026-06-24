@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 process.env.GITLAB_TOKEN ??= "test-gitlab-token";
 process.env.CI_SERVER_URL ??= "https://gitlab.example.com";
@@ -33,6 +35,7 @@ const createMockChildProcess = (): MockChildProcess => {
 let nextChildFactory = (): MockChildProcess => createMockChildProcess();
 let mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
   '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
+let spawnCalls: Array<{ command: string; args: string[] }> = [];
 
 mock.module("./logger", () => ({
   logger: loggerMock,
@@ -53,7 +56,10 @@ mock.module("../utils/argv", () => ({
 }));
 
 mock.module("node:child_process", () => ({
-  spawn: () => nextChildFactory(),
+  spawn: (command: string, args: string[]) => {
+    spawnCalls.push({ command, args });
+    return nextChildFactory();
+  },
   spawnSync: () => ({ stdout: "", stderr: "" }),
 }));
 
@@ -80,6 +86,7 @@ afterEach(() => {
   nextChildFactory = (): MockChildProcess => createMockChildProcess();
   mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
     '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
+  spawnCalls = [];
 });
 
 describe("runCopilotReview", () => {
@@ -229,6 +236,34 @@ describe("runCopilotReview", () => {
     expect(result.errors).toBeUndefined();
     expect(result.summary.walkthrough.en).toBe("ok");
     expect(result.reviews).toEqual([]);
+  });
+
+  test("allows the repo directory and temp directories for Copilot CLI", async () => {
+    const child = createMockChildProcess();
+
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0]?.args).toContain(`--add-dir=${process.cwd()}`);
+    expect(spawnCalls[0]?.args).toContain(`--add-dir=${tmpdir()}`);
+
+    try {
+      const resolvedTmpPath = realpathSync("/tmp");
+
+      expect(spawnCalls[0]?.args).toContain("--add-dir=/tmp");
+      expect(spawnCalls[0]?.args).toContain(`--add-dir=${resolvedTmpPath}`);
+    } catch {
+      expect(spawnCalls[0]?.args).not.toContain("--add-dir=/tmp");
+    }
   });
 
   test("exposes the child process as soon as the agent is created", async () => {

@@ -5,6 +5,7 @@ export const ms = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Ringkasan Semakan Kod oleh ${readableModelName}`,
+    viewDetail: "Lihat butiran",
     walkthrough: {
       title: "📋 Penerangan",
     },
@@ -25,7 +26,7 @@ export const ms = {
           count: number;
           commitReference: string;
         }) =>
-          `Tiada cadangan semakan sebaris ditemui dalam perubahan sehingga commit ${commitReference}:`,
+          `✨ Tiada cadangan semakan sebaris ditemui dalam perubahan sehingga commit ${commitReference}.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const ms = {
       },
       footer:
         "<sub>Cadangan daripada larian semakan terdahulu tidak disenaraikan di sini.</sub>",
-      empty: "✨ Tiada isu ditemui!",
     },
     otherSuggestions: {
       title: "💡 Cadangan Lain",

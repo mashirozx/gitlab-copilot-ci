@@ -3,7 +3,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initI18n } from "./i18n";
+import { initI18n, t } from "./i18n";
 import { buildCopilotPrompt } from "./prompts.ts";
 import { runCopilotReview } from "./services/copilot";
 import type { ReviewHistoryDiscussionEntity } from "./services/gitlab.types";
@@ -11,17 +11,20 @@ import { logger } from "./services/logger";
 import { runPiReview } from "./services/pi";
 import { createReviewAgentStartedHandler } from "./services/review-agent-monitor";
 import { argv } from "./utils/argv";
+import { buildSummarySnippetDescription } from "./utils/composers/comment-helper";
 import { getRequestedResponseLanguages } from "./utils/composers/review-comment-builder";
 import {
   buildSummaryNote,
   trimReviewHistoryRuns,
 } from "./utils/composers/summary-comment-builder";
+import { buildSummaryCommentWithSnippet } from "./utils/composers/summary-comment-with-snippet-builder";
 import {
   buildDiffPageFileContent,
   colorizeDiffLineCode,
   recomputeReviewPositionFromDiffReference,
 } from "./utils/diff-files";
 import { buildEmptyReviewResponse } from "./utils/empty-review-response";
+import { getModelDisplayName } from "./utils/model-display";
 import { formatReviewLocation } from "./utils/review-helpers";
 import { buildReviewHistoryFileContent } from "./utils/review-history-file";
 import { getFormattedVersion } from "./utils/version";
@@ -277,23 +280,66 @@ const main = async () => {
     }
 
     // D. Replace summary comment with updated embedded review history
-    const summaryBody = buildSummaryNote({
-      response: {
-        ...response,
-        reviews,
-        withCriticalError:
-          response.withCriticalError || diffFetchCriticalError || false,
-      },
-      reviewHistory: trimReviewHistoryRuns({
-        reviewHistory:
-          createdDiscussions.length > 0
-            ? [...reviewHistory, { discussions: createdDiscussions }]
-            : reviewHistory,
-      }),
+    const summaryResponse = {
+      ...response,
+      reviews,
+      withCriticalError:
+        response.withCriticalError || diffFetchCriticalError || false,
+    };
+    const reviewHistoryWithCurrentRun = trimReviewHistoryRuns({
+      reviewHistory:
+        createdDiscussions.length > 0
+          ? [...reviewHistory, { discussions: createdDiscussions }]
+          : reviewHistory,
+    });
+    const summaryBuildInput = {
+      response: summaryResponse,
+      reviewHistory: reviewHistoryWithCurrentRun,
       errors,
       hasPreviousReviewHistory: reviewHistory.length > 0,
       currentRunDiscussions: createdDiscussions,
-    });
+    };
+    const fullSummaryBody = buildSummaryNote(summaryBuildInput);
+    let summaryBody = fullSummaryBody;
+
+    if (
+      argv["post-summary-with-snippet"] &&
+      !summaryResponse.withCriticalError &&
+      !isDryRun
+    ) {
+      const readableModelName =
+        summaryResponse.readableModelName.trim().length > 0
+          ? summaryResponse.readableModelName
+          : getModelDisplayName({ hideEffort: true });
+
+      try {
+        const snippet = await gitlabService.createProjectSnippet({
+          title: t("reviewSummary.title", {
+            readableModelName,
+            lang: argv["thinking-lang"],
+          }),
+          description: buildSummarySnippetDescription(),
+          content: fullSummaryBody,
+        });
+
+        if (typeof snippet.webUrl === "string" && snippet.webUrl.trim()) {
+          logger.success(`[GitLab] Created summary snippet: ${snippet.webUrl}`);
+          summaryBody = buildSummaryCommentWithSnippet({
+            ...summaryBuildInput,
+            snippetUrl: snippet.webUrl,
+          });
+        } else {
+          logger.warn(
+            "[GitLab] Created summary snippet without a usable web_url; falling back to full summary comment",
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[GitLab] Failed to create summary snippet; falling back to full summary comment: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        logger.error(error);
+      }
+    }
 
     if (isDryRun) {
       logger.debug(summaryBody);

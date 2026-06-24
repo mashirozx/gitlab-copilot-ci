@@ -5,6 +5,7 @@ export const id = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Ringkasan Tinjauan Kode oleh ${readableModelName}`,
+    viewDetail: "Lihat detail",
     walkthrough: {
       title: "📋 Uraian",
     },
@@ -25,7 +26,7 @@ export const id = {
           count: number;
           commitReference: string;
         }) =>
-          `Tidak ada saran tinjauan inline yang ditemukan dalam perubahan hingga commit ${commitReference}:`,
+          `✨ Tidak ada saran tinjauan inline yang ditemukan dalam perubahan hingga commit ${commitReference}.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const id = {
       },
       footer:
         "<sub>Saran dari putaran tinjauan sebelumnya tidak ditampilkan di sini.</sub>",
-      empty: "✨ Tidak ada masalah yang ditemukan!",
     },
     otherSuggestions: {
       title: "💡 Saran Lainnya",

@@ -5,6 +5,7 @@ export const ar = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 ملخص مراجعة الكود بواسطة ${readableModelName}`,
+    viewDetail: "عرض التفاصيل",
     walkthrough: {
       title: "📋 شرح التغييرات",
     },
@@ -25,7 +26,7 @@ export const ar = {
           count: number;
           commitReference: string;
         }) =>
-          `لم يتم العثور على ملاحظات مراجعة مضمنة في التغييرات حتى الالتزام ${commitReference}:`,
+          `✨ لم يتم العثور على ملاحظات مراجعة مضمنة في التغييرات حتى الالتزام ${commitReference}.`,
         one: ({
           count,
           commitReference,
@@ -44,7 +45,6 @@ export const ar = {
           `تم العثور على ${count} ملاحظات مراجعة مضمنة في التغييرات حتى الالتزام ${commitReference}:`,
       },
       footer: "<sub>اقتراحات جولات المراجعة السابقة غير مدرجة هنا.</sub>",
-      empty: "✨ لم يتم العثور على أي مشكلات!",
     },
     otherSuggestions: {
       title: "💡 اقتراحات أخرى",

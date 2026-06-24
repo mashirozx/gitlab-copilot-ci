@@ -43,6 +43,7 @@ When `--collect-runtime-stats` is enabled, the summary performance matrix also i
 | `--max-git-diff-page` | `number` | unlimited | Maximum number of GitLab merge request diff pages to fetch. With the current per-page size of 20, a value of `5` reads at most the first `100` diff entries. |
 | `--html-marker-prefix` | `string` | `copilot` | Prefix used to build the HTML markers that identify CLI-generated MR comments. Alias: `--html-marker-preffix`. Generates `<prefix>-review-marker`, `<prefix>-summary-marker`, `<prefix>-review-data-start`, `<prefix>-review-data-end`, and `<prefix>-reviewing-marker`. |
 | `--dry-run`, `--debug`, `-d` | `boolean` | `false` | Run the real review pipeline but skip all GitLab writes, including inline comments, summary notes, and reviewing-marker notes. |
+| `--post-summary-with-snippet` | `boolean` | `false` | Create a GitLab project snippet for the full summary content, then post a reduced summary comment that links to that snippet. If the review has a critical error or snippet creation fails, the runtime falls back to posting the full summary comment directly. |
 | `--log` | `array` | none | Enable log file writing. Pass without a value to write to the current directory, or provide a path such as `--log /path/to/dir`. |
 | `--max-stdout-size` | `string` | `100mb` | Maximum GitLab CI job log size used to cap live agent stdout printing. Accepts case-insensitive byte-size suffixes like `100mb`, `512kb`, or `42b`. Console stdout stops once printed output reaches `80%` of this byte limit, and printed stdout is measured with `Buffer.byteLength(...)` for accurate byte counting. This follows GitLab's job log size ceiling guidance: https://docs.gitlab.com/administration/cicd/job_logs/#maximum-log-file-size |
 | `--collect-runtime-stats` | `boolean` | `false` | Collect best-effort runtime stats for the Bun parent process and the spawned review agent. Uses OS-specific samplers for macOS, Linux, and Windows; Linux and Windows can also report best-effort agent read/write byte totals, while macOS reports memory and CPU without per-process disk I/O bytes. |
@@ -102,6 +103,8 @@ code-review:
 ```
 
       At startup, the runtime preloads the `--thinking-lang` locale plus every language requested by `--lang` and `--c-lang`. The agent must return all of those languages directly in the structured response. Rendering then selects the requested display language from those language-keyed records, and any collapsed languages are wrapped by the runtime in GitLab `<details>` blocks.
+
+      When `--post-summary-with-snippet` is enabled, the runtime first renders the full summary content, stores that full markdown in a public GitLab project snippet named `summary.md`, and then posts a reduced top-level summary note that links to the snippet. The reduced note keeps the summary marker, the linked summary title, the thinking-language review list, any collapsed errors section, and the hidden review-history payload. Critical-error summaries always skip snippet creation and stay full-length in the top-level note.
 
       For GitHub Copilot CLI runs, the performance matrix also parses Copilot's trailing usage lines and includes `AI Credits`, total tokens, and reasoning tokens when available.
 

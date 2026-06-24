@@ -5,6 +5,7 @@ export const de = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Code-Review-Zusammenfassung von ${readableModelName}`,
+    viewDetail: "Details anzeigen",
     walkthrough: {
       title: "📋 Überblick",
     },
@@ -25,7 +26,7 @@ export const de = {
           count: number;
           commitReference: string;
         }) =>
-          `Es wurden keine Inline-Review-Hinweise in den Änderungen bis Commit ${commitReference} gefunden:`,
+          `✨ Es wurden keine Inline-Review-Hinweise in den Änderungen bis Commit ${commitReference} gefunden.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const de = {
       },
       footer:
         "<sub>Vorschläge aus früheren Review-Läufen werden hier nicht aufgeführt.</sub>",
-      empty: "✨ Keine Probleme gefunden!",
     },
     otherSuggestions: {
       title: "💡 Weitere Vorschläge",

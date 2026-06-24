@@ -5,6 +5,7 @@ export const ru = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Сводка ревью кода от ${readableModelName}`,
+    viewDetail: "Подробнее",
     walkthrough: {
       title: "📋 Обзор",
     },
@@ -25,7 +26,7 @@ export const ru = {
           count: number;
           commitReference: string;
         }) =>
-          `В изменениях до коммита ${commitReference} встроенных замечаний ревью не найдено:`,
+          `✨ В изменениях до коммита ${commitReference} встроенных замечаний ревью не найдено.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const ru = {
       },
       footer:
         "<sub>Предложения из предыдущих запусков ревью здесь не перечислены.</sub>",
-      empty: "✨ Проблем не найдено!",
     },
     otherSuggestions: {
       title: "💡 Другие предложения",

@@ -21,6 +21,60 @@ import type {
 } from "./gitlab.types";
 import { logger } from "./logger";
 
+const normalizeCreatedProjectSnippet = ({
+  snippet,
+}: {
+  snippet: Awaited<ReturnType<Gitlab["ProjectSnippets"]["create"]>>;
+}): {
+  id: number | null;
+  webUrl: string | null;
+} => {
+  if (snippet && typeof snippet === "object") {
+    const normalizedSnippet = snippet as Record<string, unknown>;
+
+    const directId = getNumberProperty({
+      value: normalizedSnippet,
+      key: "id",
+    });
+    const directWebUrl = getStringProperty({
+      value: normalizedSnippet,
+      key: "web_url",
+    });
+
+    if (directId !== undefined || directWebUrl !== undefined) {
+      return {
+        id: directId ?? null,
+        webUrl: directWebUrl ?? null,
+      };
+    }
+
+    const body = getObjectProperty({
+      value: normalizedSnippet,
+      key: "body",
+    });
+
+    if (body) {
+      return {
+        id:
+          getNumberProperty({
+            value: body,
+            key: "id",
+          }) ?? null,
+        webUrl:
+          getStringProperty({
+            value: body,
+            key: "web_url",
+          }) ?? null,
+      };
+    }
+  }
+
+  return {
+    id: null,
+    webUrl: null,
+  };
+};
+
 const requireArg = ({
   name,
   value,
@@ -814,6 +868,39 @@ export class GitLabService {
           summaryBody,
         ),
     });
+
+  createProjectSnippet = async ({
+    title,
+    description,
+    content,
+    fileName = "summary.md",
+  }: {
+    title: string;
+    description: string;
+    content: string;
+    fileName?: string;
+  }): Promise<{
+    id: number | null;
+    webUrl: string | null;
+  }> => {
+    const snippet = await this.withGitLabRequestLogging({
+      request: () =>
+        this.client.ProjectSnippets.create(this.projectId, title, {
+          description,
+          visibility: "public",
+          files: [
+            {
+              content,
+              filePath: fileName,
+            },
+          ],
+        }),
+    });
+
+    return normalizeCreatedProjectSnippet({
+      snippet,
+    });
+  };
 
   createReviewingMarkerNote = async ({
     noteBody,

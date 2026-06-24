@@ -5,6 +5,7 @@ export const es = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Resumen de revisión de código por ${readableModelName}`,
+    viewDetail: "Ver detalle",
     walkthrough: {
       title: "📋 Recorrido",
     },
@@ -25,7 +26,7 @@ export const es = {
           count: number;
           commitReference: string;
         }) =>
-          `No se encontraron sugerencias de revisión en línea en los cambios hasta el commit ${commitReference}:`,
+          `✨ No se encontraron sugerencias de revisión en línea en los cambios hasta el commit ${commitReference}.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const es = {
       },
       footer:
         "<sub>Las sugerencias de ejecuciones de revisión anteriores no se enumeran aquí.</sub>",
-      empty: "✨ ¡No se encontraron problemas!",
     },
     otherSuggestions: {
       title: "💡 Otras sugerencias",

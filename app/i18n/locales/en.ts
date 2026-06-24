@@ -4,6 +4,7 @@ export const en = defineLocale({
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Code Review Summary by ${readableModelName}`,
+    viewDetail: "View detail",
     walkthrough: {
       title: "📋 Walkthrough",
     },
@@ -24,7 +25,7 @@ export const en = defineLocale({
           count: number;
           commitReference: string;
         }) =>
-          `I found no inline review suggestions in the changes up to commit ${commitReference}:`,
+          `✨ No issues found in the changes up to commit ${commitReference}.`,
         one: ({
           count,
           commitReference,
@@ -32,7 +33,7 @@ export const en = defineLocale({
           count: number;
           commitReference: string;
         }) =>
-          `I found ${count} inline review suggestion in the changes up to commit ${commitReference}:`,
+          `Found ${count} inline review suggestion in the changes up to commit ${commitReference}:`,
         other: ({
           count,
           commitReference,
@@ -40,10 +41,9 @@ export const en = defineLocale({
           count: number;
           commitReference: string;
         }) =>
-          `I found ${count} inline review suggestions in the changes up to commit ${commitReference}:`,
+          `Found ${count} inline review suggestions in the changes up to commit ${commitReference}:`,
       },
       footer: "Suggestions from previous review runs are not listed here.",
-      empty: "✨ No issues found!",
     },
     otherSuggestions: {
       title: "💡 Other Suggestions",
