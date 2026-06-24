@@ -5,6 +5,7 @@ export const ta = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 ${readableModelName} வழங்கிய குறியீட்டு மதிப்பாய்வு சுருக்கம்`,
+    viewDetail: "விவரங்களை பார்க்க",
     walkthrough: {
       title: "📋 நடைபாதை விளக்கம்",
     },
@@ -25,7 +26,7 @@ export const ta = {
           count: number;
           commitReference: string;
         }) =>
-          `கமிட் ${commitReference} வரை உள்ள மாற்றங்களில் எந்த inline மதிப்பாய்வு பரிந்துரைகளும் கிடைக்கவில்லை:`,
+          `✨ கமிட் ${commitReference} வரை உள்ள மாற்றங்களில் எந்த inline மதிப்பாய்வு பரிந்துரைகளும் கிடைக்கவில்லை.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const ta = {
       },
       footer:
         "<sub>முந்தைய மதிப்பாய்வு ஓட்டங்களின் பரிந்துரைகள் இங்கு பட்டியலிடப்படவில்லை.</sub>",
-      empty: "✨ எந்தப் பிரச்சினையும் கண்டுபிடிக்கப்படவில்லை!",
     },
     otherSuggestions: {
       title: "💡 பிற பரிந்துரைகள்",

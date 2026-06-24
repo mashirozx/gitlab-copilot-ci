@@ -5,6 +5,7 @@ export const zhTW = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 由 ${readableModelName} 產生的程式碼審查總結`,
+    viewDetail: "查看詳情",
     walkthrough: {
       title: "📋 變更概覽",
     },
@@ -24,7 +25,7 @@ export const zhTW = {
         }: {
           count: number;
           commitReference: string;
-        }) => `在截至提交 ${commitReference} 的變更中未發現行內審查建議：`,
+        }) => `✨ 在截至提交 ${commitReference} 的變更中未發現行內審查建議。`,
         one: ({
           count,
           commitReference,
@@ -43,7 +44,6 @@ export const zhTW = {
           `在截至提交 ${commitReference} 的變更中發現 ${count} 條行內審查建議：`,
       },
       footer: "<sub>此處不包含過往審查輪次中的建議。</sub>",
-      empty: "✨ 未發現問題！",
     },
     otherSuggestions: {
       title: "💡 其他建議",

@@ -5,6 +5,7 @@ export const th = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 สรุปการรีวิวโค้ดโดย ${readableModelName}`,
+    viewDetail: "ดูรายละเอียด",
     walkthrough: {
       title: "📋 ภาพรวม",
     },
@@ -25,7 +26,7 @@ export const th = {
           count: number;
           commitReference: string;
         }) =>
-          `ไม่พบข้อเสนอแนะการรีวิวแบบอินไลน์ในความเปลี่ยนแปลงจนถึงคอมมิต ${commitReference}:`,
+          `✨ ไม่พบข้อเสนอแนะการรีวิวแบบอินไลน์ในความเปลี่ยนแปลงจนถึงคอมมิต ${commitReference}`,
         one: ({
           count,
           commitReference,
@@ -44,7 +45,6 @@ export const th = {
           `พบข้อเสนอแนะการรีวิวแบบอินไลน์ ${count} รายการในความเปลี่ยนแปลงจนถึงคอมมิต ${commitReference}:`,
       },
       footer: "<sub>ข้อเสนอแนะจากรอบการรีวิวก่อนหน้าไม่ได้แสดงไว้ที่นี่</sub>",
-      empty: "✨ ไม่พบปัญหา!",
     },
     otherSuggestions: {
       title: "💡 ข้อเสนอแนะอื่น ๆ",

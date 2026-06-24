@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { outputJsonPath } from "../constants";
 import type { ReviewResponseEntity } from "../types/review.types";
@@ -192,6 +192,7 @@ const parseCopilotCliUsage = ({
 
 const getAllowedTools = (): string[] => {
   return [
+    "write",
     "read_file",
     "list_directory",
     "search_files",
@@ -199,6 +200,27 @@ const getAllowedTools = (): string[] => {
     "shell(node)",
     ...argv["tools"],
   ].filter((toolName, index, tools) => tools.indexOf(toolName) === index);
+};
+
+const getAllowedDirectories = (): string[] => {
+  const configuredDirectories = [
+    process.cwd(),
+    tmpdir(),
+    ...(process.platform === "win32" ? [] : ["/tmp"]),
+  ];
+
+  return configuredDirectories
+    .flatMap((directoryPath) => {
+      try {
+        return [directoryPath, realpathSync(directoryPath)];
+      } catch {
+        return [directoryPath];
+      }
+    })
+    .filter(
+      (directoryPath, index, directoryPaths) =>
+        directoryPaths.indexOf(directoryPath) === index,
+    );
 };
 
 export const runCopilotReview = async ({
@@ -235,6 +257,7 @@ export const runCopilotReview = async ({
       model: argv["model"],
     });
     const allowedTools = getAllowedTools();
+    const allowedDirectories = getAllowedDirectories();
     const reasoningEffort =
       modelSpec.effort === "off"
         ? "none"
@@ -253,7 +276,9 @@ export const runCopilotReview = async ({
       "--model",
       modelSpec.model ?? argv["model"],
       ...allowedTools.map((toolName) => `--allow-tool=${toolName}`),
-      `--add-dir=${process.cwd()}`,
+      ...allowedDirectories.map(
+        (directoryPath) => `--add-dir=${directoryPath}`,
+      ),
       "--no-ask-user",
       "--log-level",
       "info",

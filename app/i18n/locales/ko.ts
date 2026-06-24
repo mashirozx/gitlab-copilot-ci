@@ -5,6 +5,7 @@ export const ko = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 ${readableModelName}의 코드 리뷰 요약`,
+    viewDetail: "자세히 보기",
     walkthrough: {
       title: "📋 개요",
     },
@@ -25,7 +26,7 @@ export const ko = {
           count: number;
           commitReference: string;
         }) =>
-          `커밋 ${commitReference}까지의 변경에서 인라인 리뷰 제안을 찾지 못했습니다:`,
+          `✨ 커밋 ${commitReference}까지의 변경에서 인라인 리뷰 제안을 찾지 못했습니다.`,
         one: ({
           count,
           commitReference,
@@ -44,7 +45,6 @@ export const ko = {
           `커밋 ${commitReference}까지의 변경에서 인라인 리뷰 제안 ${count}개를 찾았습니다:`,
       },
       footer: "<sub>이전 리뷰 실행의 제안은 여기에 포함되지 않습니다.</sub>",
-      empty: "✨ 문제가 발견되지 않았습니다!",
     },
     otherSuggestions: {
       title: "💡 기타 제안",

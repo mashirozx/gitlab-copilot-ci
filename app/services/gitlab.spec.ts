@@ -19,6 +19,12 @@ const originalArgv = [...process.argv];
 const mergeRequestDiscussionsAll = mock(
   async (): Promise<DiscussionSchema[]> => [],
 );
+const projectSnippetsCreate = mock(async () => ({
+  body: {
+    id: 77,
+    web_url: "https://gitlab.example.com/group/repo-name/-/snippets/77",
+  },
+}));
 
 const buildDiscussion = ({
   id,
@@ -57,6 +63,10 @@ mock.module("@gitbeaker/rest", () => ({
       all: mock(async () => []),
       create: mock(async () => ({ id: 1, body: "" })),
       remove: mock(async () => undefined),
+    };
+
+    ProjectSnippets = {
+      create: projectSnippetsCreate,
     };
 
     MergeRequests = {
@@ -384,6 +394,47 @@ describe("getMergeRequestDiffs", () => {
     ]);
     expect(result.changes).toEqual([]);
     expect(result.pages).toEqual([{ page: 1, diffs: [] }]);
+  });
+});
+
+describe("GitLabService.createProjectSnippet", () => {
+  test("creates a public project snippet and normalizes the returned id and url", async () => {
+    const service = new GitLabService();
+
+    projectSnippetsCreate.mockReset();
+    projectSnippetsCreate.mockResolvedValueOnce({
+      body: {
+        id: 77,
+        web_url: "https://gitlab.example.com/group/repo-name/-/snippets/77",
+      },
+    });
+
+    const snippet = await service.createProjectSnippet({
+      title: "Summary title",
+      description:
+        "- MR: https://gitlab.example.com/group/repo-name/-/merge_requests/1\n- CI: https://gitlab.example.com/group/repo-name/-/jobs/15536",
+      content: "# Full summary",
+    });
+
+    expect(projectSnippetsCreate).toHaveBeenCalledWith(
+      process.env.CI_PROJECT_ID ?? "1",
+      "Summary title",
+      {
+        description:
+          "- MR: https://gitlab.example.com/group/repo-name/-/merge_requests/1\n- CI: https://gitlab.example.com/group/repo-name/-/jobs/15536",
+        visibility: "public",
+        files: [
+          {
+            content: "# Full summary",
+            filePath: "summary.md",
+          },
+        ],
+      },
+    );
+    expect(snippet).toEqual({
+      id: 77,
+      webUrl: "https://gitlab.example.com/group/repo-name/-/snippets/77",
+    });
   });
 });
 

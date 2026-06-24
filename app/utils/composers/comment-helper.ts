@@ -4,6 +4,7 @@ import type {
   ReviewRankEntity,
   ReviewSuggestionEntity,
 } from "../../types/review.types";
+import { argv } from "../argv";
 import {
   getCurrentCommitShortSha,
   getCurrentCommitUrl,
@@ -144,6 +145,62 @@ export const buildJobDetailUrl = (): string | null => {
   }
 
   return `${projectUrl}/-/jobs/${jobId}`;
+};
+
+export const buildMergeRequestUrl = (): string | null => {
+  const projectUrl = env.CI_PROJECT_URL?.trim();
+  const mergeRequestIid = String(
+    argv["mr-iid"] ?? env.CI_MERGE_REQUEST_IID ?? "",
+  ).trim();
+
+  if (!projectUrl || !mergeRequestIid) {
+    return null;
+  }
+
+  return `${projectUrl}/-/merge_requests/${mergeRequestIid}`;
+};
+
+export const buildInlineReviewNoteUrl = ({
+  noteId,
+}: {
+  noteId: string;
+}): string | null => {
+  const mergeRequestUrl = buildMergeRequestUrl();
+  const normalizedNoteId = noteId.trim();
+
+  if (!mergeRequestUrl || !normalizedNoteId) {
+    return null;
+  }
+
+  return `${mergeRequestUrl}#note_${normalizedNoteId}`;
+};
+
+export const buildSnippetUrl = ({
+  snippetId,
+}: {
+  snippetId: number | string;
+}): string | null => {
+  const projectUrl = env.CI_PROJECT_URL?.trim();
+  const normalizedSnippetId = String(snippetId).trim();
+
+  if (!projectUrl || !normalizedSnippetId) {
+    return null;
+  }
+
+  return `${projectUrl}/-/snippets/${normalizedSnippetId}`;
+};
+
+export const buildSummarySnippetDescription = (): string => {
+  return [buildMergeRequestUrl(), buildJobDetailUrl()]
+    .map((url, index) => {
+      if (!url) {
+        return null;
+      }
+
+      return index === 0 ? `- MR: ${url}` : `- CI: ${url}`;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
 };
 
 export const normalizeReviewRank = ({

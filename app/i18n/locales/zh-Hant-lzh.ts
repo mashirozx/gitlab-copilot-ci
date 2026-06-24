@@ -5,6 +5,7 @@ export const zhHantLzh = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 ${readableModelName}程式碼評審總述`,
+    viewDetail: "覽詳",
     walkthrough: {
       title: "📋 梗概",
     },
@@ -24,7 +25,7 @@ export const zhHantLzh = {
         }: {
           count: number;
           commitReference: string;
-        }) => `至提交${commitReference}之變更，未見行內評議：`,
+        }) => `✨ 至提交${commitReference}之變更，未見行內評議。`,
         one: ({
           count,
           commitReference,
@@ -41,7 +42,6 @@ export const zhHantLzh = {
         }) => `至提交${commitReference}之變更，得行內評議${count}則：`,
       },
       footer: "<sub>前次評審之議，不錄於此。</sub>",
-      empty: "✨ 未見問題！",
     },
     otherSuggestions: {
       title: "💡 餘議",

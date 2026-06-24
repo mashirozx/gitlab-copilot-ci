@@ -88,6 +88,7 @@ Rules:
 - The next run flattens prior `suggestion` items, writes them to a temp Markdown file beside the diff pages, formats them as repeated review blocks with a small `Diff` table plus a freeform `Suggestions` section, and tells the model to read that file only at the final JSON-construction step to suppress duplicate inline findings on the same file and exact old/new line pair.
 - The runtime uses a shared constant output path `join(tmpdir(), "output.json")` for JSON handoff. Prompt instructions tell the model to use Node.js `fs.writeFileSync()` to write the final JSON payload there, without requiring minification and without returning JSON in the final response message.
 - Agent services (`copilot` and `pi`) read that shared output file after the agent process exits. Review JSON markers are no longer used for service-level parsing.
+- `app/services/copilot.ts` must explicitly allow the repository working directory plus temp directories through Copilot CLI `--add-dir` flags. Include `process.cwd()`, `tmpdir()`, and the POSIX `/tmp` alias when available, plus any resolved realpaths, because macOS can expose `/tmp` as a symlink while Node reports the real temp directory under `/var/folders/...`.
 - Summary parsing should accept older stored history entries that used `content` instead of `suggestion`, but all newly written history payloads should store `suggestion`.
 - Previous inline discussions are not auto-deleted; users resolve them manually in GitLab.
 
@@ -114,9 +115,11 @@ Rules:
 | `app/utils/review-helpers.ts` | Pure helpers for review line/location formatting |
 | `app/utils/composers/review-comment-builder.ts` | Renders inline review comment bodies plus requested/translated display-language selection helpers |
 | `app/utils/composers/reviewing-comment-builder.ts` | Renders the top-level review-in-progress marker note body using the current commit reference |
-| `app/utils/composers/comment-helper.ts` | Shared comment-formatting and localization helpers reused by both comment builders |
+| `app/utils/composers/comment-helper.ts` | Shared comment-formatting, GitLab link generation, and localization helpers reused by comment builders |
 | `app/utils/lang.ts` | Shared language display-name and flag helpers for collapsed-language headers, with cached Intl/flag lookups |
 | `app/utils/composers/summary-comment-builder.ts` | Renders summary markdown, performance/errors, history trimming, and encoded history blocks |
+| `app/utils/composers/summary-comment-with-snippet-builder.ts` | Renders the reduced top-level summary note used when `--post-summary-with-snippet` succeeds |
+| `app/utils/composers/summary-comment-with-critical-error-builder.ts` | Renders the critical-error summary title and warning block reused by the main summary composer |
 | `app/utils/time.ts` | Temporal-based time helpers and async sleep utility |
 | `app/utils/model-name-parser.ts` | Shared model parsing helpers |
 | `app/utils/commit-reference.ts` | Shared current-commit SHA, short SHA, and URL helpers |
@@ -160,6 +163,7 @@ Model display rules:
 - `--mr-check-interval`: shared reviewing-marker / latest-commit poll interval. Accepts integer durations with suffixes `ms`, `milliseconds`, `s`, `seconds`, `minutes`, or `m`. Default: `10s`.
 - `--html-marker-prefix`: lowercase kebab-case prefix used to build the marker names above. Default: `copilot`.
 - `--dry-run` / `--debug` / `-d`: run the real review pipeline but skip all GitLab writes, including inline comments, summary notes, and reviewing-marker notes.
+- `--post-summary-with-snippet`: create a public GitLab project snippet that stores the full summary markdown, then post a reduced top-level summary note that links to that snippet. Default: `false`. Critical-error summaries skip snippet creation, and snippet-creation failures fall back to the original full summary note.
 - `--log`: enable file logging; supports bare flag or a directory path.
 - `--max-stdout-size`: byte-size string with case-insensitive `b`, `kb`, or `mb` suffixes. Default: `100mb`. Live agent stdout printing stops once accumulated stdout reaches `80%` of that byte limit, measured with `Buffer.byteLength(...)`, so the process keeps a `20%` safety margin below GitLab's maximum job log file size.
 - `--collect-runtime-stats`: collect best-effort runtime stats for the Bun parent process and the spawned review agent while the agent runs. Default: `false`.
@@ -193,6 +197,7 @@ Language rendering rules:
 - Review-history persistence uses `reviews[].suggestions[thinkingLang].abstract` as `ReviewHistoryContentEntity.suggestion`, while summary-history parsing still accepts older stored `content` payloads for backward compatibility.
 - Inline rank badges are rendered by the runtime and stay in the source/thinking language even when the inline comment body is shown in another display language.
 - Summary review-list entries link the `file_path:line` label to the current run's successfully created GitLab inline note when the runtime has both `CI_PROJECT_URL` and the created `note_id`; when inline posting fails or no note URL context is available, the summary falls back to plain `file_path:line` text.
+- When `--post-summary-with-snippet` succeeds, the top-level summary note keeps only the summary marker, a plain title, a localized standalone snippet link line, the thinking-language review-list section, any collapsed errors section, and the hidden review-history payload. The snippet itself stores the original full summary markdown.
 - When inline posting succeeds only after `recomputeReviewPositionFromDiffReference(...)` adjusts the location, the runtime must also render the summary from those recomputed coordinates so the summary line numbers and note links match the stored current-run history entry.
 
 Runtime environment variable reads are centralized in `app/utils/env.ts`. Keep its exports as live getters instead of import-time snapshots so tests and modules that mutate `process.env` after startup still observe current values.
@@ -241,7 +246,7 @@ Documentation maintenance rule:
 14. Re-fetch the merge request and compare `process.env.CI_COMMIT_SHA` to the latest `mr.diff_refs.head_sha` again.
 15. If the MR head moved during review preparation or agent execution, skip all inline-review and summary writes.
 16. If not in `--dry-run`, post inline GitLab discussions. `--ignored-rank` is enforced by prompt instructions, not runtime post-filtering.
-17. Build the summary note from the structured response and, unless `--dry-run` is enabled, post the new summary note before deleting any prior summary note. If posting the new summary fails, keep the old summary note in place. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
+17. Build the summary note from the structured response. When `--post-summary-with-snippet` is enabled and the response does not carry `withCriticalError`, first render the full summary markdown, create a public GitLab project snippet titled with `t("reviewSummary.title", { readableModelName, lang: thinkingLang })`, use `summary.md` as the snippet file path, log snippet creation success or failure to the terminal, and then render the reduced top-level note with a plain title plus a localized snippet link line. If snippet creation fails, fall back to the original full summary note. Unless `--dry-run` is enabled, post the new summary note before deleting any prior summary note. If posting the new summary fails, keep the old summary note in place. Stored history contains only unresolved historical inline discussions plus the newly created discussions from the current run.
 18. Delete the reviewing-marker note in a `finally` block when one was created, unless stale-run cancellation already removed it early.
 
 ### Duplicate Suppression Semantics

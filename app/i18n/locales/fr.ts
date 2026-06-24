@@ -5,6 +5,7 @@ export const fr = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 Résumé de revue de code par ${readableModelName}`,
+    viewDetail: "Voir le détail",
     walkthrough: {
       title: "📋 Parcours",
     },
@@ -25,7 +26,7 @@ export const fr = {
           count: number;
           commitReference: string;
         }) =>
-          `Aucune suggestion de revue en ligne n'a été trouvée dans les changements jusqu'au commit ${commitReference} :`,
+          `✨ Aucune suggestion de revue en ligne n'a été trouvée dans les changements jusqu'au commit ${commitReference}.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const fr = {
       },
       footer:
         "<sub>Les suggestions des exécutions de revue précédentes ne sont pas listées ici.</sub>",
-      empty: "✨ Aucun problème détecté !",
     },
     otherSuggestions: {
       title: "💡 Autres suggestions",

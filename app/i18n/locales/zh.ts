@@ -5,6 +5,7 @@ export const zh = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 由 ${readableModelName} 生成的代码审查总结`,
+    viewDetail: "查看详情",
     walkthrough: {
       title: "📋 变更概览",
     },
@@ -24,7 +25,7 @@ export const zh = {
         }: {
           count: number;
           commitReference: string;
-        }) => `在截至提交 ${commitReference} 的变更中未发现行内审查建议：`,
+        }) => `✨ 在截至提交 ${commitReference} 的变更中未发现行内审查建议。`,
         one: ({
           count,
           commitReference,
@@ -43,7 +44,6 @@ export const zh = {
           `在截至提交 ${commitReference} 的变更中发现 ${count} 条行内审查建议：`,
       },
       footer: "<sub>此处不包含过往审查轮次中的建议。</sub>",
-      empty: "✨ 未发现问题！",
     },
     otherSuggestions: {
       title: "💡 其他建议",

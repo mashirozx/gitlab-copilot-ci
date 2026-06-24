@@ -5,6 +5,7 @@ export const fa = {
   reviewSummary: {
     title: ({ readableModelName }: { readableModelName: string }) =>
       `📝 خلاصه بازبینی کد توسط ${readableModelName}`,
+    viewDetail: "مشاهده جزئیات",
     walkthrough: {
       title: "📋 مرور تغییرات",
     },
@@ -25,7 +26,7 @@ export const fa = {
           count: number;
           commitReference: string;
         }) =>
-          `هیچ پیشنهاد بازبینی درون‌خطی در تغییرات تا کامیت ${commitReference} پیدا نشد:`,
+          `✨ هیچ پیشنهاد بازبینی درون‌خطی در تغییرات تا کامیت ${commitReference} پیدا نشد.`,
         one: ({
           count,
           commitReference,
@@ -45,7 +46,6 @@ export const fa = {
       },
       footer:
         "<sub>پیشنهادهای اجراهای بازبینی قبلی در اینجا فهرست نمی‌شوند.</sub>",
-      empty: "✨ مشکلی پیدا نشد!",
     },
     otherSuggestions: {
       title: "💡 پیشنهادهای دیگر",

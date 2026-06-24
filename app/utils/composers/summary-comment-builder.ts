@@ -16,12 +16,13 @@ import { getModelDisplayName, modelDisplayName } from "../model-display.ts";
 import {
   buildCurrentCommitReference,
   buildDetailsBlock,
-  buildJobDetailUrl,
+  buildInlineReviewNoteUrl,
   getLocalizedRecordValue,
   getRankInlineMath,
   normalizeReviewRank,
 } from "./comment-helper";
 import { getDisplayLanguages } from "./review-comment-builder";
+import { buildSummaryLanguageBlockWithCriticalError } from "./summary-comment-with-critical-error-builder";
 
 const SUMMARY_DIVIDER = "\n\n---\n\n";
 const MAX_LAYER_FILES_COLUMN_WIDTH = 56;
@@ -39,41 +40,6 @@ const getLocalizedSummaryValue = ({
   });
 
   return value && value.trim().length > 0 ? value : null;
-};
-
-const buildInlineReviewNoteUrl = ({
-  noteId,
-}: {
-  noteId: string;
-}): string | null => {
-  const projectUrl = env.CI_PROJECT_URL?.trim();
-  const mergeRequestIid = String(
-    argv["mr-iid"] ?? env.CI_MERGE_REQUEST_IID ?? "",
-  ).trim();
-
-  if (!projectUrl || !mergeRequestIid || !noteId.trim()) {
-    return null;
-  }
-
-  return `${projectUrl}/-/merge_requests/${mergeRequestIid}#note_${noteId}`;
-};
-
-const buildCriticalErrorBlock = ({
-  language,
-}: {
-  language: string;
-}): string => {
-  const jobDetailUrl = buildJobDetailUrl();
-  const content = jobDetailUrl
-    ? t("reviewSummary.criticalError.messageWithLinks", {
-        lang: language,
-        linkToJobDetail: jobDetailUrl,
-      })
-    : t("reviewSummary.criticalError.message", {
-        lang: language,
-      });
-
-  return `> [!warning] ${content}`;
 };
 
 const isSameReviewLocation = ({
@@ -141,9 +107,9 @@ const formatReviewLine = ({
   response: ReviewResponseEntity;
   language: string;
   currentRunDiscussions: ReviewHistoryDiscussionEntity[];
-}): string => {
+}): string | null => {
   if (response.reviews.length === 0) {
-    return t("reviewSummary.reviewList.empty", { lang: language });
+    return null;
   }
 
   return response.reviews
@@ -314,12 +280,10 @@ const buildSummaryLanguageBlock = ({
       : getModelDisplayName({ hideEffort: true });
 
   if (response.withCriticalError) {
-    return [
-      `# ${t("reviewSummary.title", { readableModelName, lang: language })}`,
-      buildCriticalErrorBlock({
-        language,
-      }),
-    ].join("\n\n");
+    return buildSummaryLanguageBlockWithCriticalError({
+      readableModelName,
+      language,
+    });
   }
 
   const commitReference = buildCurrentCommitReference();
