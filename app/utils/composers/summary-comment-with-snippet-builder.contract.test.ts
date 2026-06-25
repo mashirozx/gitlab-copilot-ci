@@ -136,7 +136,7 @@ const buildPreviousHistory = (): Array<{
 
 const scenarios = [
   {
-    name: "renders the linked snippet summary comment with review list and errors",
+    name: "renders the linked snippet summary comment with errors only",
     snapshotFile: "summary-comment-with-snippet-builder.contract.md",
     response: buildResponse(),
     reviewHistory: buildPreviousHistory(),
@@ -153,7 +153,7 @@ const scenarios = [
     errors: ["Snippet creation retried once before succeeding."],
   },
   {
-    name: "renders the no-review snippet summary state without history footer",
+    name: "renders the no-review snippet summary state without summary sections",
     snapshotFile: "summary-comment-with-snippet-builder.no-review.contract.md",
     response: {
       ...buildResponse(),
