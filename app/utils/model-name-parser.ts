@@ -1,5 +1,6 @@
 const SUPPORTED_MODEL_EFFORTS = new Set([
   "off",
+  "disabled",
   "minimal",
   "low",
   "medium",

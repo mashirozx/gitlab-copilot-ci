@@ -21,6 +21,13 @@ describe("parseModelSpec", () => {
     });
   });
 
+  test("accepts disabled as an explicit effort suffix", () => {
+    expect(parseModelSpec({ model: "mimo-v2.5-pro:disabled" })).toEqual({
+      model: "mimo-v2.5-pro",
+      effort: "disabled",
+    });
+  });
+
   test("keeps a plain model with no provider or effort unchanged", () => {
     expect(parseModelSpec({ model: "gpt-4o" })).toEqual({
       model: "gpt-4o",
@@ -53,6 +60,16 @@ describe("getPromptModelSpec", () => {
       model: "gpt-4o",
       effort: "high",
       configuredModel: "gpt-4o:high",
+    });
+  });
+
+  test("preserves disabled effort while removing provider prefixes", () => {
+    expect(
+      getPromptModelSpec({ model: "minimax/MiniMax-M3:disabled" }),
+    ).toEqual({
+      model: "MiniMax-M3",
+      effort: "disabled",
+      configuredModel: "MiniMax-M3:disabled",
     });
   });
 

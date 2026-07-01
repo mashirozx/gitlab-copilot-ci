@@ -36,6 +36,16 @@ let nextChildFactory = (): MockChildProcess => createMockChildProcess();
 let mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
   '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
 let spawnCalls: Array<{ command: string; args: string[] }> = [];
+const mockArgv = {
+  agent: "github-copilot-cli",
+  "agent-args": undefined,
+  "agent-bin": undefined,
+  "collect-runtime-stats": false,
+  "copilot-github-token": undefined,
+  model: "gpt-5.4",
+  tools: [],
+  "max-stdout-size": 1024 * 1024,
+};
 
 mock.module("./logger", () => ({
   logger: loggerMock,
@@ -43,16 +53,7 @@ mock.module("./logger", () => ({
 }));
 
 mock.module("../utils/argv", () => ({
-  argv: {
-    agent: "github-copilot-cli",
-    "agent-args": undefined,
-    "agent-bin": undefined,
-    "collect-runtime-stats": false,
-    "copilot-github-token": undefined,
-    model: "gpt-5.4",
-    tools: [],
-    "max-stdout-size": 1024 * 1024,
-  },
+  argv: mockArgv,
 }));
 
 mock.module("node:child_process", () => ({
@@ -87,6 +88,7 @@ afterEach(() => {
   mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
     '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
   spawnCalls = [];
+  mockArgv.model = "gpt-5.4";
 });
 
 describe("runCopilotReview", () => {
@@ -264,6 +266,27 @@ describe("runCopilotReview", () => {
     } catch {
       expect(spawnCalls[0]?.args).not.toContain("--add-dir=/tmp");
     }
+  });
+
+  test("passes the configured model string through without rewriting effort", async () => {
+    const child = createMockChildProcess();
+
+    mockArgv.model = "minimax/MiniMax-M1:minimal";
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0]?.args).toContain("--model");
+    expect(spawnCalls[0]?.args).toContain("minimax/MiniMax-M1:minimal");
+    expect(spawnCalls[0]?.args).not.toContain("--effort");
   });
 
   test("exposes the child process as soon as the agent is created", async () => {

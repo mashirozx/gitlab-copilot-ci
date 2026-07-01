@@ -11,7 +11,6 @@ import { withCliColorEnv } from "../utils/cli-env";
 import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
-import { parseModelSpec } from "../utils/model-name-parser";
 import { readReviewOutputJsonFile } from "../utils/review-output-json";
 import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
@@ -253,28 +252,12 @@ export const runCopilotReview = async ({
       childEnv.GITHUB_TOKEN = argv["copilot-github-token"];
     }
 
-    const modelSpec = parseModelSpec({
-      model: argv["model"],
-    });
     const allowedTools = getAllowedTools();
     const allowedDirectories = getAllowedDirectories();
-    const reasoningEffort =
-      modelSpec.effort === "off"
-        ? "none"
-        : modelSpec.effort === "minimal"
-          ? "low"
-          : modelSpec.effort === "none" ||
-              modelSpec.effort === "low" ||
-              modelSpec.effort === "medium" ||
-              modelSpec.effort === "high" ||
-              modelSpec.effort === "xhigh" ||
-              modelSpec.effort === "max"
-            ? modelSpec.effort
-            : null;
 
     const presetArgs = [
       "--model",
-      modelSpec.model ?? argv["model"],
+      argv["model"],
       ...allowedTools.map((toolName) => `--allow-tool=${toolName}`),
       ...allowedDirectories.map(
         (directoryPath) => `--add-dir=${directoryPath}`,
@@ -287,11 +270,6 @@ export const runCopilotReview = async ({
       rawArgs: argv["agent-args"],
     });
     const copilotArgs = [...presetArgs, ...extraAgentArgs, "-p", prompt];
-
-    if (reasoningEffort) {
-      copilotArgs.unshift(reasoningEffort);
-      copilotArgs.unshift("--effort");
-    }
 
     const agentBin = argv["agent-bin"] ?? env.COPILOT_BIN ?? "copilot";
 

@@ -12,30 +12,34 @@ const normalizeConfiguredModelName = ({ model }: { model: string }): string => {
 };
 
 const getConfiguredEffortDisplay = ({
+  agent,
   model,
   effort,
 }: {
+  agent?: string;
   model: string;
   effort?: string;
 }): string => {
+  const isCopilotAgent = agent === "github-copilot-cli";
+
   if (/^mimo(?:$|[-:.])/i.test(model.trim())) {
-    return effort ? "thinking: enabled" : "thinking: disabled";
+    if (effort === "off" || effort === "disabled") {
+      return "thinking: disabled";
+    } else if (!effort) {
+      return isCopilotAgent ? "thinking: enabled" : "thinking: disabled";
+    } else {
+      return "thinking: enabled";
+    }
   }
 
   if (/^minimax(?:$|[-:.])/i.test(model.trim())) {
-    if (!effort) {
-      return DEFAULT_CONFIGURED_MODEL_EFFORT;
+    if (effort === "off" || effort === "disabled") {
+      return "thinking: disabled";
+    } else if (!effort) {
+      return isCopilotAgent ? "thinking: adaptive" : "thinking: disabled";
+    } else {
+      return "thinking: adaptive";
     }
-
-    if (effort === "minimal") {
-      return "low";
-    }
-
-    if (effort === "xhigh") {
-      return "high";
-    }
-
-    return effort;
   }
 
   return effort ?? DEFAULT_CONFIGURED_MODEL_EFFORT;
@@ -54,7 +58,7 @@ export const getModelDisplayName = (opts?: {
     return "";
   }
 
-  return `${normalizeConfiguredModelName({ model: configuredModelName })}${!opts?.hideEffort ? ` <kbd>${getConfiguredEffortDisplay({ model: configuredModelName, effort: configuredModelSpec.effort })}</kbd>` : ""}`;
+  return `${normalizeConfiguredModelName({ model: configuredModelName })}${!opts?.hideEffort ? ` <kbd>${getConfiguredEffortDisplay({ agent: argv.agent, model: configuredModelName, effort: configuredModelSpec.effort })}</kbd>` : ""}`;
 };
 
 export const modelDisplayName = getModelDisplayName();
