@@ -268,7 +268,7 @@ describe("runCopilotReview", () => {
     }
   });
 
-  test("passes the parsed model string through without rewriting effort", async () => {
+  test("passes the parsed model string through and preserves effort without rewriting", async () => {
     const child = createMockChildProcess();
 
     mockArgv.model = "minimax/MiniMax-M1:minimal";
@@ -287,7 +287,9 @@ describe("runCopilotReview", () => {
     expect(spawnCalls[0]?.args).toContain("--model");
     expect(spawnCalls[0]?.args).toContain("minimax/MiniMax-M1");
     expect(spawnCalls[0]?.args).not.toContain("minimax/MiniMax-M1:minimal");
-    expect(spawnCalls[0]?.args).not.toContain("--effort");
+    expect(spawnCalls[0]?.args).toContain("--effort");
+    expect(spawnCalls[0]?.args).toContain("minimal");
+    expect(spawnCalls[0]?.args).not.toContain("low");
   });
 
   test("exposes the child process as soon as the agent is created", async () => {

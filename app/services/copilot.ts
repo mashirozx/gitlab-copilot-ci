@@ -275,6 +275,11 @@ export const runCopilotReview = async ({
     });
     const copilotArgs = [...presetArgs, ...extraAgentArgs, "-p", prompt];
 
+    if (modelSpec.effort) {
+      copilotArgs.unshift(modelSpec.effort);
+      copilotArgs.unshift("--effort");
+    }
+
     const agentBin = argv["agent-bin"] ?? env.COPILOT_BIN ?? "copilot";
 
     const child = spawn(agentBin, copilotArgs, {

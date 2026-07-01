@@ -145,7 +145,7 @@ Model display rules:
 - `app/utils/model-display.ts` now reads the configured model from `argv["model"]` directly. `getModelDisplayName({ hideEffort: true })` returns only the normalized model id without any effort badge and is used by summary-title fallbacks when the agent response omits `readableModelName`.
 - `mimo` and `MiniMax` display labels are agent-aware. For `pi`, omitted effort renders as `thinking: disabled`; for `github-copilot-cli`, omitted effort renders as `thinking: enabled` for `mimo` and `thinking: adaptive` for `MiniMax`.
 - Explicit `mimo` effort values other than `off` or `disabled` render as `thinking: enabled`; explicit `MiniMax` effort values other than `off` or `disabled` render as `thinking: adaptive`; `off` and `disabled` always render as `thinking: disabled`.
-- `app/services/copilot.ts` removes any trailing effort suffix from `argv["model"]` before passing the value to Copilot CLI `--model`, and does not split model effort into a separate `--effort` flag.
+- `app/services/copilot.ts` removes any trailing effort suffix from `argv["model"]` before passing the value to Copilot CLI `--model`, and when an effort suffix is configured it passes that exact original effort value through to Copilot CLI via `--effort` without remapping aliases such as `minimal`, `off`, or `disabled`.
 
 ## CLI Arguments and Environment Variables
 
