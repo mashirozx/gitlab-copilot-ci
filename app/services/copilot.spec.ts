@@ -268,7 +268,7 @@ describe("runCopilotReview", () => {
     }
   });
 
-  test("passes the configured model string through without rewriting effort", async () => {
+  test("passes the parsed model string through without rewriting effort", async () => {
     const child = createMockChildProcess();
 
     mockArgv.model = "minimax/MiniMax-M1:minimal";
@@ -285,7 +285,8 @@ describe("runCopilotReview", () => {
 
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0]?.args).toContain("--model");
-    expect(spawnCalls[0]?.args).toContain("minimax/MiniMax-M1:minimal");
+    expect(spawnCalls[0]?.args).toContain("minimax/MiniMax-M1");
+    expect(spawnCalls[0]?.args).not.toContain("minimax/MiniMax-M1:minimal");
     expect(spawnCalls[0]?.args).not.toContain("--effort");
   });
 

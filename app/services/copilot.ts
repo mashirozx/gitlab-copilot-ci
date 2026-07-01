@@ -11,6 +11,7 @@ import { withCliColorEnv } from "../utils/cli-env";
 import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
+import { parseModelSpec } from "../utils/model-name-parser";
 import { readReviewOutputJsonFile } from "../utils/review-output-json";
 import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
@@ -252,12 +253,15 @@ export const runCopilotReview = async ({
       childEnv.GITHUB_TOKEN = argv["copilot-github-token"];
     }
 
+    const modelSpec = parseModelSpec({
+      model: argv["model"],
+    });
     const allowedTools = getAllowedTools();
     const allowedDirectories = getAllowedDirectories();
 
     const presetArgs = [
       "--model",
-      argv["model"],
+      modelSpec.model ?? argv["model"],
       ...allowedTools.map((toolName) => `--allow-tool=${toolName}`),
       ...allowedDirectories.map(
         (directoryPath) => `--add-dir=${directoryPath}`,
