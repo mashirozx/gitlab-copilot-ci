@@ -559,9 +559,9 @@ export const buildPerformanceMetricsSection = ({
     content += `- 💾 **Agent write bytes**: ${formatBytes({ bytes: response.runtimeStats.agent.totalWriteBytes })}\n`;
   }
 
-  if (response.runtimeStats?.capabilities.notes?.length) {
-    content += `- ℹ️ **Runtime stats note**: ${response.runtimeStats.capabilities.notes.join(" ")}\n`;
-  }
+  // if (response.runtimeStats?.capabilities.notes?.length) {
+  //   content += `- ℹ️ **Runtime stats note**: ${response.runtimeStats.capabilities.notes.join(" ")}\n`;
+  // }
 
   if (response.context?.total_length !== undefined) {
     content += `- 🌕 **Context window**: ${response.context.total_length}\n`;

@@ -240,6 +240,47 @@ describe("runCopilotReview", () => {
     expect(result.reviews).toEqual([]);
   });
 
+  test("normalizes malformed response fields into summary-visible errors", async () => {
+    const child = createMockChildProcess();
+
+    nextChildFactory = () => child;
+    mockReadFileSync = (_path, _encoding) =>
+      JSON.stringify({
+        readableModelName: "GPT-5.4",
+        summary: {
+          walkthrough: null,
+          changes: [],
+          otherSuggestions: {},
+        },
+        reviews: [
+          {
+            file_path: "app/main.ts",
+            new_line: 10,
+            suggestions: null,
+          },
+        ],
+      });
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.stdout.emit("data", Buffer.from("no markers in stdout"));
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.summary.walkthrough).toEqual({});
+    expect(result.reviews[0]?.suggestions).toEqual({});
+    expect(result.errors).toContain(
+      "[Validation] summary.walkthrough: expected an object keyed by language",
+    );
+    expect(result.errors).toContain(
+      "[Validation] reviews[0].suggestions: expected an object keyed by language",
+    );
+  });
+
   test("allows the repo directory and temp directories for Copilot CLI", async () => {
     const child = createMockChildProcess();
 

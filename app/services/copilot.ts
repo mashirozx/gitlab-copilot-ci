@@ -13,6 +13,7 @@ import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
 import { parseModelSpec } from "../utils/model-name-parser";
 import { readReviewOutputJsonFile } from "../utils/review-output-json";
+import { normalizeReviewResponse } from "../utils/review-response";
 import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
   appendRecentOutputLine,
@@ -456,7 +457,9 @@ export const runCopilotReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        const result = parseJson<ReviewResponseEntity>({ text: jsonText });
+        const result = normalizeReviewResponse({
+          response: parseJson<unknown>({ text: jsonText }),
+        });
         const cliUsage = parseCopilotCliUsage({
           stdoutText: stdoutUsageOutputCapture,
           stderrText: stderrUsageOutputCapture,

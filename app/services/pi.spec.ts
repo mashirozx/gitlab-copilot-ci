@@ -234,6 +234,64 @@ describe("runPiReview", () => {
     expect(result.reviews).toEqual([]);
   });
 
+  test("normalizes malformed response fields into summary-visible errors", async () => {
+    const child = createMockChildProcess();
+    nextChildFactory = () => child;
+    mockReadFileSync = (_path, _encoding) =>
+      JSON.stringify({
+        readableModelName: "GPT-5.4",
+        summary: {
+          walkthrough: {
+            en: "ok",
+          },
+          changes: null,
+          otherSuggestions: {},
+        },
+        reviews: [
+          {
+            file_path: "app/main.ts",
+            new_line: 5,
+            suggestions: {
+              en: {
+                detail: "detail",
+                abstract: 123,
+              },
+            },
+          },
+        ],
+      });
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: "no markers",
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.summary.changes).toEqual([]);
+    expect(result.reviews[0]?.suggestions).toEqual({});
+    expect(result.errors).toContain(
+      "[Validation] summary.changes: expected an array",
+    );
+    expect(result.errors).toContain(
+      "[Validation] reviews[0].suggestions.en.abstract: expected a string",
+    );
+  });
+
   test("warns and stops printing agent stdout once the safety threshold is reached", async () => {
     const child = createMockChildProcess();
     const stdoutWriteCalls: string[] = [];

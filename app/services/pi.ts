@@ -11,6 +11,7 @@ import { parseJson, tryParseJson } from "../utils/json";
 import { createPiMessageFormatter } from "../utils/pi-message-formatter";
 import { getPiUsage } from "../utils/pi-usage-collector";
 import { readReviewOutputJsonFile } from "../utils/review-output-json";
+import { normalizeReviewResponse } from "../utils/review-response";
 import { startRuntimeStatsCollector } from "../utils/stats/index.ts";
 import {
   appendRecentOutputLine,
@@ -461,7 +462,9 @@ export const runPiReview = async ({
         const duration = getElapsedMilliseconds({
           startTimeMs: startTime,
         });
-        const result = parseJson<ReviewResponseEntity>({ text: jsonText });
+        const result = normalizeReviewResponse({
+          response: parseJson<unknown>({ text: jsonText }),
+        });
         const usage =
           piRuntimeState.usage ??
           getPiUsage({
