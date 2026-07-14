@@ -1,15 +1,3 @@
-const SUPPORTED_MODEL_EFFORTS = new Set([
-  "off",
-  "disabled",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "none",
-  "max",
-]);
-
 export const parseModelSpec = ({
   model,
 }: {
@@ -17,6 +5,7 @@ export const parseModelSpec = ({
 }): {
   model?: string;
   effort?: string;
+  provider?: string;
 } => {
   if (!model?.trim()) {
     return {};
@@ -26,23 +15,46 @@ export const parseModelSpec = ({
   const separatorIndex = trimmed.lastIndexOf(":");
 
   if (separatorIndex < 0) {
-    return { model: trimmed };
+    const parsedModel = stripProviderPrefix({ model: trimmed });
+    const provider = getProviderPrefix({ model: trimmed });
+
+    return {
+      ...(parsedModel ? { model: parsedModel } : {}),
+      ...(provider ? { provider } : {}),
+    };
   }
 
-  const parsedModel = trimmed.slice(0, separatorIndex).trim();
+  const modelWithProvider = trimmed.slice(0, separatorIndex);
+  const parsedModel = stripProviderPrefix({ model: modelWithProvider });
+  const provider = getProviderPrefix({ model: modelWithProvider });
   const effort = trimmed
     .slice(separatorIndex + 1)
     .trim()
     .toLowerCase();
 
-  if (!parsedModel || !effort || !SUPPORTED_MODEL_EFFORTS.has(effort)) {
-    return { model: trimmed };
-  }
-
   return {
-    model: parsedModel,
+    ...(parsedModel ? { model: parsedModel } : {}),
+    ...(provider ? { provider } : {}),
     effort,
   };
+};
+
+const getProviderPrefix = ({
+  model,
+}: {
+  model: string | undefined;
+}): string | undefined => {
+  const trimmedModel = model?.trim();
+
+  if (!trimmedModel) {
+    return undefined;
+  }
+
+  const separatorIndex = trimmedModel.lastIndexOf("/");
+
+  return separatorIndex > 0
+    ? trimmedModel.slice(0, separatorIndex).trim() || undefined
+    : undefined;
 };
 
 const stripProviderPrefix = ({

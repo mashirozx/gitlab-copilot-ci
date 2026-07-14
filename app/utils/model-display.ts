@@ -23,7 +23,7 @@ const getConfiguredEffortDisplay = ({
   const isCopilotAgent = agent === "github-copilot-cli";
 
   if (/^mimo(?:$|[-:.])/i.test(model.trim())) {
-    if (effort === "off" || effort === "disabled") {
+    if (["none", "off", "disabled"].includes(effort ?? "")) {
       return "thinking: disabled";
     } else if (!effort) {
       return isCopilotAgent ? "thinking: enabled" : "thinking: disabled";
@@ -33,7 +33,7 @@ const getConfiguredEffortDisplay = ({
   }
 
   if (/^minimax(?:$|[-:.])/i.test(model.trim())) {
-    if (effort === "off" || effort === "disabled") {
+    if (["none", "off", "disabled"].includes(effort ?? "")) {
       return "thinking: disabled";
     } else if (!effort) {
       return isCopilotAgent ? "thinking: adaptive" : "thinking: disabled";

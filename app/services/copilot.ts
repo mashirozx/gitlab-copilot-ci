@@ -8,6 +8,7 @@ import type { ReviewResponseEntity } from "../types/review.types";
 import { parseAgentArgs } from "../utils/agent-args";
 import { argv } from "../utils/argv";
 import { withCliColorEnv } from "../utils/cli-env";
+import { normalizeCopilotEffort } from "../utils/copilot-effort";
 import { buildEmptyReviewResponse } from "../utils/empty-review-response";
 import { env } from "../utils/env";
 import { parseJson } from "../utils/json";
@@ -107,7 +108,7 @@ const parseCompactNumber = ({
           ? 1_000_000_000
           : 1;
 
-  return Math.round(numericValue * multiplier);
+  return unit ? Math.round(numericValue * multiplier) : numericValue;
 };
 
 const getLastMatch = ({
@@ -143,7 +144,7 @@ const parseCopilotCliUsage = ({
   const tokensMatch = getLastMatch({
     text: combinedOutput,
     pattern:
-      /Tokens\s+↑\s*([0-9][\d.,]*[kmb]?)(?:\s*\(([0-9][\d.,]*[kmb]?)\s+cached\))?\s*[•·]\s*↓\s*([0-9][\d.,]*[kmb]?)(?:\s*\(([0-9][\d.,]*[kmb]?)\s+reasoning\))?/giu,
+      /Tokens\s+↑\s*([0-9][\d.,]*[kmb]?)(?:\s*\(([0-9][\d.,]*[kmb]?)\s+cached(?:,\s*([0-9][\d.,]*[kmb]?)\s+written)?\))?\s*[•·]\s*↓\s*([0-9][\d.,]*[kmb]?)(?:\s*\(([0-9][\d.,]*[kmb]?)\s+reasoning\))?/giu,
   });
 
   const inputTokens = parseCompactNumber({
@@ -153,10 +154,13 @@ const parseCopilotCliUsage = ({
     value: tokensMatch?.[2],
   });
   const outputTokens = parseCompactNumber({
-    value: tokensMatch?.[3],
+    value: tokensMatch?.[4],
   });
   const reasoningTokens = parseCompactNumber({
-    value: tokensMatch?.[4],
+    value: tokensMatch?.[5],
+  });
+  const cacheWriteTokens = parseCompactNumber({
+    value: tokensMatch?.[3],
   });
   const aiCredits = parseCompactNumber({
     value: creditsMatch?.[1],
@@ -174,6 +178,10 @@ const parseCopilotCliUsage = ({
 
   if (cacheReadTokens !== undefined) {
     usage.cacheRead = cacheReadTokens;
+  }
+
+  if (cacheWriteTokens !== undefined) {
+    usage.cacheWrite = cacheWriteTokens;
   }
 
   if (outputTokens !== undefined) {
@@ -277,7 +285,7 @@ export const runCopilotReview = async ({
     const copilotArgs = [...presetArgs, ...extraAgentArgs, "-p", prompt];
 
     if (modelSpec.effort) {
-      copilotArgs.unshift(modelSpec.effort);
+      copilotArgs.unshift(normalizeCopilotEffort({ effort: modelSpec.effort }));
       copilotArgs.unshift("--effort");
     }
 

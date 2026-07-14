@@ -136,7 +136,7 @@ describe("runCopilotReview", () => {
     }
   });
 
-  test("parses Copilot CLI usage lines into the performance metrics section", async () => {
+  test("parses current Copilot CLI usage lines into the performance metrics section", async () => {
     const child = createMockChildProcess();
 
     nextChildFactory = () => child;
@@ -147,11 +147,10 @@ describe("runCopilotReview", () => {
     const jsonText = "agent output";
 
     child.emit("spawn");
-    child.stdout.emit("data", Buffer.from("AI Credits 126 (10m 47s)\n"));
     child.stdout.emit(
       "data",
       Buffer.from(
-        "Tokens     ↑ 2.3m (2.3m cached) • ↓ 32.6k (15.7k reasoning)\n",
+        "Changes    +0 -0\nAI Credits 51.9 (2m 36s)\nTokens     ↑ 383.9k (324.0k cached, 59.8k written) • ↓ 16.7k (12.5k reasoning)\nResume     copilot --resume=6219849c-1c55-4a93-832c-ce72a1676e9f\n",
       ),
     );
     child.stdout.emit("data", Buffer.from(jsonText));
@@ -159,21 +158,23 @@ describe("runCopilotReview", () => {
 
     const result = await reviewPromise;
 
-    expect(result.usage?.aiCredits).toBe(126);
-    expect(result.usage?.input).toBe(2_300_000);
-    expect(result.usage?.cacheRead).toBe(2_300_000);
-    expect(result.usage?.output).toBe(32_600);
-    expect(result.usage?.totalTokens).toBe(2_332_600);
-    expect(result.usage?.reasoningTokens).toBe(15_700);
+    expect(result.usage?.aiCredits).toBe(51.9);
+    expect(result.usage?.input).toBe(383_900);
+    expect(result.usage?.cacheRead).toBe(324_000);
+    expect(result.usage?.cacheWrite).toBe(59_800);
+    expect(result.usage?.output).toBe(16_700);
+    expect(result.usage?.totalTokens).toBe(400_600);
+    expect(result.usage?.reasoningTokens).toBe(12_500);
 
     const section = buildPerformanceMetricsSection({
       response: result,
       agentDisplay: "GitHub Copilot CLI 1.0.54",
     });
 
-    expect(section).toContain("- 🪙 **AI Credits**: 126");
-    expect(section).toContain("- 🔢 **Total tokens**: 2332600");
-    expect(section).toContain("- 🧠 **Reasoning tokens**: 15700");
+    expect(section).toContain("- 🪙 **AI Credits**: 51.9");
+    expect(section).toContain("- ✍️ **Cache write tokens**: 59800");
+    expect(section).toContain("- 🔢 **Total tokens**: 400600");
+    expect(section).toContain("- 🧠 **Reasoning tokens**: 12500");
   });
 
   test("marks the review response as critical when the agent exits non-zero", async () => {
@@ -309,7 +310,7 @@ describe("runCopilotReview", () => {
     }
   });
 
-  test("passes the parsed model string through and preserves effort without rewriting", async () => {
+  test("removes provider prefixes and preserves supported efforts", async () => {
     const child = createMockChildProcess();
 
     mockArgv.model = "minimax/MiniMax-M1:minimal";
@@ -326,11 +327,49 @@ describe("runCopilotReview", () => {
 
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0]?.args).toContain("--model");
-    expect(spawnCalls[0]?.args).toContain("minimax/MiniMax-M1");
+    expect(spawnCalls[0]?.args).toContain("MiniMax-M1");
     expect(spawnCalls[0]?.args).not.toContain("minimax/MiniMax-M1:minimal");
     expect(spawnCalls[0]?.args).toContain("--effort");
     expect(spawnCalls[0]?.args).toContain("minimal");
     expect(spawnCalls[0]?.args).not.toContain("low");
+  });
+
+  test("maps disabled effort to none", async () => {
+    const child = createMockChildProcess();
+
+    mockArgv.model = "gpt-5.6-terra:disabled";
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(spawnCalls[0]?.args).toContain("none");
+    expect(spawnCalls[0]?.args).not.toContain("disabled");
+  });
+
+  test("maps unsupported effort to medium", async () => {
+    const child = createMockChildProcess();
+
+    mockArgv.model = "gpt-5.6-terra:adaptive";
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(spawnCalls[0]?.args).toContain("medium");
+    expect(spawnCalls[0]?.args).not.toContain("adaptive");
   });
 
   test("exposes the child process as soon as the agent is created", async () => {

@@ -125,6 +125,7 @@ Rules:
 | `app/utils/composers/summary-comment-with-critical-error-builder.ts` | Renders the critical-error summary title and warning block reused by the main summary composer |
 | `app/utils/time.ts` | Temporal-based time helpers and async sleep utility |
 | `app/utils/model-name-parser.ts` | Shared model parsing helpers |
+| `app/utils/copilot-effort.ts` | Copilot CLI effort normalization helpers |
 | `app/utils/commit-reference.ts` | Shared current-commit SHA, short SHA, and URL helpers |
 | `app/utils/model-display.ts` | Shared normalized model display string for summaries and inline reviews |
 | `app/utils/pi-message-formatter.ts` | Human-readable Pi console event formatter |
@@ -146,7 +147,7 @@ Model display rules:
 - `app/utils/model-display.ts` now reads the configured model from `argv["model"]` directly. `getModelDisplayName({ hideEffort: true })` returns only the normalized model id without any effort badge and is used by summary-title fallbacks when the agent response omits `readableModelName`.
 - `mimo` and `MiniMax` display labels are agent-aware. For `pi`, omitted effort renders as `thinking: disabled`; for `github-copilot-cli`, omitted effort renders as `thinking: enabled` for `mimo` and `thinking: adaptive` for `MiniMax`.
 - Explicit `mimo` effort values other than `off` or `disabled` render as `thinking: enabled`; explicit `MiniMax` effort values other than `off` or `disabled` render as `thinking: adaptive`; `off` and `disabled` always render as `thinking: disabled`.
-- `app/services/copilot.ts` removes any trailing effort suffix from `argv["model"]` before passing the value to Copilot CLI `--model`, and when an effort suffix is configured it passes that exact original effort value through to Copilot CLI via `--effort` without remapping aliases such as `minimal`, `off`, or `disabled`.
+- `app/services/copilot.ts` removes provider prefixes and any trailing effort suffix from `argv["model"]` before passing the model id to Copilot CLI `--model`. For example, `github-copilot/gpt-5.6-terra:max` becomes `--model gpt-5.6-terra --effort max`. Copilot accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; `off` and `disabled` map to `none`, while every other unsupported configured effort maps to `medium` before it is passed via `--effort`.
 
 ## CLI Arguments and Environment Variables
 
@@ -321,12 +322,12 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 
 ### GitHub Copilot CLI
 - Default allowlist: `read_file`, `list_directory`, `search_files`, `grep`, `shell(node)`.
-- `--model provider/model` passes through as-is.
+- `--model provider/model` removes the provider prefix before passing the model id to Copilot CLI.
 - Final `:effort` suffix is translated to `copilot --effort <level>`.
 - Generic stdout/stderr stream logging and marker-block capture live in `app/utils/std-handler.ts`; `app/services/copilot.ts` should keep only Copilot-specific argument building, process orchestration, and result parsing.
 - Agent runtime stats collection is provider-agnostic and lives in `app/utils/stats/`; `app/services/copilot.ts` should only start and stop the shared collector around the spawned child process.
 - Copilot stdout still feeds marker capture and file logging after the console print budget is exhausted; only live terminal printing is suppressed.
-- Copilot usage metrics are parsed from the CLI's trailing `AI Credits ...` and `Tokens ↑ ... • ↓ ...` lines and mapped into `response.usage.aiCredits`, `input`, `cacheRead`, `output`, `totalTokens`, and `reasoningTokens` when those lines are present.
+- Copilot usage metrics are parsed from the CLI's trailing `AI Credits ...` and `Tokens ↑ ... (… cached, … written) • ↓ ... (… reasoning)` lines and mapped into `response.usage.aiCredits`, `input`, `cacheRead`, `cacheWrite`, `output`, `totalTokens`, and `reasoningTokens` when those lines are present. The older form without the `written` value remains supported.
 
 ### Pi
 - Default allowlist: `read,grep,find,ls,bash`.

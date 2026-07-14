@@ -8,16 +8,41 @@ describe("parseModelSpec", () => {
     expect(parseModelSpec({ model: "   \t\n  " })).toEqual({});
   });
 
-  test("keeps provider-prefixed models unchanged", () => {
+  test("removes provider prefixes", () => {
     expect(parseModelSpec({ model: "openai/gpt-4o" })).toEqual({
-      model: "openai/gpt-4o",
+      model: "gpt-4o",
+      provider: "openai",
     });
   });
 
   test("parses effort shorthand from the model suffix", () => {
     expect(parseModelSpec({ model: "openai/gpt-4o:high" })).toEqual({
-      model: "openai/gpt-4o",
+      model: "gpt-4o",
       effort: "high",
+      provider: "openai",
+    });
+  });
+
+  test("treats github-copilot as a provider", () => {
+    expect(
+      parseModelSpec({ model: "github-copilot/gpt-5.6-terra:max" }),
+    ).toEqual({
+      model: "gpt-5.6-terra",
+      effort: "max",
+      provider: "github-copilot",
+    });
+  });
+
+  test("parses a gpt-5.6-terra model with an effort suffix", () => {
+    expect(parseModelSpec({ model: "gpt-5.6-terra:max" })).toEqual({
+      model: "gpt-5.6-terra",
+      effort: "max",
+    });
+  });
+
+  test("parses a gpt-5.6-terra model without a provider or effort suffix", () => {
+    expect(parseModelSpec({ model: "gpt-5.6-terra" })).toEqual({
+      model: "gpt-5.6-terra",
     });
   });
 
@@ -36,8 +61,9 @@ describe("parseModelSpec", () => {
 
   test("splits on the final colon when the model contains multiple colons", () => {
     expect(parseModelSpec({ model: "org/model:preview:high" })).toEqual({
-      model: "org/model:preview",
+      model: "model:preview",
       effort: "high",
+      provider: "org",
     });
   });
 });
