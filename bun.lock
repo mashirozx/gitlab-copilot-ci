@@ -15,7 +15,7 @@
         "husky": "9.1.7",
         "tablemark": "4.1.0",
         "temporal-polyfill": "0.3.2",
-        "tstyche": "7.2.1",
+        "tstyche": "7.2.2",
         "typescript": "npm:@typescript/native-preview@7.0.0-dev.20260511.1",
         "yargs": "18.0.0",
       },
@@ -260,7 +260,7 @@
 
     "tinyexec": ["tinyexec@1.1.2", "https://registry.npmmirror.com/tinyexec/-/tinyexec-1.1.2.tgz", {}, "sha512-dAqSqE/RabpBKI8+h26GfLq6Vb3JVXs30XYQjdMjaj/c2tS8IYYMbIzP599KtRj7c57/wYApb3QjgRgXmrCukA=="],
 
-    "tstyche": ["tstyche@7.2.1", "https://registry.npmmirror.com/tstyche/-/tstyche-7.2.1.tgz", { "peerDependencies": { "typescript": ">=5.4" }, "optionalPeers": ["typescript"], "bin": { "tstyche": "dist/bin.js" } }, "sha512-XMaaGk8Mrv+LMULdaK2H8jix1dLvKAi9lO/HTZZuK/tV0H3pD/9nCuCTIsHotpZ3VScOzv8ZGT2/6UvdSxzHgw=="],
+    "tstyche": ["tstyche@7.2.2", "https://registry.npmmirror.com/tstyche/-/tstyche-7.2.2.tgz", { "peerDependencies": { "typescript": ">=5.4" }, "optionalPeers": ["typescript"], "bin": "./dist/bin.js" }, "sha512-pd0CZjwjzxCzRiBAH/SEx4IaMS6ti/KA8cWc22Bx1Wa5FF30JeFQa/zAfXpjWkrJNmFqaOJrTaZDF+ji3P2TmA=="],
 
     "typescript": ["@typescript/native-preview@7.0.0-dev.20260511.1", "https://registry.npmmirror.com/@typescript/native-preview/-/native-preview-7.0.0-dev.20260511.1.tgz", { "optionalDependencies": { "@typescript/native-preview-darwin-arm64": "7.0.0-dev.20260511.1", "@typescript/native-preview-darwin-x64": "7.0.0-dev.20260511.1", "@typescript/native-preview-linux-arm": "7.0.0-dev.20260511.1", "@typescript/native-preview-linux-arm64": "7.0.0-dev.20260511.1", "@typescript/native-preview-linux-x64": "7.0.0-dev.20260511.1", "@typescript/native-preview-win32-arm64": "7.0.0-dev.20260511.1", "@typescript/native-preview-win32-x64": "7.0.0-dev.20260511.1" }, "bin": { "tsgo": "bin/tsgo.js" } }, "sha512-cUyY4Sr6065280lB6hCwTMCBMTxlEIGjSLzHym28yikA5sFiEsAzlwiU0i+XkTUIqr5K5M/SzSJiioDN+vpjtA=="],
 
