@@ -454,7 +454,7 @@ export const runCopilotReview = async ({
           result: buildEmptyReviewResponse({
             duration,
             error: errMsg,
-            withCriticalError: exitedWithCriticalFailure,
+            withCriticalError: true,
           }),
         });
         return;

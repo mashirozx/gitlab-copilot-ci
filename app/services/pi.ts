@@ -454,6 +454,7 @@ export const runPiReview = async ({
             result: buildEmptyReviewResponse({
               duration,
               error: errMsg,
+              withCriticalError: true,
             }),
           });
           return;

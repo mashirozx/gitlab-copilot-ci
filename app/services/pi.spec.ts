@@ -75,6 +75,7 @@ mock.module("node:child_process", () => ({
 
 mock.module("node:fs", () => ({
   readdirSync: () => [],
+  realpathSync: (path: string) => path,
   readFileSync: (path: string, encoding: BufferEncoding) =>
     mockReadFileSync(path, encoding),
 }));
@@ -232,6 +233,43 @@ describe("runPiReview", () => {
     expect(result.errors).toBeUndefined();
     expect(result.summary.walkthrough.en).toBe("ok");
     expect(result.reviews).toEqual([]);
+  });
+
+  test("marks a missing shared output file as a critical failure", async () => {
+    const child = createMockChildProcess();
+    nextChildFactory = () => child;
+    mockReadFileSync = () => {
+      throw new Error(
+        "ENOENT: no such file or directory, open '/tmp/output.json'",
+      );
+    };
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: "assistant content",
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    const result = await reviewPromise;
+
+    expect(result.withCriticalError).toBe(true);
+    expect(result.errors?.[0]).toContain(
+      "[Pi] Pi JSON mode: no review JSON found in output file.",
+    );
+    expect(result.errors?.[0]).toContain("ENOENT");
   });
 
   test("normalizes malformed response fields into summary-visible errors", async () => {
