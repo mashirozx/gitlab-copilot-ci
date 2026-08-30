@@ -43,8 +43,13 @@ const createMockChildProcess = (): MockChildProcess => {
 };
 
 let nextChildFactory = (): MockChildProcess => createMockChildProcess();
-let mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
-  validReviewResponseJson;
+let mockReviewOutput: {
+  error: string | null;
+  jsonText: string | null;
+} = {
+  error: null,
+  jsonText: validReviewResponseJson,
+};
 
 mock.module("./logger", () => ({
   logger: loggerMock,
@@ -73,11 +78,8 @@ mock.module("node:child_process", () => ({
   }),
 }));
 
-mock.module("node:fs", () => ({
-  readdirSync: () => [],
-  realpathSync: (path: string) => path,
-  readFileSync: (path: string, encoding: BufferEncoding) =>
-    mockReadFileSync(path, encoding),
+mock.module("../utils/review-output-json", () => ({
+  readReviewOutputJsonFile: () => mockReviewOutput,
 }));
 
 const { argv } = await import("../utils/argv");
@@ -87,8 +89,10 @@ afterEach(() => {
   mock.restore();
   mock.clearAllMocks();
   nextChildFactory = (): MockChildProcess => createMockChildProcess();
-  mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
-    validReviewResponseJson;
+  mockReviewOutput = {
+    error: null,
+    jsonText: validReviewResponseJson,
+  };
 });
 
 describe("runPiReview", () => {
@@ -207,7 +211,6 @@ describe("runPiReview", () => {
   test("reads review JSON from shared output path", async () => {
     const child = createMockChildProcess();
     nextChildFactory = () => child;
-    mockReadFileSync = (_path, _encoding) => validReviewResponseJson;
 
     const reviewPromise = runPiReview({
       prompt: "review this diff",
@@ -238,10 +241,10 @@ describe("runPiReview", () => {
   test("marks a missing shared output file as a critical failure", async () => {
     const child = createMockChildProcess();
     nextChildFactory = () => child;
-    mockReadFileSync = () => {
-      throw new Error(
-        "ENOENT: no such file or directory, open '/tmp/output.json'",
-      );
+    mockReviewOutput = {
+      error:
+        "failed to read output JSON file at /tmp/output.json: ENOENT: no such file or directory, open '/tmp/output.json'",
+      jsonText: null,
     };
 
     const reviewPromise = runPiReview({
@@ -275,8 +278,9 @@ describe("runPiReview", () => {
   test("normalizes malformed response fields into summary-visible errors", async () => {
     const child = createMockChildProcess();
     nextChildFactory = () => child;
-    mockReadFileSync = (_path, _encoding) =>
-      JSON.stringify({
+    mockReviewOutput = {
+      error: null,
+      jsonText: JSON.stringify({
         readableModelName: "GPT-5.4",
         summary: {
           walkthrough: {
@@ -297,7 +301,8 @@ describe("runPiReview", () => {
             },
           },
         ],
-      });
+      }),
+    };
 
     const reviewPromise = runPiReview({
       prompt: "review this diff",

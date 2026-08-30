@@ -33,8 +33,14 @@ const createMockChildProcess = (): MockChildProcess => {
 };
 
 let nextChildFactory = (): MockChildProcess => createMockChildProcess();
-let mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
-  '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
+let mockReviewOutput: {
+  error: string | null;
+  jsonText: string | null;
+} = {
+  error: null,
+  jsonText:
+    '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}',
+};
 let spawnCalls: Array<{ command: string; args: string[] }> = [];
 const mockArgv = {
   agent: "github-copilot-cli",
@@ -64,11 +70,8 @@ mock.module("node:child_process", () => ({
   spawnSync: () => ({ stdout: "", stderr: "" }),
 }));
 
-mock.module("node:fs", () => ({
-  readdirSync: () => [],
-  realpathSync: (path: string) => path,
-  readFileSync: (path: string, encoding: BufferEncoding) =>
-    mockReadFileSync(path, encoding),
+mock.module("../utils/review-output-json", () => ({
+  readReviewOutputJsonFile: () => mockReviewOutput,
 }));
 
 const { runCopilotReview } = await import(`./copilot?test=${Date.now()}`);
@@ -86,8 +89,11 @@ afterEach(() => {
   mock.restore();
   mock.clearAllMocks();
   nextChildFactory = (): MockChildProcess => createMockChildProcess();
-  mockReadFileSync = (_path: string, _encoding: BufferEncoding): string =>
-    '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
+  mockReviewOutput = {
+    error: null,
+    jsonText:
+      '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}',
+  };
   spawnCalls = [];
   mockArgv.model = "gpt-5.4";
 });
@@ -224,8 +230,6 @@ describe("runCopilotReview", () => {
     const child = createMockChildProcess();
 
     nextChildFactory = () => child;
-    mockReadFileSync = (_path, _encoding) =>
-      '{"readableModelName":"GPT-5.4","summary":{"walkthrough":{"en":"ok"},"changes":[],"otherSuggestions":{}},"reviews":[]}';
 
     const reviewPromise = runCopilotReview({
       prompt: "review this diff",
@@ -246,10 +250,10 @@ describe("runCopilotReview", () => {
     const child = createMockChildProcess();
 
     nextChildFactory = () => child;
-    mockReadFileSync = () => {
-      throw new Error(
-        "ENOENT: no such file or directory, open '/tmp/output.json'",
-      );
+    mockReviewOutput = {
+      error:
+        "failed to read output JSON file at /tmp/output.json: ENOENT: no such file or directory, open '/tmp/output.json'",
+      jsonText: null,
     };
 
     const reviewPromise = runCopilotReview({
@@ -273,8 +277,9 @@ describe("runCopilotReview", () => {
     const child = createMockChildProcess();
 
     nextChildFactory = () => child;
-    mockReadFileSync = (_path, _encoding) =>
-      JSON.stringify({
+    mockReviewOutput = {
+      error: null,
+      jsonText: JSON.stringify({
         readableModelName: "GPT-5.4",
         summary: {
           walkthrough: null,
@@ -288,7 +293,8 @@ describe("runCopilotReview", () => {
             suggestions: null,
           },
         ],
-      });
+      }),
+    };
 
     const reviewPromise = runCopilotReview({
       prompt: "review this diff",

@@ -75,7 +75,7 @@ describe("modelDisplayName", () => {
     );
   });
 
-  test("renders Copilot disabled thinking when mimo and MiniMax effort is disabled", async () => {
+  test("renders raw MiMo effort and disabled MiniMax thinking", async () => {
     mock.module("./argv", () => ({
       argv: {
         agent: "github-copilot-cli",
@@ -91,7 +91,7 @@ describe("modelDisplayName", () => {
     mock.restore();
 
     expect(getMimoDisabledModelDisplayName()).toBe(
-      "mimo-v2.5-pro <kbd>thinking: disabled</kbd>",
+      "mimo-v2.5-pro <kbd>disabled</kbd>",
     );
 
     mock.module("./argv", () => ({
@@ -113,7 +113,7 @@ describe("modelDisplayName", () => {
     );
   });
 
-  test("renders Copilot defaults for omitted mimo and MiniMax effort", async () => {
+  test("renders standard MiMo and adaptive MiniMax defaults", async () => {
     mock.module("./argv", () => ({
       argv: {
         agent: "github-copilot-cli",
@@ -129,7 +129,7 @@ describe("modelDisplayName", () => {
     mock.restore();
 
     expect(getMimoDefaultModelDisplayName()).toBe(
-      "mimo-v2.5-pro <kbd>thinking: enabled</kbd>",
+      "mimo-v2.5-pro <kbd>medium</kbd>",
     );
 
     mock.module("./argv", () => ({
@@ -151,7 +151,7 @@ describe("modelDisplayName", () => {
     );
   });
 
-  test("keeps Pi defaults disabled when mimo and MiniMax effort is omitted", async () => {
+  test("renders the standard MiMo default and disabled Pi MiniMax default", async () => {
     mock.module("./argv", () => ({
       argv: {
         agent: "pi",
@@ -167,7 +167,7 @@ describe("modelDisplayName", () => {
     mock.restore();
 
     expect(getPiMimoDefaultModelDisplayName()).toBe(
-      "mimo-v2.5-pro <kbd>thinking: disabled</kbd>",
+      "mimo-v2.5-pro <kbd>medium</kbd>",
     );
 
     mock.module("./argv", () => ({

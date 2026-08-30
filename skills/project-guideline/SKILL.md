@@ -145,8 +145,8 @@ Rules:
 Model display rules:
 - `app/utils/model-display.ts` defaults missing effort suffixes to `medium` in rendered model labels.
 - `app/utils/model-display.ts` now reads the configured model from `argv["model"]` directly. `getModelDisplayName({ hideEffort: true })` returns only the normalized model id without any effort badge and is used by summary-title fallbacks when the agent response omits `readableModelName`.
-- `mimo` and `MiniMax` display labels are agent-aware. For `pi`, omitted effort renders as `thinking: disabled`; for `github-copilot-cli`, omitted effort renders as `thinking: enabled` for `mimo` and `thinking: adaptive` for `MiniMax`.
-- Explicit `mimo` effort values other than `off` or `disabled` render as `thinking: enabled`; explicit `MiniMax` effort values other than `off` or `disabled` render as `thinking: adaptive`; `off` and `disabled` always render as `thinking: disabled`.
+- `mimo` effort labels are displayed directly from the configured effort, with omitted effort rendered as `medium`.
+- `MiniMax` display labels are agent-aware. For `pi`, omitted effort renders as `thinking: disabled`; for `github-copilot-cli`, omitted effort renders as `thinking: adaptive`. Explicit `MiniMax` effort values other than `off` or `disabled` render as `thinking: adaptive`; `off` and `disabled` always render as `thinking: disabled`.
 - `app/services/copilot.ts` removes provider prefixes and any trailing effort suffix from `argv["model"]` before passing the model id to Copilot CLI `--model`. For example, `github-copilot/gpt-5.6-terra:max` becomes `--model gpt-5.6-terra --effort max`. Copilot accepts `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; `off` and `disabled` map to `none`, while every other unsupported configured effort maps to `medium` before it is passed via `--effort`.
 
 ## CLI Arguments and Environment Variables

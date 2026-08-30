@@ -37,6 +37,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # local test script
 test.sh
+test.1.sh
 test.ts
 demo/
 
