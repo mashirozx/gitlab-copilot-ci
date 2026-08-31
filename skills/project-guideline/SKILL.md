@@ -31,7 +31,7 @@ keywords:
 - **Artifact variants**: Release CI publishes both glibc Linux artifacts (`linux-x64`, `linux-arm64`) and musl Linux artifacts (`linux-x64-musl`, `linux-arm64-musl`). Use glibc artifacts for Debian/Ubuntu-class environments and musl artifacts for Alpine-class environments.
 - **Compatibility note**: `gcompat` is only a compatibility layer for running many glibc binaries on Alpine. It is not the same as a native musl build and should not replace the `*-musl` artifacts when Alpine is the intended runtime.
 - **Post-release trigger**: `.gitlab-ci.yml` includes a `trigger:runner` job in a dedicated `trigger` stage. When `RUNNER_TRIGGER_TOKEN` is set on `main`, it runs after `release:publish`, reads `RELEASE_TAG` from the `release:check` dotenv artifact, and POSTs `TARGET_JOB` plus `GITLAB_COPILOT_CLI_VERSION` to `RUNNER_TRIGGER_URL`.
-- **Validation Gates**: Both GitHub Actions and GitLab CI run explicit `bun run lint`, `bun run test`, `bun run typecheck`, and `bun run tsgo` jobs before build/release steps proceed.
+- **Validation Gates**: Both GitHub Actions and GitLab CI run explicit `bun run lint`, `bun run test`, `bun run typecheck`, and `bun run tsc` jobs before build/release steps proceed. `typecheck` runs TSTyche with TypeScript `6.0.3`; `tsc` continues to use the project's `typescript@7.0.2` dependency.
 
 ### Investigation Workflow
 
@@ -135,12 +135,14 @@ Rules:
 | `app/utils/cli-env.ts` | Shared CLI environment helpers |
 | `app/utils/empty-review-response.ts` | Shared empty error-response builder used by both agent service implementations |
 | `app/types/review.types.ts` | Shared review/summary/usage payload types |
+| `scripts/commit.ts` | Interactive local commit helper that runs checks, stages changes, and creates a Conventional Commit |
 
 Rules:
 - No default exports in `app/`.
 - Use named imports throughout.
 - Prefer pure helpers in `app/utils/` over embedding parser/formatter logic in `app/main.ts`.
 - Type imports should come from the owning domain module, for example `./types/review.types` and `./services/gitlab.types`.
+- `scripts/commit.ts` uses `node:readline/promises` for text input. Do not use `consola.prompt({ type: "text" })` there: with Bun 1.4.0 it can duplicate typed characters. Consola select and confirm prompts remain in use.
 
 Model display rules:
 - `app/utils/model-display.ts` defaults missing effort suffixes to `medium` in rendered model labels.
@@ -364,7 +366,7 @@ If posting fails, `app/main.ts` retries once using `recomputeReviewPositionFromD
 - `bun run dev`
 - `bun run test`
 - `bun run typecheck`
-- `bun run tsgo`
+- `bun run tsc`
 - `bun run lint`
 - `bun run biome`
 

@@ -164,7 +164,7 @@ bun run biome
 bun run typecheck
 
 # Experimental TypeScript native preview check
-bun run tsgo
+bun run tsc
 
 # Unit tests
 bun run test
