@@ -30,7 +30,7 @@
     "@commitlint/cli": "21.0.2",
     "@commitlint/config-conventional": "21.0.2",
     "@gitbeaker/rest": "43.8.0",
-    "@types/bun": "1.3.14",
+    "@types/bun": "1.4.0",
     "@types/yargs": "17.0.35",
     "consola": "3.4.2",
     "husky": "9.1.7",
