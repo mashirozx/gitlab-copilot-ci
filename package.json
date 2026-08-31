@@ -26,7 +26,7 @@
     "commit": "bun run ./scripts/commit.ts"
   },
   "dependencies": {
-    "@biomejs/biome": "2.4.16",
+    "@biomejs/biome": "2.5.11",
     "@commitlint/cli": "21.0.2",
     "@commitlint/config-conventional": "21.0.2",
     "@gitbeaker/rest": "43.8.0",
