@@ -177,6 +177,7 @@ Model display rules:
 - `--extra-prompts`: appended prompt text.
 - `--should-teach-diff-compute`: include the explicit unified-diff line-number teaching block. Default: `false`.
 - `--tools`: repeatable extra tool allowlist entries.
+- `--allow-all-tools`: allow all permissions for the selected agent. Default: `false`. Copilot CLI receives `--allow-all`; Pi receives `--approve` with no `--tools` allowlist. The runtime's built-in Copilot tool and directory allowlists are omitted to avoid conflicting flags.
 - `--lang`: repeatable display languages for summary/inline output.
 - `--thinking-lang`: primary thinking language and required language key included in every language-keyed review/summary record returned by the agent. Default: `en`.
 - `--collapsed-lang` / `--c-lang`: repeatable display languages to render in `<details>` blocks.

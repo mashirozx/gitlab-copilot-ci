@@ -265,12 +265,14 @@ export const runCopilotReview = async ({
     const modelSpec = parseModelSpec({
       model: argv["model"],
     });
-    const allowedTools = getAllowedTools();
-    const allowedDirectories = getAllowedDirectories();
+    const allowAllTools = argv["allow-all-tools"];
+    const allowedTools = allowAllTools ? [] : getAllowedTools();
+    const allowedDirectories = allowAllTools ? [] : getAllowedDirectories();
 
     const presetArgs = [
       "--model",
       modelSpec.model ?? argv["model"],
+      ...(allowAllTools ? ["--allow-all"] : []),
       ...allowedTools.map((toolName) => `--allow-tool=${toolName}`),
       ...allowedDirectories.map(
         (directoryPath) => `--add-dir=${directoryPath}`,

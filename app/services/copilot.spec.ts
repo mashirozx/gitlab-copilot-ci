@@ -46,6 +46,7 @@ const mockArgv = {
   agent: "github-copilot-cli",
   "agent-args": undefined,
   "agent-bin": undefined,
+  "allow-all-tools": false,
   "collect-runtime-stats": false,
   "copilot-github-token": undefined,
   model: "gpt-5.4",
@@ -96,6 +97,7 @@ afterEach(() => {
   };
   spawnCalls = [];
   mockArgv.model = "gpt-5.4";
+  mockArgv["allow-all-tools"] = false;
 });
 
 describe("runCopilotReview", () => {
@@ -342,6 +344,30 @@ describe("runCopilotReview", () => {
     } catch {
       expect(spawnCalls[0]?.args).not.toContain("--add-dir=/tmp");
     }
+  });
+
+  test("allows all Copilot tools without the built-in allowlists", async () => {
+    const child = createMockChildProcess();
+
+    mockArgv["allow-all-tools"] = true;
+    nextChildFactory = () => child;
+
+    const reviewPromise = runCopilotReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(spawnCalls[0]?.args).toContain("--allow-all");
+    expect(
+      spawnCalls[0]?.args.some((arg) => arg.startsWith("--allow-tool=")),
+    ).toBe(false);
+    expect(
+      spawnCalls[0]?.args.some((arg) => arg.startsWith("--add-dir=")),
+    ).toBe(false);
   });
 
   test("removes provider prefixes and preserves supported efforts", async () => {

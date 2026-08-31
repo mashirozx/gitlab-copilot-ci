@@ -43,6 +43,7 @@ const createMockChildProcess = (): MockChildProcess => {
 };
 
 let nextChildFactory = (): MockChildProcess => createMockChildProcess();
+let spawnCalls: string[][] = [];
 let mockReviewOutput: {
   error: string | null;
   jsonText: string | null;
@@ -61,6 +62,7 @@ mock.module("../utils/argv", () => ({
     agent: "pi",
     "agent-args": undefined,
     "agent-bin": undefined,
+    "allow-all-tools": false,
     "collect-runtime-stats": false,
     model: "gpt-5.4",
     tools: [],
@@ -70,7 +72,10 @@ mock.module("../utils/argv", () => ({
 
 mock.module("node:child_process", () => ({
   execSync: () => "test-commit\n",
-  spawn: () => nextChildFactory(),
+  spawn: (_command: string, args: string[]) => {
+    spawnCalls.push(args);
+    return nextChildFactory();
+  },
   spawnSync: () => ({
     status: 0,
     stdout: "",
@@ -93,6 +98,8 @@ afterEach(() => {
     error: null,
     jsonText: validReviewResponseJson,
   };
+  spawnCalls = [];
+  argv["allow-all-tools"] = false;
 });
 
 describe("runPiReview", () => {
@@ -444,6 +451,37 @@ describe("runPiReview", () => {
       process.stdout.write = originalStdoutWrite;
       loggerMock.warn = originalWarn;
     }
+  });
+
+  test("allows all Pi tools without passing the built-in tool allowlist", async () => {
+    const child = createMockChildProcess();
+
+    argv["allow-all-tools"] = true;
+    nextChildFactory = () => child;
+
+    const reviewPromise = runPiReview({
+      prompt: "review this diff",
+    });
+
+    child.emit("spawn");
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          type: "agent_end",
+          message: {
+            role: "assistant",
+            content: "assistant content",
+          },
+        })}\n`,
+      ),
+    );
+    child.emit("close", 0);
+
+    await reviewPromise;
+
+    expect(spawnCalls[0]).toContain("--approve");
+    expect(spawnCalls[0]).not.toContain("--tools");
   });
 
   test("exposes the child process as soon as the agent is created", async () => {

@@ -232,6 +232,12 @@ export const argv = yargs(hideBin(process.argv))
     array: true,
     default: [] as string[],
   })
+  .option("allow-all-tools", {
+    describe:
+      "Allow all agent tools and permissions. Disables the built-in tool and directory allowlists.",
+    type: "boolean",
+    default: false,
+  })
   .option("lang", {
     describe:
       "Display language(s) for review output (e.g. --lang=zh-CN --lang=ja --lang=en). If omitted, output defaults to the --thinking-lang source language.",

@@ -220,13 +220,13 @@ export const runPiReview = async ({
       stdoutTail: [],
       stderrTail: [],
     };
-    const allowedTools = getAllowedTools();
+    const allowAllTools = argv["allow-all-tools"];
+    const allowedTools = allowAllTools ? [] : getAllowedTools();
     const piArgs = [
       "--mode",
       "json",
       "--no-session",
-      "--tools",
-      allowedTools.join(","),
+      ...(allowAllTools ? ["--approve"] : ["--tools", allowedTools.join(",")]),
     ];
 
     const childEnv: NodeJS.ProcessEnv = withCliColorEnv({
