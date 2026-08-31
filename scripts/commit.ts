@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { execSync, spawnSync } from "node:child_process";
+import { createInterface } from "node:readline/promises";
 import { consola } from "consola";
 import { colorize } from "consola/utils";
 
@@ -156,6 +157,38 @@ const safePrompt = async <T>(
   }
 };
 
+const promptText = async ({
+  message,
+  placeholder,
+  initial,
+}: {
+  message: string;
+  placeholder?: string;
+  initial?: string;
+}): Promise<string> => {
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  readline.on("SIGINT", exitCancelled);
+
+  const hint = [
+    placeholder ? dim(`(${placeholder})`) : "",
+    initial ? dim(`[${initial}]`) : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  try {
+    const value = await readline.question(
+      `${message}${hint ? ` ${hint}` : ""} `,
+    );
+    return value || initial || "";
+  } finally {
+    readline.close();
+  }
+};
+
 const runCommandOrExit = ({
   label,
   command,
@@ -189,9 +222,9 @@ const runChecks = () => {
     args: ["run", "biome"],
   });
   runCommandOrExit({
-    label: "tsgo",
+    label: "tsc",
     command: "bun",
-    args: ["run", "tsgo"],
+    args: ["run", "tsc"],
   });
   runCommandOrExit({
     label: "tests",
@@ -240,14 +273,11 @@ const selectEmoji = async ({ initial }: { initial?: string } = {}) => {
     });
 
     if (picked === CUSTOM_EMOJI_VALUE) {
-      const custom = await safePrompt<string>(
-        `Enter ${label("custom emoji")}:`,
-        {
-          type: "text",
-          placeholder: initial ?? "e.g. 🦄",
-          initial: initial && !COMMON_EMOJIS.includes(initial) ? initial : "",
-        },
-      );
+      const custom = await promptText({
+        message: `Enter ${label("custom emoji")}:`,
+        placeholder: initial ?? "e.g. 🦄",
+        initial: initial && !COMMON_EMOJIS.includes(initial) ? initial : "",
+      });
 
       const normalizedEmoji = custom ? normalizeEmoji(custom) : null;
 
@@ -268,14 +298,11 @@ const inputMessage = async ({ initial }: { initial?: string } = {}) => {
   let message = "";
 
   while (!message) {
-    const result = await safePrompt<string | undefined>(
-      `Enter ${label("commit message")}:`,
-      {
-        type: "text",
-        placeholder: initial ?? "Short description of the change",
-        initial: initial ?? "",
-      },
-    );
+    const result = await promptText({
+      message: `Enter ${label("commit message")}:`,
+      placeholder: initial ?? "Short description of the change",
+      initial: initial ?? "",
+    });
     message = result?.trim() ?? "";
 
     if (!message) {

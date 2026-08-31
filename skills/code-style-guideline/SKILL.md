@@ -77,4 +77,4 @@ const projectId = argv["project-id"];
 const langs = argv["lang"];
 ```
 
-Use `as` only when genuinely narrowing or widening is required and the type cannot be inferred correctly otherwise (e.g., external JSON, opaque APIs, or intentional nominal typing). Always verify with `bun tsgo` that removing the cast causes an error before keeping it.
+Use `as` only when genuinely narrowing or widening is required and the type cannot be inferred correctly otherwise (e.g., external JSON, opaque APIs, or intentional nominal typing). Always verify with `bun tsc` that removing the cast causes an error before keeping it.

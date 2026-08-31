@@ -9,8 +9,7 @@ stages:
   tags:
     - m2
   image:
-    # bun 1.3.14 is expected to be the last version that runs on Zig
-    name: oven/bun:1.3.14
+    name: oven/bun:1.4.0
     pull_policy: always
 
 .prepare:
@@ -58,7 +57,7 @@ test:typecheck:
   script:
     - bun run typecheck
 
-test:tsgo:
+test:tsc:
   extends:
     - .prepare
   stage: test
@@ -66,7 +65,7 @@ test:tsgo:
     - main
     - merge_requests
   script:
-    - bun run tsgo
+    - bun run tsc
 
 release:check:
   extends:
