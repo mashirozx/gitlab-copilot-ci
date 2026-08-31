@@ -38,6 +38,6 @@
     "temporal-polyfill": "1.0.4",
     "tstyche": "7.2.1",
     "typescript": "npm:@typescript/native-preview@7.0.0-dev.20260511.1",
-    "yargs": "18.0.0"
+    "yargs": "18.1.0"
   }
 }
