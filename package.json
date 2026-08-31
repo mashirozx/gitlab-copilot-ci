@@ -15,9 +15,9 @@
     "build:linux-arm64-musl": "bun run ./scripts/build-with-version.ts bun-linux-arm64-musl",
     "build:win-x64": "bun run ./scripts/build-with-version.ts bun-windows-x64",
     "build:win-arm64": "bun run ./scripts/build-with-version.ts bun-windows-arm64",
-    "test": "bun test && bun run typecheck",
-    "typecheck": "tstyche",
-    "tsgo": "tsgo",
+    "test": "bun test",
+    "typecheck": "tstyche --target 6.0.3",
+    "tsc": "tsc",
     "lint": "biome check .",
     "biome": "biome check . --fix && biome format --write .",
     "format": "biome format --write .",
@@ -37,7 +37,7 @@
     "tablemark": "4.1.0",
     "temporal-polyfill": "1.0.4",
     "tstyche": "7.2.1",
-    "typescript": "npm:@typescript/native-preview@7.0.0-dev.20260511.1",
+    "typescript": "7.0.2",
     "yargs": "18.1.0"
   }
 }

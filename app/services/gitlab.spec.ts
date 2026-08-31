@@ -83,6 +83,7 @@ mock.module("@gitbeaker/rest", () => ({
 
 mock.module("./logger", () => ({
   logger: loggerMock,
+  writeLogStream: (_message: unknown): void => {},
 }));
 
 mock.module("../utils/argv", () => ({
