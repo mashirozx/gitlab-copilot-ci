@@ -121,13 +121,11 @@ jobs:
             platform: win-x64
             build-output: win-x64
             extension: ".exe"
-          # win-arm64 built with error:
-          # Failed to extract executable for 'bun-windows-aarch64-v1.3.14'. The download may be incomplete.
-          # - runner: windows-latest
-          #   target: bun-windows-arm64
-          #   platform: win-arm64
-          #   build-output: win-arm64
-          #   extension: ".exe"
+          - runner: windows-latest
+            target: bun-windows-arm64
+            platform: win-arm64
+            build-output: win-arm64
+            extension: ".exe"
 
     steps:
       - uses: actions/checkout@v7
