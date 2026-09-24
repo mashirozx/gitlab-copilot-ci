@@ -38,6 +38,6 @@
     "temporal-polyfill": "1.0.4",
     "tstyche": "7.2.1",
     "typescript": "7.0.2",
-    "yargs": "18.1.0"
+    "yargs": "18.2.0"
   }
 }
